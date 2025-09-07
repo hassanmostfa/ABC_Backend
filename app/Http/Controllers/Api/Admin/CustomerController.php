@@ -50,11 +50,26 @@ class CustomerController extends BaseApiController
         $perPage = $request->input('per_page', 15);
         $customers = $this->customerRepository->getAllPaginated($filters, $perPage);
 
-        return $this->responseWithFilters(
-            $customers->items(),
-            $filters,
-            'Customers retrieved successfully'
-        );
+        // Create a custom response with pagination and filters
+        $response = [
+            'success' => true,
+            'message' => 'Customers retrieved successfully',
+            'data' => $customers->items(),
+            'pagination' => [
+                'current_page' => $customers->currentPage(),
+                'last_page' => $customers->lastPage(),
+                'per_page' => $customers->perPage(),
+                'total' => $customers->total(),
+                'from' => $customers->firstItem(),
+                'to' => $customers->lastItem(),
+            ]
+        ];
+
+        if (!empty($filters)) {
+            $response['filters'] = $filters;
+        }
+
+        return response()->json($response);
     }
 
     /**

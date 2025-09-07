@@ -1,0 +1,131 @@
+<?php
+
+namespace App\Http\Requests;
+
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class ProductRequest extends FormRequest
+{
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        $productId = $this->route('id'); // Get the product ID from the route for update operations
+
+        return [
+            'image' => 'nullable|string|max:500',
+            'name_en' => 'required|string|max:255',
+            'name_ar' => 'required|string|max:255',
+            'size' => 'nullable|string|max:100',
+            'quantity' => 'required|integer|min:0',
+            'price' => 'required|numeric|min:0',
+            'category_id' => 'required|integer|exists:categories,id',
+            'subcategory_id' => 'nullable|integer|exists:subcategories,id',
+            'description_en' => 'nullable|string',
+            'description_ar' => 'nullable|string',
+            'sku' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('products', 'sku')->ignore($productId)
+            ],
+            'short_item' => 'nullable|string|max:255',
+            'has_variants' => 'boolean',
+            'is_active' => 'boolean',
+            'variants' => 'nullable|array',
+            'variants.*.size' => 'nullable|string|max:100',
+            'variants.*.sku' => 'required_with:variants|string|max:255',
+            'variants.*.short_item' => 'nullable|string|max:255',
+            'variants.*.quantity' => 'required_with:variants|integer|min:0',
+            'variants.*.price' => 'required_with:variants|numeric|min:0',
+            'variants.*.image' => 'nullable|string|max:500',
+            'variants.*.is_active' => 'boolean',
+        ];
+    }
+
+    /**
+     * Get custom messages for validator errors.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'name_en.required' => 'The English name is required.',
+            'name_en.max' => 'The English name may not be greater than 255 characters.',
+            'name_ar.required' => 'The Arabic name is required.',
+            'name_ar.max' => 'The Arabic name may not be greater than 255 characters.',
+            'size.max' => 'The size may not be greater than 100 characters.',
+            'quantity.required' => 'The quantity is required.',
+            'quantity.integer' => 'The quantity must be an integer.',
+            'quantity.min' => 'The quantity must be at least 0.',
+            'price.required' => 'The price is required.',
+            'price.numeric' => 'The price must be a number.',
+            'price.min' => 'The price must be at least 0.',
+            'category_id.required' => 'The category is required.',
+            'category_id.integer' => 'The category must be a valid ID.',
+            'category_id.exists' => 'The selected category does not exist.',
+            'subcategory_id.integer' => 'The subcategory must be a valid ID.',
+            'subcategory_id.exists' => 'The selected subcategory does not exist.',
+            'sku.required' => 'The SKU is required.',
+            'sku.unique' => 'The SKU has already been taken.',
+            'sku.max' => 'The SKU may not be greater than 255 characters.',
+            'short_item.max' => 'The short item may not be greater than 255 characters.',
+            'has_variants.boolean' => 'The has variants field must be true or false.',
+            'is_active.boolean' => 'The is active field must be true or false.',
+            'image.max' => 'The image path may not be greater than 500 characters.',
+            'variants.array' => 'The variants must be an array.',
+            'variants.*.size.max' => 'The variant size may not be greater than 100 characters.',
+            'variants.*.sku.required_with' => 'The variant SKU is required when variants are provided.',
+            'variants.*.sku.max' => 'The variant SKU may not be greater than 255 characters.',
+            'variants.*.short_item.max' => 'The variant short item may not be greater than 255 characters.',
+            'variants.*.quantity.required_with' => 'The variant quantity is required when variants are provided.',
+            'variants.*.quantity.integer' => 'The variant quantity must be an integer.',
+            'variants.*.quantity.min' => 'The variant quantity must be at least 0.',
+            'variants.*.price.required_with' => 'The variant price is required when variants are provided.',
+            'variants.*.price.numeric' => 'The variant price must be a number.',
+            'variants.*.price.min' => 'The variant price must be at least 0.',
+            'variants.*.image.max' => 'The variant image path may not be greater than 500 characters.',
+            'variants.*.is_active.boolean' => 'The variant is active field must be true or false.',
+        ];
+    }
+
+    /**
+     * Get custom attributes for validator errors.
+     *
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'name_en' => 'English name',
+            'name_ar' => 'Arabic name',
+            'category_id' => 'category',
+            'subcategory_id' => 'subcategory',
+            'description_en' => 'English description',
+            'description_ar' => 'Arabic description',
+            'short_item' => 'short item',
+            'has_variants' => 'has variants',
+            'is_active' => 'is active',
+            'variants.*.size' => 'variant size',
+            'variants.*.sku' => 'variant SKU',
+            'variants.*.short_item' => 'variant short item',
+            'variants.*.quantity' => 'variant quantity',
+            'variants.*.price' => 'variant price',
+            'variants.*.image' => 'variant image',
+            'variants.*.is_active' => 'variant is active',
+        ];
+    }
+}

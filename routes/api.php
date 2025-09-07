@@ -7,6 +7,10 @@ use App\Http\Controllers\Api\Admin\PermissionController;
 use App\Http\Controllers\Api\Admin\AdminController;
 use App\Http\Controllers\Api\Admin\CustomerController;
 use App\Http\Controllers\Api\Admin\CategoryController;
+use App\Http\Controllers\Api\Admin\SubcategoryController;
+use App\Http\Controllers\Api\Admin\ProductController;
+use App\Http\Controllers\Api\Admin\ProductVariantController;
+use App\Http\Controllers\Api\Admin\OfferController;
 use App\Http\Controllers\Api\Shared\ImageController;
 
 /*
@@ -21,83 +25,115 @@ use App\Http\Controllers\Api\Shared\ImageController;
 */
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-   return $request->user();
+return $request->user();
 });
 
-      // Admin Authentication Routes (Public)
-   Route::prefix('admin')->group(function () {
-      Route::post('/login', [AdminController::class, 'login']);
+   // Admin Authentication Routes (Public)
+Route::prefix('admin')->group(function () {
+   Route::post('/login', [AdminController::class, 'login']);
+});
+
+// Admin Management Routes (Protected)
+Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
+   // Admin Authentication (Protected)
+   Route::controller(AdminController::class)->group(function () {
+      Route::post('/logout', 'logout');
+      Route::get('/profile', 'profile');
    });
 
-   // Admin Management Routes (Protected)
-   Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
-      // Admin Authentication (Protected)
-      Route::controller(AdminController::class)->group(function () {
-         Route::post('/logout', 'logout');
-         Route::get('/profile', 'profile');
+   // Admin Users Management
+   Route::controller(AdminController::class)->prefix('admins')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:admins,view');
+         Route::post('/', 'store')->middleware('admin.permission:admins,add');
+         Route::get('/roles', 'getRoles')->middleware('admin.permission:roles,view'); // This must come before {id} routes
+         Route::get('/{id}', 'show')->middleware('admin.permission:admins,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:admins,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:admins,delete');
       });
 
-      // Admin Users Management
-      Route::controller(AdminController::class)->prefix('admins')->group(function () {
-            Route::get('/', 'index')->middleware('admin.permission:admins,view');
-            Route::post('/', 'store')->middleware('admin.permission:admins,add');
-            Route::get('/roles', 'getRoles')->middleware('admin.permission:roles,view'); // This must come before {id} routes
-            Route::get('/{id}', 'show')->middleware('admin.permission:admins,view');
-            Route::put('/{id}', 'update')->middleware('admin.permission:admins,edit');
-            Route::delete('/{id}', 'destroy')->middleware('admin.permission:admins,delete');
-         });
+         // Roles Management
+   Route::controller(RoleController::class)->prefix('roles')->group(function () {
+      Route::get('/', 'index')->middleware('admin.permission:roles,view');
+      Route::post('/', 'store')->middleware('admin.permission:roles,add');
+      Route::get('/permissions-structure', 'getPermissionsStructure')->middleware('admin.permission:roles,view');
+      Route::get('/{id}', 'show')->middleware('admin.permission:roles,view');
+      Route::put('/{id}', 'update')->middleware('admin.permission:roles,edit');
+      Route::delete('/{id}', 'destroy')->middleware('admin.permission:roles,delete');
+   });
 
-            // Roles Management
-      Route::controller(RoleController::class)->prefix('roles')->group(function () {
-         Route::get('/', 'index')->middleware('admin.permission:roles,view');
-         Route::post('/', 'store')->middleware('admin.permission:roles,add');
-         Route::get('/permissions-structure', 'getPermissionsStructure')->middleware('admin.permission:roles,view');
-         Route::get('/{id}', 'show')->middleware('admin.permission:roles,view');
-         Route::put('/{id}', 'update')->middleware('admin.permission:roles,edit');
-         Route::delete('/{id}', 'destroy')->middleware('admin.permission:roles,delete');
+// Permissions Management
+   Route::controller(PermissionController::class)->prefix('permissions')->group(function () {
+      Route::get('/', 'index')->middleware('admin.permission:permissions,view');
+      Route::get('/categories', 'getCategories')->middleware('admin.permission:permissions,view');
+      Route::get('/items', 'getAllItems')->middleware('admin.permission:permissions,view');
+      Route::get('/categories/{category}/items', 'getItemsByCategory')->middleware('admin.permission:permissions,view');
+      
+      // Permission Categories
+      Route::post('/categories', 'storeCategory')->middleware('admin.permission:permissions,add');
+      Route::put('/categories/{category}', 'updateCategory')->middleware('admin.permission:permissions,edit');
+      Route::delete('/categories/{category}', 'destroyCategory')->middleware('admin.permission:permissions,delete');
+      
+      // Permission Items
+      Route::post('/items', 'storeItem')->middleware('admin.permission:permissions,add');
+      Route::put('/items/{item}', 'updateItem')->middleware('admin.permission:permissions,edit');
+      Route::delete('/items/{item}', 'destroyItem')->middleware('admin.permission:permissions,delete');
+   });
+
+            // Customers Management
+      Route::controller(CustomerController::class)->prefix('customers')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:customers,view');
+         Route::post('/', 'store')->middleware('admin.permission:customers,add');
+         Route::get('/active', 'active')->middleware('admin.permission:customers,view');
+         Route::get('/inactive', 'inactive')->middleware('admin.permission:customers,view');
+         Route::get('/{id}', 'show')->middleware('admin.permission:customers,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:customers,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:customers,delete');
       });
 
-   // Permissions Management
-      Route::controller(PermissionController::class)->prefix('permissions')->group(function () {
-         Route::get('/', 'index')->middleware('admin.permission:permissions,view');
-         Route::get('/categories', 'getCategories')->middleware('admin.permission:permissions,view');
-         Route::get('/items', 'getAllItems')->middleware('admin.permission:permissions,view');
-         Route::get('/categories/{category}/items', 'getItemsByCategory')->middleware('admin.permission:permissions,view');
-         
-         // Permission Categories
-         Route::post('/categories', 'storeCategory')->middleware('admin.permission:permissions,add');
-         Route::put('/categories/{category}', 'updateCategory')->middleware('admin.permission:permissions,edit');
-         Route::delete('/categories/{category}', 'destroyCategory')->middleware('admin.permission:permissions,delete');
-         
-         // Permission Items
-         Route::post('/items', 'storeItem')->middleware('admin.permission:permissions,add');
-         Route::put('/items/{item}', 'updateItem')->middleware('admin.permission:permissions,edit');
-         Route::delete('/items/{item}', 'destroyItem')->middleware('admin.permission:permissions,delete');
+            // Categories Management
+      Route::controller(CategoryController::class)->prefix('categories')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:categories,view');
+         Route::post('/', 'store')->middleware('admin.permission:categories,add');
+         Route::get('/active', 'active')->middleware('admin.permission:categories,view');
+         Route::get('/{id}', 'show')->middleware('admin.permission:categories,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:categories,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:categories,delete');
       });
 
-             // Customers Management
-       Route::controller(CustomerController::class)->prefix('customers')->group(function () {
-          Route::get('/', 'index')->middleware('admin.permission:customers,view');
-          Route::post('/', 'store')->middleware('admin.permission:customers,add');
-          Route::get('/active', 'active')->middleware('admin.permission:customers,view');
-          Route::get('/inactive', 'inactive')->middleware('admin.permission:customers,view');
-          Route::get('/{id}', 'show')->middleware('admin.permission:customers,view');
-          Route::put('/{id}', 'update')->middleware('admin.permission:customers,edit');
-          Route::delete('/{id}', 'destroy')->middleware('admin.permission:customers,delete');
-       });
+            // Subcategories Management
+      Route::controller(SubcategoryController::class)->prefix('subcategories')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:subcategories,view');
+         Route::post('/', 'store')->middleware('admin.permission:subcategories,add');
+         Route::get('/category/{categoryId}', 'getByCategory')->middleware('admin.permission:subcategories,view');
+         Route::get('/{id}', 'show')->middleware('admin.permission:subcategories,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:subcategories,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:subcategories,delete');
+      });
 
-               // Categories Management
-        Route::controller(CategoryController::class)->prefix('categories')->group(function () {
-           Route::get('/', 'index')->middleware('admin.permission:categories,view');
-           Route::post('/', 'store')->middleware('admin.permission:categories,add');
-           Route::get('/active', 'active')->middleware('admin.permission:categories,view');
-           Route::get('/{id}', 'show')->middleware('admin.permission:categories,view');
-           Route::put('/{id}', 'update')->middleware('admin.permission:categories,edit');
-           Route::delete('/{id}', 'destroy')->middleware('admin.permission:categories,delete');
-        });
+            // Products Management
+      Route::controller(ProductController::class)->prefix('products')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:products,view');
+         Route::post('/', 'store')->middleware('admin.permission:products,add');
+         Route::get('/category/{categoryId}', 'getByCategory')->middleware('admin.permission:products,view');
+         Route::get('/subcategory/{subcategoryId}', 'getBySubcategory')->middleware('admin.permission:products,view');
+         Route::get('/with-variants', 'getWithVariants')->middleware('admin.permission:products,view');
+         Route::get('/without-variants', 'getWithoutVariants')->middleware('admin.permission:products,view');
+         Route::get('/{id}', 'show')->middleware('admin.permission:products,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:products,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:products,delete');
+      });
+
+            // Offers Management
+      Route::controller(OfferController::class)->prefix('offers')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:offers,view');
+         Route::post('/', 'store')->middleware('admin.permission:offers,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:offers,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:offers,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:offers,delete');
+      });
 });
 
 // Shared Routes (No Authentication Required)
 Route::controller(ImageController::class)->prefix('image')->group(function () {
-   Route::post('/upload', 'upload');
+Route::post('/upload', 'upload');
 });
