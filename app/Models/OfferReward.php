@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-class ProductVariant extends Model
+class OfferReward extends Model
 {
     use HasFactory;
 
@@ -15,13 +15,12 @@ class ProductVariant extends Model
      * @var array<int, string>
      */
     protected $fillable = [
+        'offer_id',
         'product_id',
-        'size',
-        'short_item',
-        'sku',
+        'product_variant_id',
         'quantity',
-        'price',
-        'image',
+        'discount_amount',
+        'discount_type',
         'is_active',
     ];
 
@@ -31,13 +30,21 @@ class ProductVariant extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'price' => 'decimal:2',
         'quantity' => 'integer',
+        'discount_amount' => 'decimal:2',
         'is_active' => 'boolean',
     ];
 
     /**
-     * Get the product that owns the variant
+     * Get the offer that owns the reward
+     */
+    public function offer()
+    {
+        return $this->belongsTo(Offer::class);
+    }
+
+    /**
+     * Get the product for this reward
      */
     public function product()
     {
@@ -45,10 +52,10 @@ class ProductVariant extends Model
     }
 
     /**
-     * Get the price for this variant
+     * Get the product variant for this reward (if applicable)
      */
-    public function getTotalPriceAttribute()
+    public function productVariant()
     {
-        return $this->price;
+        return $this->belongsTo(ProductVariant::class);
     }
 }

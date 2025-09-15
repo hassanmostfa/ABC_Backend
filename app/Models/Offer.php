@@ -16,14 +16,14 @@ class Offer extends Model
      * @var array<int, string>
      */
     protected $fillable = [
-        'target_product_id',
-        'target_quantity',
-        'gift_product_id',
-        'gift_quantity',
         'offer_start_date',
         'offer_end_date',
         'is_active',
         'image',
+        'type',
+        'points',
+        'charity_id',
+        'reward_type',
     ];
 
     /**
@@ -32,26 +32,50 @@ class Offer extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'target_quantity' => 'integer',
-        'gift_quantity' => 'integer',
         'offer_start_date' => 'datetime',
         'offer_end_date' => 'datetime',
+        'is_active' => 'boolean',
+        'points' => 'integer',
     ];
 
     /**
-     * Get the target product that the customer must buy
+     * Get the offer conditions (target products)
      */
-    public function targetProduct()
+    public function conditions()
     {
-        return $this->belongsTo(Product::class, 'target_product_id');
+        return $this->hasMany(OfferCondition::class);
     }
 
     /**
-     * Get the gift product that will be given for free
+     * Get the offer rewards (gift products)
      */
-    public function giftProduct()
+    public function rewards()
     {
-        return $this->belongsTo(Product::class, 'gift_product_id');
+        return $this->hasMany(OfferReward::class);
+    }
+
+    /**
+     * Get active conditions only
+     */
+    public function activeConditions()
+    {
+        return $this->hasMany(OfferCondition::class)->where('is_active', true);
+    }
+
+    /**
+     * Get active rewards only
+     */
+    public function activeRewards()
+    {
+        return $this->hasMany(OfferReward::class)->where('is_active', true);
+    }
+
+    /**
+     * Get the charity associated with this offer (if any)
+     */
+    public function charity()
+    {
+        return $this->belongsTo(Charity::class);
     }
 
     /**

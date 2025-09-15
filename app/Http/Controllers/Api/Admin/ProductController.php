@@ -34,9 +34,6 @@ class ProductController extends BaseApiController
             'status' => 'nullable|in:active,inactive',
             'category_id' => 'nullable|integer|exists:categories,id',
             'subcategory_id' => 'nullable|integer|exists:subcategories,id',
-            'has_variants' => 'nullable|in:true,false',
-            'min_price' => 'nullable|numeric|min:0',
-            'max_price' => 'nullable|numeric|min:0',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
@@ -46,9 +43,6 @@ class ProductController extends BaseApiController
             'status' => $request->input('status'),
             'category_id' => $request->input('category_id'),
             'subcategory_id' => $request->input('subcategory_id'),
-            'has_variants' => $request->input('has_variants'),
-            'min_price' => $request->input('min_price'),
-            'max_price' => $request->input('max_price'),
         ];
 
         // Remove empty filters
@@ -97,16 +91,14 @@ class ProductController extends BaseApiController
         
         $product = $this->productRepository->create($validatedData);
 
-        // Create variants if provided
-        if (!empty($variants)) {
-            foreach ($variants as $variantData) {
-                $variantData['product_id'] = $product->id;
-                $this->productVariantRepository->create($variantData);
-            }
+        // Create variants (required - at least one)
+        foreach ($variants as $variantData) {
+            $variantData['product_id'] = $product->id;
+            $this->productVariantRepository->create($variantData);
         }
 
-        // Load the product with variants for response
-        $product->load('variants');
+        // Reload the product with variants for response
+        $product = $this->productRepository->findById($product->id);
 
         return $this->createdResponse($product, 'Product created successfully');
     }
@@ -121,9 +113,6 @@ class ProductController extends BaseApiController
         if (!$product) {
             return $this->notFoundResponse('Product not found');
         }
-
-        // Load variants with the product
-        $product->load('variants');
 
         // Transform data using ProductResource
         $transformedProduct = new ProductResource($product);
@@ -148,22 +137,18 @@ class ProductController extends BaseApiController
             return $this->notFoundResponse('Product not found');
         }
 
-        // Handle variants update
-        if (array_key_exists('variants', $request->validated())) {
-            // Delete existing variants
-            $product->variants()->delete();
-            
-            // Create new variants if provided
-            if (!empty($variants)) {
-                foreach ($variants as $variantData) {
-                    $variantData['product_id'] = $product->id;
-                    $this->productVariantRepository->create($variantData);
-                }
-            }
+        // Handle variants update - always update variants since they're required
+        // Delete existing variants
+        $product->variants()->delete();
+        
+        // Create new variants (required - at least one)
+        foreach ($variants as $variantData) {
+            $variantData['product_id'] = $product->id;
+            $this->productVariantRepository->create($variantData);
         }
 
-        // Load the product with variants for response
-        $product->load('variants');
+        // Reload the product with variants for response
+        $product = $this->productRepository->findById($product->id);
 
         return $this->updatedResponse($product, 'Product updated successfully');
     }

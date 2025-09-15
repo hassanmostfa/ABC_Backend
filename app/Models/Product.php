@@ -9,25 +9,20 @@ class Product extends Model
 {
     use HasFactory;
 
+
     /**
      * The attributes that are mass assignable.
      *
      * @var array<int, string>
      */
     protected $fillable = [
-        'image',
         'name_en',
         'name_ar',
-        'size',
-        'quantity',
-        'price',
         'category_id',
         'subcategory_id',
         'description_en',
         'description_ar',
         'sku',
-        'short_item',
-        'has_variants',
         'is_active',
     ];
 
@@ -37,9 +32,6 @@ class Product extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'price' => 'decimal:2',
-        'quantity' => 'integer',
-        'has_variants' => 'boolean',
         'is_active' => 'boolean',
     ];
 

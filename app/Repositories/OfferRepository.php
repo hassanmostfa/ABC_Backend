@@ -21,7 +21,13 @@ class OfferRepository implements OfferRepositoryInterface
      */
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
-        $query = $this->model->with(['targetProduct', 'giftProduct']);
+        $query = $this->model->with([
+            'conditions.product',
+            'conditions.productVariant',
+            'rewards.product',
+            'rewards.productVariant',
+            'charity'
+        ]);
 
         // Default sorting by created_at desc
         $query->orderBy('created_at', 'desc');
@@ -34,7 +40,13 @@ class OfferRepository implements OfferRepositoryInterface
      */
     public function getAll(): Collection
     {
-        return $this->model->with(['targetProduct', 'giftProduct'])->get();
+        return $this->model->with([
+            'conditions.product',
+            'conditions.productVariant',
+            'rewards.product',
+            'rewards.productVariant',
+            'charity'
+        ])->get();
     }
 
     /**
@@ -42,7 +54,13 @@ class OfferRepository implements OfferRepositoryInterface
      */
     public function findById(int $id): ?Offer
     {
-        return $this->model->with(['targetProduct', 'giftProduct'])->find($id);
+        return $this->model->with([
+            'conditions.product',
+            'conditions.productVariant',
+            'rewards.product',
+            'rewards.productVariant',
+            'charity'
+        ])->find($id);
     }
 
     /**
@@ -65,7 +83,13 @@ class OfferRepository implements OfferRepositoryInterface
         }
 
         $offer->update($data);
-        return $offer->load(['targetProduct', 'giftProduct']);
+        return $offer->load([
+            'conditions.product',
+            'conditions.productVariant',
+            'rewards.product',
+            'rewards.productVariant',
+            'charity'
+        ]);
     }
 
     /**

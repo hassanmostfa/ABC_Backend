@@ -58,10 +58,29 @@ class OfferController extends BaseApiController
     public function store(OfferRequest $request): JsonResponse
     {
         try {
-            $offer = $this->offerRepository->create($request->validated());
+            $validatedData = $request->validated();
+            $conditions = $validatedData['conditions'] ?? [];
+            $rewards = $validatedData['rewards'] ?? [];
             
-            // Load relationships for response
-            $offer->load(['targetProduct', 'giftProduct']);
+            // Remove conditions and rewards from offer data
+            unset($validatedData['conditions'], $validatedData['rewards']);
+            
+            $offer = $this->offerRepository->create($validatedData);
+            
+            // Create conditions
+            foreach ($conditions as $conditionData) {
+                $conditionData['offer_id'] = $offer->id;
+                $offer->conditions()->create($conditionData);
+            }
+            
+            // Create rewards
+            foreach ($rewards as $rewardData) {
+                $rewardData['offer_id'] = $offer->id;
+                $offer->rewards()->create($rewardData);
+            }
+            
+            // Reload the offer with all relationships for response
+            $offer = $this->offerRepository->findById($offer->id);
             
             return $this->createdResponse($offer, 'Offer created successfully');
         } catch (\Exception $e) {
@@ -95,11 +114,35 @@ class OfferController extends BaseApiController
      */
     public function update(OfferRequest $request, int $id): JsonResponse
     {
-        $offer = $this->offerRepository->update($id, $request->validated());
+        $validatedData = $request->validated();
+        $conditions = $validatedData['conditions'] ?? [];
+        $rewards = $validatedData['rewards'] ?? [];
+        
+        // Remove conditions and rewards from offer data
+        unset($validatedData['conditions'], $validatedData['rewards']);
+        
+        $offer = $this->offerRepository->update($id, $validatedData);
 
         if (!$offer) {
             return $this->notFoundResponse('Offer not found');
         }
+
+        // Update conditions - delete existing and create new ones
+        $offer->conditions()->delete();
+        foreach ($conditions as $conditionData) {
+            $conditionData['offer_id'] = $offer->id;
+            $offer->conditions()->create($conditionData);
+        }
+        
+        // Update rewards - delete existing and create new ones
+        $offer->rewards()->delete();
+        foreach ($rewards as $rewardData) {
+            $rewardData['offer_id'] = $offer->id;
+            $offer->rewards()->create($rewardData);
+        }
+
+        // Reload the offer with all relationships for response
+        $offer = $this->offerRepository->findById($offer->id);
 
         return $this->updatedResponse($offer, 'Offer updated successfully');
     }

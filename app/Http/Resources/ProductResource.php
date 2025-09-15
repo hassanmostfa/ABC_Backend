@@ -19,11 +19,7 @@ class ProductResource extends JsonResource
         
         return [
             'id' => $this->id,
-            'image' => $this->image ? url($this->image) : null,
             'name' => $lang === 'ar' ? $this->name_ar : $this->name_en,
-            'size' => $this->size,
-            'quantity' => $this->quantity,
-            'price' => (float) $this->price,
             'category' => $this->whenLoaded('category', function () use ($lang) {
                 return [
                     'id' => $this->category->id,
@@ -38,25 +34,20 @@ class ProductResource extends JsonResource
             }),
             'description' => $lang === 'ar' ? $this->description_ar : $this->description_en,
             'sku' => $this->sku,
-            'short_item' => $this->short_item,
-            'has_variants' => (bool) $this->has_variants,
             'is_active' => (bool) $this->is_active,
-            'variants' => $this->whenLoaded('variants', function () {
-                return $this->variants->map(function ($variant) {
-                    return [
-                        'id' => $variant->id,
-                        'size' => $variant->size,
-                        'sku' => $variant->sku,
-                        'short_item' => $variant->short_item,
-                        'quantity' => $variant->quantity,
-                        'price' => (float) $variant->price,
-                        'total_price' => (float) $variant->total_price,
-                        'image' => $variant->image ? url($variant->image) : null,
-                        'is_active' => (bool) $variant->is_active,
-                        'created_at' => $variant->created_at?->toISOString(),
-                        'updated_at' => $variant->updated_at?->toISOString(),
-                    ];
-                });
+            'variants' => $this->variants->map(function ($variant) {
+                return [
+                    'id' => $variant->id,
+                    'size' => $variant->size,
+                    'sku' => $variant->sku,
+                    'short_item' => $variant->short_item,
+                    'quantity' => $variant->quantity,
+                    'price' => (float) $variant->price,
+                    'image' => $variant->image ? url($variant->image) : null,
+                    'is_active' => (bool) $variant->is_active,
+                    'created_at' => $variant->created_at?->toISOString(),
+                    'updated_at' => $variant->updated_at?->toISOString(),
+                ];
             }),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),

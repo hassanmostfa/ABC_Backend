@@ -19,34 +19,65 @@ class OfferResource extends JsonResource
         
         return [
             'id' => $this->id,
-            'target_product' => $this->whenLoaded('targetProduct', function () use ($lang) {
+            'conditions' => $this->conditions->map(function ($condition) use ($lang) {
+                $product = $condition->product;
+                $variant = $condition->productVariant;
+                
                 return [
-                    'id' => $this->targetProduct->id,
-                    'name' => $lang === 'ar' ? $this->targetProduct->name_ar : $this->targetProduct->name_en,
-                    'name_en' => $this->targetProduct->name_en,
-                    'name_ar' => $this->targetProduct->name_ar,
-                    'sku' => $this->targetProduct->sku,
-                    'price' => (float) $this->targetProduct->price,
-                    'image' => $this->targetProduct->image ? url($this->targetProduct->image) : null,
+                    'id' => $condition->id,
+                    'product_id' => $product->id,
+                    'product_name' => $lang === 'ar' ? $product->name_ar : $product->name_en,
+                    'product_sku' => $product->sku,
+                    'variant_id' => $variant ? $variant->id : null,
+                    'variant_size' => $variant ? $variant->size : null,
+                    'variant_short_item' => $variant ? $variant->short_item : null,
+                    'variant_sku' => $variant ? $variant->sku : null,
+                    'price' => $variant ? (float) $variant->price : null,
+                    'available_quantity' => $variant ? $variant->quantity : null,
+                    'image' => $variant && $variant->image ? url($variant->image) : null,
+                    'variant_is_active' => $variant ? (bool) $variant->is_active : null,
+                    'required_quantity' => $condition->quantity,
+                    'is_active' => (bool) $condition->is_active,
                 ];
             }),
-            'target_quantity' => $this->target_quantity,
-            'gift_product' => $this->whenLoaded('giftProduct', function () use ($lang) {
+            'rewards' => $this->rewards->map(function ($reward) use ($lang) {
+                $product = $reward->product;
+                $variant = $reward->productVariant;
+                
                 return [
-                    'id' => $this->giftProduct->id,
-                    'name' => $lang === 'ar' ? $this->giftProduct->name_ar : $this->giftProduct->name_en,
-                    'name_en' => $this->giftProduct->name_en,
-                    'name_ar' => $this->giftProduct->name_ar,
-                    'sku' => $this->giftProduct->sku,
-                    'price' => (float) $this->giftProduct->price,
-                    'image' => $this->giftProduct->image ? url($this->giftProduct->image) : null,
+                    'id' => $reward->id,
+                    'product_id' => $product->id,
+                    'product_name' => $lang === 'ar' ? $product->name_ar : $product->name_en,
+                    'product_sku' => $product->sku,
+                    'variant_id' => $variant ? $variant->id : null,
+                    'variant_size' => $variant ? $variant->size : null,
+                    'variant_short_item' => $variant ? $variant->short_item : null,
+                    'variant_sku' => $variant ? $variant->sku : null,
+                    'price' => $variant ? (float) $variant->price : null,
+                    'available_quantity' => $variant ? $variant->quantity : null,
+                    'image' => $variant && $variant->image ? url($variant->image) : null,
+                    'variant_is_active' => $variant ? (bool) $variant->is_active : null,
+                    'reward_quantity' => $reward->quantity,
+                    'discount_amount' => $reward->discount_amount ? (float) $reward->discount_amount : null,
+                    'discount_type' => $reward->discount_type,
+                    'is_active' => (bool) $reward->is_active,
                 ];
             }),
-            'gift_quantity' => $this->gift_quantity,
             'offer_start_date' => $this->offer_start_date?->toISOString(),
             'offer_end_date' => $this->offer_end_date?->toISOString(),
             'is_active' => (bool) $this->is_active,
             'image' => $this->image ? url($this->image) : null,
+            'type' => $this->type,
+            'points' => (int) $this->points,
+            'charity_id' => $this->charity_id,
+            'charity' => $this->whenLoaded('charity', function () use ($lang) {
+                return [
+                    'id' => $this->charity->id,
+                    'name' => $lang === 'ar' ? $this->charity->name_ar : $this->charity->name_en,
+                    'description' => $lang === 'ar' ? $this->charity->description_ar : $this->charity->description_en,
+                ];
+            }),
+            'reward_type' => $this->reward_type,
             'status' => $this->getOfferStatus(),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),

@@ -35,16 +35,43 @@ class OfferRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
-            'target_product_id' => 'required|integer|exists:products,id',
-            'target_quantity' => 'required|integer|min:1',
-            'gift_product_id' => 'required|integer|exists:products,id',
-            'gift_quantity' => 'required|integer|min:1',
+        $rules = [
             'offer_start_date' => 'required|date|after_or_equal:today',
             'offer_end_date' => 'required|date|after:offer_start_date',
             'is_active' => 'boolean',
             'image' => 'nullable|string|max:500',
+            'type' => 'nullable|string|max:100',
+            'points' => 'nullable|integer|min:0',
+            'charity_id' => 'nullable|integer|exists:charities,id',
+            'reward_type' => 'required|in:products,discount',
+            'conditions' => 'required|array|min:1',
+            'conditions.*.product_id' => 'required|integer|exists:products,id',
+            'conditions.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
+            'conditions.*.quantity' => 'required|integer|min:1',
+            'conditions.*.is_active' => 'boolean',
         ];
+
+        // Add reward validation based on reward_type
+        if ($this->input('reward_type') === 'products') {
+            $rules['rewards'] = 'required|array|min:1';
+            $rules['rewards.*.product_id'] = 'required|integer|exists:products,id';
+            $rules['rewards.*.product_variant_id'] = 'nullable|integer|exists:product_variants,id';
+            $rules['rewards.*.quantity'] = 'required|integer|min:1';
+            $rules['rewards.*.discount_amount'] = 'nullable|numeric|min:0';
+            $rules['rewards.*.discount_type'] = 'nullable|in:percentage,fixed';
+            $rules['rewards.*.is_active'] = 'boolean';
+        } else {
+            // For discount type, rewards are optional or can be empty
+            $rules['rewards'] = 'nullable|array';
+            $rules['rewards.*.product_id'] = 'nullable|integer|exists:products,id';
+            $rules['rewards.*.product_variant_id'] = 'nullable|integer|exists:product_variants,id';
+            $rules['rewards.*.quantity'] = 'nullable|integer|min:1';
+            $rules['rewards.*.discount_amount'] = 'nullable|numeric|min:0';
+            $rules['rewards.*.discount_type'] = 'nullable|in:percentage,fixed';
+            $rules['rewards.*.is_active'] = 'boolean';
+        }
+
+        return $rules;
     }
 
     /**
@@ -55,18 +82,6 @@ class OfferRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'target_product_id.required' => 'The target product is required.',
-            'target_product_id.integer' => 'The target product must be a valid ID.',
-            'target_product_id.exists' => 'The selected target product does not exist.',
-            'target_quantity.required' => 'The target quantity is required.',
-            'target_quantity.integer' => 'The target quantity must be an integer.',
-            'target_quantity.min' => 'The target quantity must be at least 1.',
-            'gift_product_id.required' => 'The gift product is required.',
-            'gift_product_id.integer' => 'The gift product must be a valid ID.',
-            'gift_product_id.exists' => 'The selected gift product does not exist.',
-            'gift_quantity.required' => 'The gift quantity is required.',
-            'gift_quantity.integer' => 'The gift quantity must be an integer.',
-            'gift_quantity.min' => 'The gift quantity must be at least 1.',
             'offer_start_date.required' => 'The offer start date is required.',
             'offer_start_date.date' => 'The offer start date must be a valid date.',
             'offer_start_date.after_or_equal' => 'The offer start date must be today or in the future.',
@@ -75,6 +90,32 @@ class OfferRequest extends FormRequest
             'offer_end_date.after' => 'The offer end date must be after the start date.',
             'is_active.boolean' => 'The is active field must be true or false.',
             'image.max' => 'The image path may not be greater than 500 characters.',
+            'type.max' => 'The type may not be greater than 100 characters.',
+            'points.integer' => 'The points must be an integer.',
+            'points.min' => 'The points must be at least 0.',
+            'charity_id.integer' => 'The charity must be a valid ID.',
+            'charity_id.exists' => 'The selected charity does not exist.',
+            'reward_type.required' => 'The reward type is required.',
+            'reward_type.in' => 'The reward type must be either products or discount.',
+            'conditions.required' => 'At least one condition is required.',
+            'conditions.array' => 'The conditions must be an array.',
+            'conditions.min' => 'At least one condition is required.',
+            'conditions.*.product_id.required' => 'The condition product is required.',
+            'conditions.*.product_id.exists' => 'The selected condition product does not exist.',
+            'conditions.*.product_variant_id.exists' => 'The selected condition variant does not exist.',
+            'conditions.*.quantity.required' => 'The condition quantity is required.',
+            'conditions.*.quantity.min' => 'The condition quantity must be at least 1.',
+            'rewards.required' => 'At least one reward is required.',
+            'rewards.array' => 'The rewards must be an array.',
+            'rewards.min' => 'At least one reward is required.',
+            'rewards.*.product_id.required' => 'The reward product is required.',
+            'rewards.*.product_id.exists' => 'The selected reward product does not exist.',
+            'rewards.*.product_variant_id.exists' => 'The selected reward variant does not exist.',
+            'rewards.*.quantity.required' => 'The reward quantity is required.',
+            'rewards.*.quantity.min' => 'The reward quantity must be at least 1.',
+            'rewards.*.discount_amount.numeric' => 'The discount amount must be a number.',
+            'rewards.*.discount_amount.min' => 'The discount amount must be at least 0.',
+            'rewards.*.discount_type.in' => 'The discount type must be either percentage or fixed.',
         ];
     }
 
@@ -86,14 +127,16 @@ class OfferRequest extends FormRequest
     public function attributes(): array
     {
         return [
-            'target_product_id' => 'target product',
-            'target_quantity' => 'target quantity',
-            'gift_product_id' => 'gift product',
-            'gift_quantity' => 'gift quantity',
             'offer_start_date' => 'offer start date',
             'offer_end_date' => 'offer end date',
             'is_active' => 'is active',
             'image' => 'image',
+            'type' => 'type',
+            'points' => 'points',
+            'charity_id' => 'charity',
+            'reward_type' => 'reward type',
+            'conditions' => 'conditions',
+            'rewards' => 'rewards',
         ];
     }
 }

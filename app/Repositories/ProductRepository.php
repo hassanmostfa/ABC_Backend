@@ -20,7 +20,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
-        $query = $this->model->with(['category', 'subcategory']);
+        $query = $this->model->with(['category', 'subcategory', 'variants']);
 
         // Search functionality
         if (isset($filters['search']) && !empty($filters['search'])) {
@@ -77,7 +77,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getAll(): Collection
     {
-        return $this->model->with(['category', 'subcategory'])->get();
+        return $this->model->with(['category', 'subcategory', 'variants'])->get();
     }
 
     /**
@@ -85,7 +85,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function findById(int $id): ?Product
     {
-        return $this->model->with(['category', 'subcategory'])->find($id);
+        return $this->model->with(['category', 'subcategory', 'variants'])->find($id);
     }
 
     /**
@@ -93,7 +93,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function findBySku(string $sku): ?Product
     {
-        return $this->model->with(['category', 'subcategory'])->where('sku', $sku)->first();
+        return $this->model->with(['category', 'subcategory', 'variants'])->where('sku', $sku)->first();
     }
 
     /**
@@ -116,7 +116,7 @@ class ProductRepository implements ProductRepositoryInterface
         }
 
         $product->update($data);
-        return $product->load(['category', 'subcategory']);
+        return $product->load(['category', 'subcategory', 'variants']);
     }
 
     /**
@@ -138,7 +138,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getActive(): Collection
     {
-        return $this->model->with(['category', 'subcategory'])
+        return $this->model->with(['category', 'subcategory', 'variants'])
                           ->where('is_active', true)
                           ->get();
     }
@@ -148,7 +148,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getInactive(): Collection
     {
-        return $this->model->with(['category', 'subcategory'])
+        return $this->model->with(['category', 'subcategory', 'variants'])
                           ->where('is_active', false)
                           ->get();
     }
@@ -158,7 +158,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getByCategory(int $categoryId): Collection
     {
-        return $this->model->with(['category', 'subcategory'])
+        return $this->model->with(['category', 'subcategory', 'variants'])
                           ->where('category_id', $categoryId)
                           ->get();
     }
@@ -168,7 +168,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getBySubcategory(int $subcategoryId): Collection
     {
-        return $this->model->with(['category', 'subcategory'])
+        return $this->model->with(['category', 'subcategory', 'variants'])
                           ->where('subcategory_id', $subcategoryId)
                           ->get();
     }
@@ -178,7 +178,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getWithVariants(): Collection
     {
-        return $this->model->with(['category', 'subcategory'])
+        return $this->model->with(['category', 'subcategory', 'variants'])
                           ->where('has_variants', true)
                           ->get();
     }
@@ -188,7 +188,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getWithoutVariants(): Collection
     {
-        return $this->model->with(['category', 'subcategory'])
+        return $this->model->with(['category', 'subcategory', 'variants'])
                           ->where('has_variants', false)
                           ->get();
     }
