@@ -11,7 +11,12 @@ use App\Http\Controllers\Api\Admin\SubcategoryController;
 use App\Http\Controllers\Api\Admin\ProductController;
 use App\Http\Controllers\Api\Admin\ProductVariantController;
 use App\Http\Controllers\Api\Admin\OfferController;
+use App\Http\Controllers\Api\Admin\CharityController;
+use App\Http\Controllers\Api\Admin\CountryController;
+use App\Http\Controllers\Api\Admin\GovernorateController;
+use App\Http\Controllers\Api\Admin\AreaController;
 use App\Http\Controllers\Api\Shared\ImageController;
+use App\Http\Controllers\ContactUsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,9 +29,6 @@ use App\Http\Controllers\Api\Shared\ImageController;
 |
 */
 
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-return $request->user();
-});
 
    // Admin Authentication Routes (Public)
 Route::prefix('admin')->group(function () {
@@ -131,9 +133,60 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::put('/{id}', 'update')->middleware('admin.permission:offers,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:offers,delete');
       });
+
+            // Charities Management
+      Route::controller(CharityController::class)->prefix('charities')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:charities,view');
+         Route::post('/', 'store')->middleware('admin.permission:charities,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:charities,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:charities,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:charities,delete');
+      });
+
+            // Countries Management
+      Route::controller(CountryController::class)->prefix('countries')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:countries,view');
+         Route::post('/', 'store')->middleware('admin.permission:countries,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:countries,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:countries,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:countries,delete');
+      });
+
+            // Governorates Management
+      Route::controller(GovernorateController::class)->prefix('governorates')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:governorates,view');
+         Route::post('/', 'store')->middleware('admin.permission:governorates,add');
+         Route::get('/country/{countryId}', 'getByCountry')->middleware('admin.permission:governorates,view');
+         Route::get('/{id}', 'show')->middleware('admin.permission:governorates,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:governorates,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:governorates,delete');
+      });
+
+            // Areas Management
+      Route::controller(AreaController::class)->prefix('areas')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:areas,view');
+         Route::post('/', 'store')->middleware('admin.permission:areas,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:areas,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:areas,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:areas,delete');
+      });
+
+            // Contact Us Management (Admin)
+      Route::controller(ContactUsController::class)->prefix('contact-us')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:contact_us,view');
+         Route::get('/{id}', 'show')->middleware('admin.permission:contact_us,view');
+         Route::patch('/{id}/mark-read', 'markAsRead')->middleware('admin.permission:contact_us,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:contact_us,delete');
+      });
 });
+
 
 // Shared Routes (No Authentication Required)
 Route::controller(ImageController::class)->prefix('image')->group(function () {
 Route::post('/upload', 'upload');
+});
+
+// Contact Us Routes (Public)
+Route::controller(ContactUsController::class)->prefix('contact-us')->group(function () {
+   Route::post('/', 'store');
 });

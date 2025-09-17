@@ -29,6 +29,12 @@ class OfferRepository implements OfferRepositoryInterface
             'charity'
         ]);
 
+        // Apply type filter if provided
+        if (isset($filters['type']) && !empty(trim($filters['type']))) {
+            $type = trim($filters['type']);
+            $query->where('type', 'like', "%{$type}%");
+        }
+
         // Default sorting by created_at desc
         $query->orderBy('created_at', 'desc');
 

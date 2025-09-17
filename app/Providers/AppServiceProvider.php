@@ -15,6 +15,16 @@ use App\Repositories\ProductVariantRepositoryInterface;
 use App\Repositories\ProductVariantRepository;
 use App\Repositories\OfferRepositoryInterface;
 use App\Repositories\OfferRepository;
+use App\Repositories\CharityRepositoryInterface;
+use App\Repositories\CharityRepository;
+use App\Repositories\CountryRepositoryInterface;
+use App\Repositories\CountryRepository;
+use App\Repositories\GovernorateRepositoryInterface;
+use App\Repositories\GovernorateRepository;
+use App\Repositories\AreaRepositoryInterface;
+use App\Repositories\AreaRepository;
+use App\Repositories\ContactUsRepositoryInterface;
+use App\Repositories\ContactUsRepository;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -29,6 +39,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ProductRepositoryInterface::class, ProductRepository::class);
         $this->app->bind(ProductVariantRepositoryInterface::class, ProductVariantRepository::class);
         $this->app->bind(OfferRepositoryInterface::class, OfferRepository::class);
+        $this->app->bind(CharityRepositoryInterface::class, CharityRepository::class);
+        $this->app->bind(CountryRepositoryInterface::class, CountryRepository::class);
+        $this->app->bind(GovernorateRepositoryInterface::class, GovernorateRepository::class);
+        $this->app->bind(AreaRepositoryInterface::class, AreaRepository::class);
+        $this->app->bind(ContactUsRepositoryInterface::class, ContactUsRepository::class);
     }
 
     /**

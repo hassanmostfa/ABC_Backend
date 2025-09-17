@@ -26,10 +26,20 @@ class OfferController extends BaseApiController
         // Validate filter parameters
         $request->validate([
             'per_page' => 'nullable|integer|min:1|max:100',
+            'type' => 'nullable|string|max:255',
         ]);
 
         $perPage = $request->input('per_page', 15);
-        $offers = $this->offerRepository->getAllPaginated([], $perPage);
+        $filters = [
+            'type' => $request->input('type'),
+        ];
+        
+        // Remove null values from filters
+        $filters = array_filter($filters, function($value) {
+            return $value !== null && $value !== '';
+        });
+        
+        $offers = $this->offerRepository->getAllPaginated($filters, $perPage);
 
         // Transform data using OfferResource
         $transformedOffers = OfferResource::collection($offers->items());

@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             PermissionSeeder::class,
             RoleSeeder::class,
+            CharitySeeder::class,
         ]);
 
         // Create a test admin with Super Admin role
