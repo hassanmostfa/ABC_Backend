@@ -25,6 +25,10 @@ use App\Repositories\AreaRepositoryInterface;
 use App\Repositories\AreaRepository;
 use App\Repositories\ContactUsRepositoryInterface;
 use App\Repositories\ContactUsRepository;
+use App\Repositories\SocialMediaLinkRepositoryInterface;
+use App\Repositories\SocialMediaLinkRepository;
+use App\Repositories\CareerRepositoryInterface;
+use App\Repositories\CareerRepository;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -44,6 +48,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(GovernorateRepositoryInterface::class, GovernorateRepository::class);
         $this->app->bind(AreaRepositoryInterface::class, AreaRepository::class);
         $this->app->bind(ContactUsRepositoryInterface::class, ContactUsRepository::class);
+        $this->app->bind(SocialMediaLinkRepositoryInterface::class, SocialMediaLinkRepository::class);
+        $this->app->bind(CareerRepositoryInterface::class, CareerRepository::class);
     }
 
     /**

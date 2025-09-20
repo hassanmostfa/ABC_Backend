@@ -15,6 +15,8 @@ use App\Http\Controllers\Api\Admin\CharityController;
 use App\Http\Controllers\Api\Admin\CountryController;
 use App\Http\Controllers\Api\Admin\GovernorateController;
 use App\Http\Controllers\Api\Admin\AreaController;
+use App\Http\Controllers\Api\Admin\SocialMediaLinkController;
+use App\Http\Controllers\Api\Admin\CareerController;
 use App\Http\Controllers\Api\Shared\ImageController;
 use App\Http\Controllers\ContactUsController;
 
@@ -171,6 +173,25 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:areas,delete');
       });
 
+            // Social Media Links Management
+      Route::controller(SocialMediaLinkController::class)->prefix('social-media-links')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:social_media_links,view');
+         Route::post('/', 'store')->middleware('admin.permission:social_media_links,add');
+         Route::get('/active', 'active')->middleware('admin.permission:social_media_links,view');
+         Route::get('/{id}', 'show')->middleware('admin.permission:social_media_links,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:social_media_links,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:social_media_links,delete');
+      });
+
+            // Careers Management
+      Route::controller(CareerController::class)->prefix('careers')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:careers,view');
+         Route::post('/', 'store')->middleware('admin.permission:careers,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:careers,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:careers,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:careers,delete');
+      });
+
             // Contact Us Management (Admin)
       Route::controller(ContactUsController::class)->prefix('contact-us')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:contact_us,view');
@@ -182,11 +203,16 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
 
 
 // Shared Routes (No Authentication Required)
-Route::controller(ImageController::class)->prefix('image')->group(function () {
-Route::post('/upload', 'upload');
+Route::controller(ImageController::class)->prefix('file')->group(function () {
+   Route::post('/upload', 'upload');
 });
 
 // Contact Us Routes (Public)
 Route::controller(ContactUsController::class)->prefix('contact-us')->group(function () {
+   Route::post('/', 'store');
+});
+
+// Career Application Routes (Public)
+Route::controller(CareerController::class)->prefix('careers')->group(function () {
    Route::post('/', 'store');
 });
