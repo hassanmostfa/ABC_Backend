@@ -3,6 +3,13 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Auth\AuthenticationException;
+use App\Http\Middleware\ApiAuth;
+use App\Http\Middleware\CheckAdminPermission;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Http\Request;
+use Illuminate\Http\Middleware\HandleCors;
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -13,32 +20,33 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'admin.permission' => \App\Http\Middleware\CheckAdminPermission::class,
+            'admin.permission' => CheckAdminPermission::class,
+            'api.auth' => ApiAuth::class,
         ]);
         
         // Configure authentication for API
         $middleware->web(append: [
-            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+            EnsureFrontendRequestsAreStateful::class,
         ]);
         
         // Ensure API routes always return JSON
         $middleware->api(append: [
-            \Illuminate\Http\Middleware\HandleCors::class,
+            HandleCors::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Handle unauthenticated API requests
-        $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, \Illuminate\Http\Request $request) {
+        $exceptions->render(function (AuthenticationException $e, Request $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthenticated',
+                    'message' => 'Unauthenticated. Please provide a valid token.',
                 ], 401);
             }
         });
         
         // Handle validation errors for API
-        $exceptions->render(function (\Illuminate\Validation\ValidationException $e, \Illuminate\Http\Request $request) {
+        $exceptions->render(function (ValidationException $e, Request $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
                 return response()->json([
                     'success' => false,
@@ -49,8 +57,18 @@ return Application::configure(basePath: dirname(__DIR__))
         });
         
         // Handle general exceptions for API
-        $exceptions->render(function (\Throwable $e, \Illuminate\Http\Request $request) {
+        $exceptions->render(function (\Throwable $e, Request $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
+                // Check if it's an authentication-related error
+                if (str_contains($e->getMessage(), 'Route [login] not defined') || 
+                    str_contains($e->getMessage(), 'Unauthenticated') ||
+                    $e instanceof AuthenticationException) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Unauthenticated. Please provide a valid token.',
+                    ], 401);
+                }
+                
                 return response()->json([
                     'success' => false,
                     'message' => 'An error occurred',

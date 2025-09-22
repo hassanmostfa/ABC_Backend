@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Repositories\CountryRepositoryInterface;
-use App\Http\Resources\CountryResource;
-use App\Http\Requests\CountryRequest;
+use App\Http\Resources\Admin\CountryResource;
+use App\Http\Requests\Admin\CountryRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 

@@ -104,7 +104,7 @@ class CategoryRepository implements CategoryRepositoryInterface
      */
     public function getActive(): Collection
     {
-        return $this->model->active()->get();
+        return $this->model->where('is_active', true)->get();
     }
 
     /**

@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Resources;
+namespace App\Http\Resources\Admin;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class GovernorateResource extends JsonResource
+class CountryResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
@@ -18,15 +18,7 @@ class GovernorateResource extends JsonResource
             'id' => $this->id,
             'name_en' => $this->name_en,
             'name_ar' => $this->name_ar,
-            'country_id' => $this->country_id,
             'is_active' => $this->is_active,
-            'country' => $this->whenLoaded('country', function () {
-                return [
-                    'id' => $this->country->id,
-                    'name_en' => $this->country->name_en,
-                    'name_ar' => $this->country->name_ar,
-                ];
-            }),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

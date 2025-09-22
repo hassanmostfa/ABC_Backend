@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Resources;
+namespace App\Http\Resources\Admin;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class ProductResource extends JsonResource
+class CategoryResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
@@ -20,35 +20,8 @@ class ProductResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $lang === 'ar' ? $this->name_ar : $this->name_en,
-            'category' => $this->whenLoaded('category', function () use ($lang) {
-                return [
-                    'id' => $this->category->id,
-                    'name' => $lang === 'ar' ? $this->category->name_ar : $this->category->name_en,
-                ];
-            }),
-            'subcategory' => $this->whenLoaded('subcategory', function () use ($lang) {
-                return [
-                    'id' => $this->subcategory->id,
-                    'name' => $lang === 'ar' ? $this->subcategory->name_ar : $this->subcategory->name_en,
-                ];
-            }),
-            'description' => $lang === 'ar' ? $this->description_ar : $this->description_en,
-            'sku' => $this->sku,
+            'image_url' => url($this->image_path),
             'is_active' => (bool) $this->is_active,
-            'variants' => $this->variants->map(function ($variant) {
-                return [
-                    'id' => $variant->id,
-                    'size' => $variant->size,
-                    'sku' => $variant->sku,
-                    'short_item' => $variant->short_item,
-                    'quantity' => $variant->quantity,
-                    'price' => (float) $variant->price,
-                    'image' => $variant->image ? url($variant->image) : null,
-                    'is_active' => (bool) $variant->is_active,
-                    'created_at' => $variant->created_at?->toISOString(),
-                    'updated_at' => $variant->updated_at?->toISOString(),
-                ];
-            }),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];

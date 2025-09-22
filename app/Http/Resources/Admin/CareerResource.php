@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Resources;
+namespace App\Http\Resources\Admin;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class SocialMediaLinkResource extends JsonResource
+class CareerResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
@@ -16,9 +16,13 @@ class SocialMediaLinkResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'icon' => $this->icon,
-            'url' => $this->url,
-            'is_active' => (bool) $this->is_active,
+            'name' => $this->name,
+            'email' => $this->email,
+            'phone' => $this->phone,
+            'applying_position' => $this->applying_position,
+            'message' => $this->message,
+            'file_url' => $this->file,
+            'file_name' => $this->file ? basename(parse_url($this->file, PHP_URL_PATH)) : null,
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];

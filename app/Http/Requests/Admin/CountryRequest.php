@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class SocialMediaLinkRequest extends FormRequest
+class CountryRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -21,11 +21,11 @@ class SocialMediaLinkRequest extends FormRequest
      */
     public function rules(): array
     {
-        $socialMediaLinkId = $this->route('social_media_link') ?? $this->route('id');
+        $countryId = $this->route('country') ?? $this->route('id');
         
         return [
-            'icon' => 'required|string|max:255',
-            'url' => 'required|url|max:500',
+            'name_en' => 'required|string|max:255|unique:countries,name_en,' . $countryId,
+            'name_ar' => 'required|string|max:255|unique:countries,name_ar,' . $countryId,
             'is_active' => 'boolean',
         ];
     }
@@ -36,12 +36,10 @@ class SocialMediaLinkRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'icon.required' => 'Icon is required.',
-            'icon.string' => 'Icon must be a string.',
-            'icon.max' => 'Icon must not exceed 255 characters.',
-            'url.required' => 'URL is required.',
-            'url.url' => 'URL must be a valid URL.',
-            'url.max' => 'URL must not exceed 500 characters.',
+            'name_en.required' => 'English name is required.',
+            'name_en.unique' => 'This English name already exists.',
+            'name_ar.required' => 'Arabic name is required.',
+            'name_ar.unique' => 'This Arabic name already exists.',
             'is_active.boolean' => 'Active status must be true or false.',
         ];
     }

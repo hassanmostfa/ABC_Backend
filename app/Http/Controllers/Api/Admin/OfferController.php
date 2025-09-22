@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Repositories\OfferRepositoryInterface;
-use App\Http\Resources\OfferResource;
-use App\Http\Requests\OfferRequest;
+use App\Http\Resources\Admin\OfferResource;
+use App\Http\Requests\Admin\OfferRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 

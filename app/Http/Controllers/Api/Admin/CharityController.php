@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Repositories\CharityRepositoryInterface;
-use App\Http\Resources\CharityResource;
-use App\Http\Requests\CharityRequest;
+use App\Http\Resources\Admin\CharityResource;
+use App\Http\Requests\Admin\CharityRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 

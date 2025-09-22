@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Repositories\SubcategoryRepositoryInterface;
-use App\Http\Resources\SubcategoryResource;
+use App\Http\Resources\Admin\SubcategoryResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 

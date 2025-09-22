@@ -1,9 +1,9 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api\Shared;
 
 use App\Http\Controllers\Api\BaseApiController;
-use App\Http\Requests\ContactUsRequest;
+use App\Http\Requests\Admin\ContactUsRequest;
 use App\Repositories\ContactUsRepositoryInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;

@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Repositories\SocialMediaLinkRepositoryInterface;
-use App\Http\Resources\SocialMediaLinkResource;
-use App\Http\Requests\SocialMediaLinkRequest;
+use App\Http\Resources\Admin\SocialMediaLinkResource;
+use App\Http\Requests\Admin\SocialMediaLinkRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 

@@ -18,7 +18,11 @@ use App\Http\Controllers\Api\Admin\AreaController;
 use App\Http\Controllers\Api\Admin\SocialMediaLinkController;
 use App\Http\Controllers\Api\Admin\CareerController;
 use App\Http\Controllers\Api\Shared\ImageController;
-use App\Http\Controllers\ContactUsController;
+use App\Http\Controllers\Api\Web\ProductController as WebProductController;
+use App\Http\Controllers\Api\Web\CategoryController as WebCategoryController;
+use App\Http\Controllers\Api\Web\AuthController;
+use App\Http\Controllers\Api\Web\SocialMediaLinkController as WebSocialMediaLinkController;
+use App\Http\Controllers\Api\Shared\ContactUsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -215,4 +219,38 @@ Route::controller(ContactUsController::class)->prefix('contact-us')->group(funct
 // Career Application Routes (Public)
 Route::controller(CareerController::class)->prefix('careers')->group(function () {
    Route::post('/', 'store');
+});
+
+// Web Product Routes (Public)
+Route::controller(WebProductController::class)->prefix('products')->group(function () {
+   Route::get('/', 'getAllProductsWithVariants');
+   Route::get('/variants-as-products', 'getAllVariantsAsProducts');
+   Route::get('/{id}', 'getProductWithVariants');
+   Route::get('/category/{categoryId}', 'getProductsByCategoryWithVariants');
+   Route::get('/subcategory/{subcategoryId}', 'getProductsBySubcategoryWithVariants');
+});
+
+// Web Category Routes (Public)
+Route::controller(WebCategoryController::class)->group(function () {
+   Route::get('/categories', 'getAllCategories');
+   Route::get('/subcategories', 'getAllSubcategories');
+   Route::get('categories/{categoryId}/subcategories', 'getSubcategoriesByCategory');
+});
+
+// Web Social Media Links Routes (Public)
+Route::controller(WebSocialMediaLinkController::class)->prefix('social-media-links')->group(function () {
+   Route::get('/', 'getAllActiveLinks');
+});
+
+// Customer Authentication Routes (Public)
+Route::controller(AuthController::class)->prefix('auth')->group(function () {
+   Route::post('/register', 'register');
+   Route::post('/login', 'login');
+   Route::post('/check-customer', 'checkCustomer');
+});
+
+// Customer Authentication Routes (Protected)
+Route::middleware('api.auth')->controller(AuthController::class)->prefix('auth')->group(function () {
+   Route::post('/logout', 'logout');
+   Route::get('/profile', 'profile');
 });

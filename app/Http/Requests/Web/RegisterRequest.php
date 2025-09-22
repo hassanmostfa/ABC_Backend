@@ -1,10 +1,11 @@
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\Web;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rules\Password;
 
-class ContactUsRequest extends FormRequest
+class RegisterRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -22,9 +23,10 @@ class ContactUsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255',
-            'message' => 'required|string|max:1000',
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:customers,email'],
+            'phone' => ['required', 'string', 'max:20', 'unique:customers,phone'],
+            'password' => ['required', 'confirmed', Password::defaults()],
         ];
     }
 
@@ -42,9 +44,13 @@ class ContactUsRequest extends FormRequest
             'email.required' => 'The email field is required.',
             'email.email' => 'The email must be a valid email address.',
             'email.max' => 'The email may not be greater than 255 characters.',
-            'message.required' => 'The message field is required.',
-            'message.string' => 'The message must be a string.',
-            'message.max' => 'The message may not be greater than 1000 characters.',
+            'email.unique' => 'The email has already been taken.',
+            'phone.required' => 'The phone field is required.',
+            'phone.string' => 'The phone must be a string.',
+            'phone.max' => 'The phone may not be greater than 20 characters.',
+            'phone.unique' => 'The phone has already been taken.',
+            'password.required' => 'The password field is required.',
+            'password.confirmed' => 'The password confirmation does not match.',
         ];
     }
 }

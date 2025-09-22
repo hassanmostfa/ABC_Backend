@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Repositories\ProductRepositoryInterface;
 use App\Repositories\ProductVariantRepositoryInterface;
-use App\Http\Resources\ProductResource;
-use App\Http\Requests\ProductRequest;
+use App\Http\Resources\Admin\ProductResource;
+use App\Http\Requests\Admin\ProductRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 

@@ -111,4 +111,28 @@ class SubcategoryRepository implements SubcategoryRepositoryInterface
    {
       return $this->model->with('category')->where('category_id', $categoryId)->get();
    }
+
+   /**
+    * Get subcategories by category ID (alias for getByCategoryId)
+    */
+   public function getByCategory(int $categoryId): Collection
+   {
+      return $this->getByCategoryId($categoryId);
+   }
+
+   /**
+    * Get active subcategories only
+    */
+   public function getActive(): Collection
+   {
+      return $this->model->with('category')->where('is_active', true)->get();
+   }
+
+   /**
+    * Get inactive subcategories only
+    */
+   public function getInactive(): Collection
+   {
+      return $this->model->with('category')->where('is_active', false)->get();
+   }
 }

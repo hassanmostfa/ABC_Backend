@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Repositories\AreaRepositoryInterface;
-use App\Http\Resources\AreaResource;
-use App\Http\Requests\AreaRequest;
+use App\Http\Resources\Admin\AreaResource;
+use App\Http\Requests\Admin\AreaRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
