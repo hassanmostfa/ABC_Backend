@@ -3,14 +3,18 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
+use App\Models\SocialMediaLink;
 use App\Repositories\SocialMediaLinkRepositoryInterface;
 use App\Http\Resources\Admin\SocialMediaLinkResource;
 use App\Http\Requests\Admin\SocialMediaLinkRequest;
+use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 class SocialMediaLinkController extends BaseApiController
 {
+    use ManagesFileUploads;
+    
     protected $socialMediaLinkRepository;
 
     public function __construct(SocialMediaLinkRepositoryInterface $socialMediaLinkRepository)
@@ -74,7 +78,15 @@ class SocialMediaLinkController extends BaseApiController
      */
     public function store(SocialMediaLinkRequest $request): JsonResponse
     {
-        $socialMediaLink = $this->socialMediaLinkRepository->create($request->validated());
+        $validatedData = $request->validated();
+        
+        // Handle icon upload
+        if ($request->hasFile('icon')) {
+            $iconPath = $this->uploadFile($request->file('icon'), SocialMediaLink::$STORAGE_DIR, 'public');
+            $validatedData['icon'] = $iconPath;
+        }
+        
+        $socialMediaLink = $this->socialMediaLinkRepository->create($validatedData);
         $transformedSocialMediaLink = new SocialMediaLinkResource($socialMediaLink);
 
         return $this->createdResponse($transformedSocialMediaLink, 'Social media link created successfully');
@@ -102,13 +114,29 @@ class SocialMediaLinkController extends BaseApiController
      */
     public function update(SocialMediaLinkRequest $request, int $id): JsonResponse
     {
-        $socialMediaLink = $this->socialMediaLinkRepository->update($id, $request->validated());
+        $socialMediaLink = $this->socialMediaLinkRepository->findById($id);
 
         if (!$socialMediaLink) {
             return $this->notFoundResponse('Social media link not found');
         }
 
-        $transformedSocialMediaLink = new SocialMediaLinkResource($socialMediaLink);
+        $validatedData = $request->validated();
+
+        // Handle icon upload
+        if ($request->hasFile('icon')) {
+            // Delete old icon if exists
+            if ($socialMediaLink->icon) {
+                $this->deleteFile($socialMediaLink->icon, 'public');
+            }
+            
+            // Upload new icon
+            $iconPath = $this->uploadFile($request->file('icon'), SocialMediaLink::$STORAGE_DIR, 'public');
+            $validatedData['icon'] = $iconPath;
+        }
+
+        $updatedSocialMediaLink = $this->socialMediaLinkRepository->update($id, $validatedData);
+
+        $transformedSocialMediaLink = new SocialMediaLinkResource($updatedSocialMediaLink);
         return $this->updatedResponse($transformedSocialMediaLink, 'Social media link updated successfully');
     }
 
@@ -117,6 +145,17 @@ class SocialMediaLinkController extends BaseApiController
      */
     public function destroy(int $id): JsonResponse
     {
+        $socialMediaLink = $this->socialMediaLinkRepository->findById($id);
+
+        if (!$socialMediaLink) {
+            return $this->notFoundResponse('Social media link not found');
+        }
+
+        // Delete associated icon file if exists
+        if ($socialMediaLink->icon) {
+            $this->deleteFile($socialMediaLink->icon, 'public');
+        }
+
         $deleted = $this->socialMediaLinkRepository->delete($id);
 
         if (!$deleted) {

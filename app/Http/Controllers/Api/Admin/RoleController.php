@@ -15,15 +15,38 @@ class RoleController extends Controller
     /**
      * Display a listing of the roles.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $roles = Role::with('permissions.permissionItem.permissionCategory')
-            ->orderBy('name')
-            ->get();
+        $perPage = $request->input('per_page', 10); // Default 10 items per page
+        $query = Role::select('id', 'name', 'description', 'is_active', 'created_at', 'updated_at');
+
+        // Search functionality
+        if ($request->has('search') && !empty($request->search)) {
+            $searchTerm = $request->search;
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('name', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('description', 'LIKE', "%{$searchTerm}%");
+            });
+        }
+
+        // Filter by active status
+        if ($request->has('is_active')) {
+            $query->where('is_active', $request->is_active);
+        }
+
+        $roles = $query->orderBy('name')->paginate($perPage);
 
         return response()->json([
             'success' => true,
-            'data' => $roles,
+            'data' => $roles->items(),
+            'pagination' => [
+                'current_page' => $roles->currentPage(),
+                'per_page' => $roles->perPage(),
+                'total' => $roles->total(),
+                'last_page' => $roles->lastPage(),
+                'from' => $roles->firstItem(),
+                'to' => $roles->lastItem(),
+            ],
             'message' => 'Roles retrieved successfully'
         ]);
     }

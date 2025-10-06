@@ -9,6 +9,8 @@ class Subcategory extends Model
 {
     use HasFactory;
 
+    static string $STORAGE_DIR = "images/subcategories";
+
     protected $fillable = [
         'category_id',
         'name_en',

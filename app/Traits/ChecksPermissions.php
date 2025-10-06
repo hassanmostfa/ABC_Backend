@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use Illuminate\Http\JsonResponse;
+use App\Models\Admin;
 
 trait ChecksPermissions
 {
@@ -11,17 +12,17 @@ trait ChecksPermissions
      */
     protected function checkPermission($request, string $permission, string $action = null): bool
     {
-        $admin = $request->user();
+        $user = $request->user();
         
-        if (!$admin) {
+        if (!$user || !($user instanceof Admin)) {
             return false;
         }
 
         if ($action) {
-            return $admin->hasPermission($permission, $action);
+            return $user->hasPermission($permission, $action);
         }
 
-        return $admin->hasAnyPermission($permission);
+        return $user->hasAnyPermission($permission);
     }
 
     /**

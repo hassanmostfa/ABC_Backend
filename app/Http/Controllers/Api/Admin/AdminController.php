@@ -43,7 +43,7 @@ class AdminController extends Controller
             if (!$admin->is_active) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Your account is deactivated. Please contact administrator.'
+                    'message' => 'حسابك غير مفعل الرجاء التواصل مع الادارة'
                 ], 401);
             }
 
@@ -59,13 +59,13 @@ class AdminController extends Controller
                     'token' => $token,
                     'token_type' => 'Bearer'
                 ],
-                'message' => 'Login successful'
+                'message' => 'تم تسجيل الدخول بنجاح'
             ]);
         }
 
         return response()->json([
             'success' => false,
-            'message' => 'Invalid credentials'
+            'message' => 'هذه البيانات غير صحيحة'
         ], 401);
     }
 
@@ -83,7 +83,7 @@ class AdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Logged out successfully'
+            'message' => 'تم تسجيل الخروج بنجاح'
         ]);
     }
 
@@ -107,20 +107,14 @@ class AdminController extends Controller
      */
     public function getRoles(Request $request): JsonResponse
     {
-        // Check permission
-        $permissionCheck = $this->canViewOrFail($request, 'roles');
-        if ($permissionCheck) {
-            return $permissionCheck;
-        }
-
         $roles = Role::where('is_active', true)
             ->orderBy('name')
             ->get();
 
         return response()->json([
             'success' => true,
-            'data' => $roles,
-            'message' => 'Roles retrieved successfully'
+            'message' => 'Roles retrieved successfully',
+            'data' => $roles
         ]);
     }
 
@@ -129,19 +123,42 @@ class AdminController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        // Check permission
-        $permissionCheck = $this->canViewOrFail($request, 'users');
-        if ($permissionCheck) {
-            return $permissionCheck;
+        $perPage = $request->input('per_page', 10); // Default 10 items per page
+        $query = Admin::with('role');
+
+        // Search functionality
+        if ($request->has('search') && !empty($request->search)) {
+            $searchTerm = $request->search;
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('name', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('email', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('phone', 'LIKE', "%{$searchTerm}%");
+            });
         }
 
-        $admins = Admin::with('role')
-            ->orderBy('name')
-            ->get();
+        // Filter by active status
+        if ($request->has('is_active')) {
+            $query->where('is_active', $request->is_active);
+        }
+
+        // Filter by role
+        if ($request->has('role_id')) {
+            $query->where('role_id', $request->role_id);
+        }
+
+        $admins = $query->orderBy('name')->paginate($perPage);
 
         return response()->json([
             'success' => true,
-            'data' => $admins,
+            'data' => $admins->items(),
+            'pagination' => [
+                'current_page' => $admins->currentPage(),
+                'per_page' => $admins->perPage(),
+                'total' => $admins->total(),
+                'last_page' => $admins->lastPage(),
+                'from' => $admins->firstItem(),
+                'to' => $admins->lastItem(),
+            ],
             'message' => 'Admins retrieved successfully'
         ]);
     }
@@ -152,11 +169,6 @@ class AdminController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        // Check permission
-        $permissionCheck = $this->canAddOrFail($request, 'users');
-        if ($permissionCheck) {
-            return $permissionCheck;
-        }
 
         try {
             $request->validate([
@@ -202,11 +214,6 @@ class AdminController extends Controller
      */
     public function show(Request $request, $id): JsonResponse
     {
-        // Check permission
-        $permissionCheck = $this->canViewOrFail($request, 'users');
-        if ($permissionCheck) {
-            return $permissionCheck;
-        }
 
         $admin = Admin::find($id);
 
@@ -232,12 +239,6 @@ class AdminController extends Controller
      */
     public function update(Request $request, $id): JsonResponse
     {
-        // Check permission
-        $permissionCheck = $this->canEditOrFail($request, 'users');
-        if ($permissionCheck) {
-            return $permissionCheck;
-        }
-
         $admin = Admin::find($id);
 
         if (!$admin) {
@@ -283,12 +284,6 @@ class AdminController extends Controller
      */
     public function destroy(Request $request, $id): JsonResponse
     {
-        // Check permission
-        $permissionCheck = $this->canDeleteOrFail($request, 'users');
-        if ($permissionCheck) {
-            return $permissionCheck;
-        }
-
         $admin = Admin::find($id);
 
         if (!$admin) {

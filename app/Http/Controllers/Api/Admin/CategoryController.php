@@ -3,13 +3,17 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
+use App\Models\Category;
 use App\Repositories\CategoryRepositoryInterface;
 use App\Http\Resources\Admin\CategoryResource;
+use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 class CategoryController extends BaseApiController
 {
+    use ManagesFileUploads;
+    
     protected $categoryRepository;
 
     public function __construct(CategoryRepositoryInterface $categoryRepository)
@@ -76,11 +80,19 @@ class CategoryController extends BaseApiController
         $request->validate([
             'name_en' => 'required|string|max:255',
             'name_ar' => 'required|string|max:255',
-            'image_path' => 'nullable|string|max:500',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
             'is_active' => 'boolean',
         ]);
 
-        $category = $this->categoryRepository->create($request->all());
+        $data = $request->only(['name_en', 'name_ar', 'is_active']);
+
+        // Handle image upload
+        if ($request->hasFile('image')) {
+            $imagePath = $this->uploadFile($request->file('image'), Category::$STORAGE_DIR, 'public');
+            $data['image_path'] = $imagePath;
+        }
+
+        $category = $this->categoryRepository->create($data);
 
         return $this->createdResponse($category, 'Category created successfully');
     }
@@ -110,17 +122,33 @@ class CategoryController extends BaseApiController
         $request->validate([
             'name_en' => 'sometimes|required|string|max:255',
             'name_ar' => 'sometimes|required|string|max:255',
-            'image_path' => 'nullable|string|max:500',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
             'is_active' => 'sometimes|boolean',
         ]);
 
-        $category = $this->categoryRepository->update($id, $request->all());
+        $category = $this->categoryRepository->findById($id);
 
         if (!$category) {
             return $this->notFoundResponse('Category not found');
         }
 
-        return $this->updatedResponse($category, 'Category updated successfully');
+        $data = $request->only(['name_en', 'name_ar', 'is_active']);
+
+        // Handle image upload
+        if ($request->hasFile('image')) {
+            // Delete old image if exists
+            if ($category->image_path) {
+                $this->deleteFile($category->image_path, 'public');
+            }
+            
+            // Upload new image
+            $imagePath = $this->uploadFile($request->file('image'), Category::$STORAGE_DIR, 'public');
+            $data['image_path'] = $imagePath;
+        }
+
+        $updatedCategory = $this->categoryRepository->update($id, $data);
+
+        return $this->updatedResponse($updatedCategory, 'Category updated successfully');
     }
 
     /**
@@ -128,6 +156,17 @@ class CategoryController extends BaseApiController
      */
     public function destroy(int $id): JsonResponse
     {
+        $category = $this->categoryRepository->findById($id);
+
+        if (!$category) {
+            return $this->notFoundResponse('Category not found');
+        }
+
+        // Delete associated image file if exists
+        if ($category->image_path) {
+            $this->deleteFile($category->image_path, 'public');
+        }
+
         $deleted = $this->categoryRepository->delete($id);
 
         if (!$deleted) {

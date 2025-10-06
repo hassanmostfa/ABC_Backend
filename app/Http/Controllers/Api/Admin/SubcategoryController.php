@@ -3,13 +3,17 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
+use App\Models\Subcategory;
 use App\Repositories\SubcategoryRepositoryInterface;
 use App\Http\Resources\Admin\SubcategoryResource;
+use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 class SubcategoryController extends BaseApiController
 {
+    use ManagesFileUploads;
+    
     protected $subcategoryRepository;
 
     public function __construct(SubcategoryRepositoryInterface $subcategoryRepository)
@@ -79,11 +83,19 @@ class SubcategoryController extends BaseApiController
             'category_id' => 'required|integer|exists:categories,id',
             'name_en' => 'required|string|max:255',
             'name_ar' => 'required|string|max:255',
-            'image_path' => 'nullable|string|max:500',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
             'is_active' => 'boolean',
         ]);
 
-        $subcategory = $this->subcategoryRepository->create($request->all());
+        $data = $request->only(['category_id', 'name_en', 'name_ar', 'is_active']);
+
+        // Handle image upload
+        if ($request->hasFile('image')) {
+            $imagePath = $this->uploadFile($request->file('image'), Subcategory::$STORAGE_DIR, 'public');
+            $data['image_path'] = $imagePath;
+        }
+
+        $subcategory = $this->subcategoryRepository->create($data);
 
         return $this->createdResponse($subcategory, 'Subcategory created successfully');
     }
@@ -114,17 +126,33 @@ class SubcategoryController extends BaseApiController
             'category_id' => 'sometimes|required|integer|exists:categories,id',
             'name_en' => 'sometimes|required|string|max:255',
             'name_ar' => 'sometimes|required|string|max:255',
-            'image_path' => 'nullable|string|max:500',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
             'is_active' => 'sometimes|boolean',
         ]);
 
-        $subcategory = $this->subcategoryRepository->update($id, $request->all());
+        $subcategory = $this->subcategoryRepository->findById($id);
 
         if (!$subcategory) {
             return $this->notFoundResponse('Subcategory not found');
         }
 
-        return $this->updatedResponse($subcategory, 'Subcategory updated successfully');
+        $data = $request->only(['category_id', 'name_en', 'name_ar', 'is_active']);
+
+        // Handle image upload
+        if ($request->hasFile('image')) {
+            // Delete old image if exists
+            if ($subcategory->image_path) {
+                $this->deleteFile($subcategory->image_path, 'public');
+            }
+            
+            // Upload new image
+            $imagePath = $this->uploadFile($request->file('image'), Subcategory::$STORAGE_DIR, 'public');
+            $data['image_path'] = $imagePath;
+        }
+
+        $updatedSubcategory = $this->subcategoryRepository->update($id, $data);
+
+        return $this->updatedResponse($updatedSubcategory, 'Subcategory updated successfully');
     }
 
     /**
@@ -132,6 +160,17 @@ class SubcategoryController extends BaseApiController
      */
     public function destroy(int $id): JsonResponse
     {
+        $subcategory = $this->subcategoryRepository->findById($id);
+
+        if (!$subcategory) {
+            return $this->notFoundResponse('Subcategory not found');
+        }
+
+        // Delete associated image file if exists
+        if ($subcategory->image_path) {
+            $this->deleteFile($subcategory->image_path, 'public');
+        }
+
         $deleted = $this->subcategoryRepository->delete($id);
 
         if (!$deleted) {

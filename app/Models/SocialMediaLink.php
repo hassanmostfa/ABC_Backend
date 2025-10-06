@@ -9,6 +9,8 @@ class SocialMediaLink extends Model
 {
     use HasFactory;
 
+    static string $STORAGE_DIR = "images/social-media";
+
     /**
      * The attributes that are mass assignable.
      *

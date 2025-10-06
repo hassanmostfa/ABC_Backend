@@ -44,7 +44,7 @@ class ProductRequest extends FormRequest
             'variants.*.short_item' => 'nullable|string|max:255',
             'variants.*.quantity' => 'required|integer|min:0',
             'variants.*.price' => 'required|numeric|min:0',
-            'variants.*.image' => 'nullable|string|max:500',
+            'variants.*.image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
             'variants.*.is_active' => 'boolean',
         ];
     }
@@ -83,7 +83,9 @@ class ProductRequest extends FormRequest
             'variants.*.price.required' => 'The variant price is required.',
             'variants.*.price.numeric' => 'The variant price must be a number.',
             'variants.*.price.min' => 'The variant price must be at least 0.',
-            'variants.*.image.max' => 'The variant image path may not be greater than 500 characters.',
+            'variants.*.image.image' => 'The variant image must be an image file.',
+            'variants.*.image.mimes' => 'The variant image must be a file of type: jpeg, png, jpg, gif, svg.',
+            'variants.*.image.max' => 'The variant image may not be greater than 2048 kilobytes.',
             'variants.*.is_active.boolean' => 'The variant is active field must be true or false.',
         ];
     }

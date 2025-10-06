@@ -104,7 +104,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::post('/', 'store')->middleware('admin.permission:categories,add');
          Route::get('/active', 'active')->middleware('admin.permission:categories,view');
          Route::get('/{id}', 'show')->middleware('admin.permission:categories,view');
-         Route::put('/{id}', 'update')->middleware('admin.permission:categories,edit');
+         Route::post('/{id}', 'update')->middleware('admin.permission:categories,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:categories,delete');
       });
 
@@ -114,7 +114,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::post('/', 'store')->middleware('admin.permission:subcategories,add');
          Route::get('/category/{categoryId}', 'getByCategory')->middleware('admin.permission:subcategories,view');
          Route::get('/{id}', 'show')->middleware('admin.permission:subcategories,view');
-         Route::put('/{id}', 'update')->middleware('admin.permission:subcategories,edit');
+         Route::post('/{id}', 'update')->middleware('admin.permission:subcategories,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:subcategories,delete');
       });
 
@@ -127,7 +127,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::get('/with-variants', 'getWithVariants')->middleware('admin.permission:products,view');
          Route::get('/without-variants', 'getWithoutVariants')->middleware('admin.permission:products,view');
          Route::get('/{id}', 'show')->middleware('admin.permission:products,view');
-         Route::put('/{id}', 'update')->middleware('admin.permission:products,edit');
+         Route::post('/{id}', 'update')->middleware('admin.permission:products,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:products,delete');
       });
 
@@ -136,7 +136,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:offers,view');
          Route::post('/', 'store')->middleware('admin.permission:offers,add');
          Route::get('/{id}', 'show')->middleware('admin.permission:offers,view');
-         Route::put('/{id}', 'update')->middleware('admin.permission:offers,edit');
+         Route::post('/{id}', 'update')->middleware('admin.permission:offers,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:offers,delete');
       });
 

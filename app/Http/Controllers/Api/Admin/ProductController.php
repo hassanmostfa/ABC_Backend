@@ -3,15 +3,19 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
+use App\Models\ProductVariant;
 use App\Repositories\ProductRepositoryInterface;
 use App\Repositories\ProductVariantRepositoryInterface;
 use App\Http\Resources\Admin\ProductResource;
 use App\Http\Requests\Admin\ProductRequest;
+use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 class ProductController extends BaseApiController
 {
+    use ManagesFileUploads;
+    
     protected $productRepository;
     protected $productVariantRepository;
 
@@ -94,6 +98,13 @@ class ProductController extends BaseApiController
         // Create variants (required - at least one)
         foreach ($variants as $variantData) {
             $variantData['product_id'] = $product->id;
+            
+            // Handle variant image upload
+            if (isset($variantData['image']) && $variantData['image'] instanceof \Illuminate\Http\UploadedFile) {
+                $imagePath = $this->uploadFile($variantData['image'], ProductVariant::$STORAGE_DIR, 'public');
+                $variantData['image'] = $imagePath;
+            }
+            
             $this->productVariantRepository->create($variantData);
         }
 
@@ -138,12 +149,29 @@ class ProductController extends BaseApiController
         }
 
         // Handle variants update - always update variants since they're required
+        // Get existing variants to delete their images
+        $existingVariants = $product->variants;
+        
         // Delete existing variants
         $product->variants()->delete();
+        
+        // Delete old variant images
+        foreach ($existingVariants as $existingVariant) {
+            if ($existingVariant->image) {
+                $this->deleteFile($existingVariant->image, 'public');
+            }
+        }
         
         // Create new variants (required - at least one)
         foreach ($variants as $variantData) {
             $variantData['product_id'] = $product->id;
+            
+            // Handle variant image upload
+            if (isset($variantData['image']) && $variantData['image'] instanceof \Illuminate\Http\UploadedFile) {
+                $imagePath = $this->uploadFile($variantData['image'], ProductVariant::$STORAGE_DIR, 'public');
+                $variantData['image'] = $imagePath;
+            }
+            
             $this->productVariantRepository->create($variantData);
         }
 
@@ -158,6 +186,19 @@ class ProductController extends BaseApiController
      */
     public function destroy(int $id): JsonResponse
     {
+        $product = $this->productRepository->findById($id);
+
+        if (!$product) {
+            return $this->notFoundResponse('Product not found');
+        }
+
+        // Delete associated variant image files
+        foreach ($product->variants as $variant) {
+            if ($variant->image) {
+                $this->deleteFile($variant->image, 'public');
+            }
+        }
+
         $deleted = $this->productRepository->delete($id);
 
         if (!$deleted) {

@@ -10,6 +10,8 @@ class Category extends Model
 {
     use HasFactory;
 
+    static string $STORAGE_DIR = "images/categories";
+
     /**
      * The attributes that are mass assignable.
      *

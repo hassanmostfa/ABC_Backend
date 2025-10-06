@@ -2,11 +2,13 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class CategoryResource extends JsonResource
 {
+    use ManagesFileUploads;
     /**
      * Transform the resource into an array.
      *
@@ -19,8 +21,10 @@ class CategoryResource extends JsonResource
         
         return [
             'id' => $this->id,
-            'name' => $lang === 'ar' ? $this->name_ar : $this->name_en,
-            'image_url' => url($this->image_path),
+            // 'name' => $lang === 'ar' ? $this->name_ar : $this->name_en,
+            'name_ar' => $this->name_ar,
+            'name_en' => $this->name_en,
+            'image_url' => $this->getFileUrl($this->image_path, 'public', 'no-image.png'),
             'is_active' => (bool) $this->is_active,
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),

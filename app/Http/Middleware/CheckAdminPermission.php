@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use App\Models\Admin;
 
 class CheckAdminPermission
 {
@@ -15,21 +16,29 @@ class CheckAdminPermission
      */
     public function handle(Request $request, Closure $next, string $permission, string $action = null): Response
     {
-        // Get the authenticated admin using Sanctum
-        $admin = $request->user();
+        // Get the authenticated user using Sanctum
+        $user = $request->user();
         
-        if (!$admin) {
+        if (!$user) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized access'
             ], 401);
         }
 
+        // Check if the authenticated user is an Admin
+        if (!($user instanceof Admin)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized access. Admin authentication required.'
+            ], 403);
+        }
+
         // Check if admin has the required permission
         if ($action) {
-            $hasPermission = $admin->hasPermission($permission, $action);
+            $hasPermission = $user->hasPermission($permission, $action);
         } else {
-            $hasPermission = $admin->hasAnyPermission($permission);
+            $hasPermission = $user->hasAnyPermission($permission);
         }
 
         if (!$hasPermission) {

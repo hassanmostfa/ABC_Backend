@@ -2,11 +2,13 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class ProductResource extends JsonResource
 {
+    use ManagesFileUploads;
     /**
      * Transform the resource into an array.
      *
@@ -19,7 +21,9 @@ class ProductResource extends JsonResource
         
         return [
             'id' => $this->id,
-            'name' => $lang === 'ar' ? $this->name_ar : $this->name_en,
+            // 'name' => $lang === 'ar' ? $this->name_ar : $this->name_en,
+            'name_ar' => $this->name_ar,
+            'name_en' => $this->name_en,
             'category' => $this->whenLoaded('category', function () use ($lang) {
                 return [
                     'id' => $this->category->id,
@@ -43,7 +47,7 @@ class ProductResource extends JsonResource
                     'short_item' => $variant->short_item,
                     'quantity' => $variant->quantity,
                     'price' => (float) $variant->price,
-                    'image' => $variant->image ? url($variant->image) : null,
+                    'image' => $this->getFileUrl($variant->image, 'public', 'no-image.png'),
                     'is_active' => (bool) $variant->is_active,
                     'created_at' => $variant->created_at?->toISOString(),
                     'updated_at' => $variant->updated_at?->toISOString(),

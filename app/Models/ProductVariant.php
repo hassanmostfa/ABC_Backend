@@ -9,6 +9,8 @@ class ProductVariant extends Model
 {
     use HasFactory;
 
+    static string $STORAGE_DIR = "images/products/variants";
+
     /**
      * The attributes that are mass assignable.
      *
