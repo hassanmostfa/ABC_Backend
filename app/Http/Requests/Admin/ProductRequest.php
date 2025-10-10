@@ -23,11 +23,12 @@ class ProductRequest extends FormRequest
     public function rules(): array
     {
         $productId = $this->route('id'); // Get the product ID from the route for update operations
+        $isUpdate = !is_null($productId); // Check if this is an update operation
 
         return [
             'name_en' => 'required|string|max:255',
             'name_ar' => 'required|string|max:255',
-            'category_id' => 'required|integer|exists:categories,id',
+            'category_id' => $isUpdate ? 'nullable|integer|exists:categories,id' : 'required|integer|exists:categories,id',
             'subcategory_id' => 'nullable|integer|exists:subcategories,id',
             'description_en' => 'nullable|string',
             'description_ar' => 'nullable|string',
@@ -39,6 +40,7 @@ class ProductRequest extends FormRequest
             ],
             'is_active' => 'boolean',
             'variants' => 'required|array|min:1',
+            'variants.*.id' => 'nullable|integer|exists:product_variants,id',
             'variants.*.size' => 'nullable|string|max:100',
             'variants.*.sku' => 'required|string|max:255',
             'variants.*.short_item' => 'nullable|string|max:255',
@@ -56,12 +58,14 @@ class ProductRequest extends FormRequest
      */
     public function messages(): array
     {
-        return [
+        $productId = $this->route('id');
+        $isUpdate = !is_null($productId);
+        
+        $messages = [
             'name_en.required' => 'The English name is required.',
             'name_en.max' => 'The English name may not be greater than 255 characters.',
             'name_ar.required' => 'The Arabic name is required.',
             'name_ar.max' => 'The Arabic name may not be greater than 255 characters.',
-            'category_id.required' => 'The category is required.',
             'category_id.integer' => 'The category must be a valid ID.',
             'category_id.exists' => 'The selected category does not exist.',
             'subcategory_id.integer' => 'The subcategory must be a valid ID.',
@@ -73,6 +77,8 @@ class ProductRequest extends FormRequest
             'variants.required' => 'At least one variant is required.',
             'variants.array' => 'The variants must be an array.',
             'variants.min' => 'At least one variant is required.',
+            'variants.*.id.integer' => 'The variant ID must be a valid ID.',
+            'variants.*.id.exists' => 'The selected variant does not exist.',
             'variants.*.size.max' => 'The variant size may not be greater than 100 characters.',
             'variants.*.sku.required' => 'The variant SKU is required.',
             'variants.*.sku.max' => 'The variant SKU may not be greater than 255 characters.',
@@ -88,6 +94,13 @@ class ProductRequest extends FormRequest
             'variants.*.image.max' => 'The variant image may not be greater than 2048 kilobytes.',
             'variants.*.is_active.boolean' => 'The variant is active field must be true or false.',
         ];
+        
+        // Add conditional message for category_id
+        if (!$isUpdate) {
+            $messages['category_id.required'] = 'The category is required.';
+        }
+        
+        return $messages;
     }
 
     /**

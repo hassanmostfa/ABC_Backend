@@ -27,16 +27,22 @@ class ProductResource extends JsonResource
             'category' => $this->whenLoaded('category', function () use ($lang) {
                 return [
                     'id' => $this->category->id,
-                    'name' => $lang === 'ar' ? $this->category->name_ar : $this->category->name_en,
+                    // 'name' => $lang === 'ar' ? $this->category->name_ar : $this->category->name_en,
+                    'name_ar' => $this->category->name_ar,
+                    'name_en' => $this->category->name_en,
                 ];
             }),
             'subcategory' => $this->whenLoaded('subcategory', function () use ($lang) {
                 return [
                     'id' => $this->subcategory->id,
-                    'name' => $lang === 'ar' ? $this->subcategory->name_ar : $this->subcategory->name_en,
+                    // 'name' => $lang === 'ar' ? $this->subcategory->name_ar : $this->subcategory->name_en,
+                    'name_ar' => $this->subcategory->name_ar,
+                    'name_en' => $this->subcategory->name_en,
                 ];
             }),
-            'description' => $lang === 'ar' ? $this->description_ar : $this->description_en,
+            // 'description' => $lang === 'ar' ? $this->description_ar : $this->description_en,
+            'description_ar' => $this->description_ar,
+            'description_en' => $this->description_en,
             'sku' => $this->sku,
             'is_active' => (bool) $this->is_active,
             'variants' => $this->variants->map(function ($variant) {

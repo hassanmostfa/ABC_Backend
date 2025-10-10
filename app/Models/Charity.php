@@ -18,7 +18,9 @@ class Charity extends Model
         'name_en',
         'name_ar',
         'phone',
-        'address',
+        'country_id',
+        'governorate_id',
+        'area_id',
     ];
 
     /**
@@ -27,6 +29,30 @@ class Charity extends Model
     public function offers()
     {
         return $this->hasMany(Offer::class);
+    }
+
+    /**
+     * Get the country associated with this charity
+     */
+    public function country()
+    {
+        return $this->belongsTo(Country::class);
+    }
+
+    /**
+     * Get the governorate associated with this charity
+     */
+    public function governorate()
+    {
+        return $this->belongsTo(Governorate::class);
+    }
+
+    /**
+     * Get the area associated with this charity
+     */
+    public function area()
+    {
+        return $this->belongsTo(Area::class);
     }
 
     /**

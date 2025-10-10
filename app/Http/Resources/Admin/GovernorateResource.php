@@ -18,7 +18,6 @@ class GovernorateResource extends JsonResource
             'id' => $this->id,
             'name_en' => $this->name_en,
             'name_ar' => $this->name_ar,
-            'country_id' => $this->country_id,
             'is_active' => $this->is_active,
             'country' => $this->whenLoaded('country', function () {
                 return [

@@ -20,7 +20,7 @@ class CharityRepository implements CharityRepositoryInterface
      */
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
-        $query = $this->model->with(['offers']);
+        $query = $this->model->with(['offers', 'country', 'governorate', 'area']);
 
         // Apply search filter if provided
         if (isset($filters['search']) && !empty(trim($filters['search']))) {
@@ -29,7 +29,18 @@ class CharityRepository implements CharityRepositoryInterface
                 $q->where('name_en', 'like', "%{$search}%")
                   ->orWhere('name_ar', 'like', "%{$search}%")
                   ->orWhere('phone', 'like', "%{$search}%")
-                  ->orWhere('address', 'like', "%{$search}%");
+                  ->orWhereHas('country', function ($countryQuery) use ($search) {
+                      $countryQuery->where('name_en', 'like', "%{$search}%")
+                                   ->orWhere('name_ar', 'like', "%{$search}%");
+                  })
+                  ->orWhereHas('governorate', function ($governorateQuery) use ($search) {
+                      $governorateQuery->where('name_en', 'like', "%{$search}%")
+                                       ->orWhere('name_ar', 'like', "%{$search}%");
+                  })
+                  ->orWhereHas('area', function ($areaQuery) use ($search) {
+                      $areaQuery->where('name_en', 'like', "%{$search}%")
+                                ->orWhere('name_ar', 'like', "%{$search}%");
+                  });
             });
         }
 
@@ -44,7 +55,7 @@ class CharityRepository implements CharityRepositoryInterface
      */
     public function getAll(): Collection
     {
-        return $this->model->with(['offers'])->get();
+        return $this->model->with(['offers', 'country', 'governorate', 'area'])->get();
     }
 
     /**
@@ -52,7 +63,7 @@ class CharityRepository implements CharityRepositoryInterface
      */
     public function findById(int $id): ?Charity
     {
-        return $this->model->with(['offers'])->find($id);
+        return $this->model->with(['offers', 'country', 'governorate', 'area'])->find($id);
     }
 
     /**
@@ -75,7 +86,7 @@ class CharityRepository implements CharityRepositoryInterface
         }
 
         $charity->update($data);
-        return $charity->load(['offers']);
+        return $charity->load(['offers', 'country', 'governorate', 'area']);
     }
 
     /**

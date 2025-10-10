@@ -19,9 +19,31 @@ class CharityResource extends JsonResource
         
         return [
             'id' => $this->id,
-            'name' => $lang === 'ar' ? $this->name_ar : $this->name_en,
+            // 'name' => $lang === 'ar' ? $this->name_ar : $this->name_en,
+            'name_ar' => $this->name_ar,
+            'name_en' => $this->name_en,
             'phone' => $this->phone,
-            'address' => $this->address,
+            'country' => $this->whenLoaded('country', function () {
+                return [
+                    'id' => $this->country->id,
+                    'name_en' => $this->country->name_en,
+                    'name_ar' => $this->country->name_ar,
+                ];
+            }),
+            'governorate' => $this->whenLoaded('governorate', function () {
+                return [
+                    'id' => $this->governorate->id,
+                    'name_en' => $this->governorate->name_en,
+                    'name_ar' => $this->governorate->name_ar,
+                ];
+            }),
+            'area' => $this->whenLoaded('area', function () {
+                return [
+                    'id' => $this->area->id,
+                    'name_en' => $this->area->name_en,
+                    'name_ar' => $this->area->name_ar,
+                ];
+            }),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];

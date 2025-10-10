@@ -18,7 +18,6 @@ class AreaResource extends JsonResource
             'id' => $this->id,
             'name_en' => $this->name_en,
             'name_ar' => $this->name_ar,
-            'governorate_id' => $this->governorate_id,
             'is_active' => $this->is_active,
             'governorate' => $this->whenLoaded('governorate', function () {
                 return [

@@ -40,9 +40,20 @@ class CountryRepository implements CountryRepositoryInterface
     /**
      * Get all countries
      */
-    public function getAll(): Collection
+    public function getAll(array $filters = []): Collection
     {
-        return $this->model->orderBy('name_en', 'asc')->get();
+        $query = $this->model->newQuery();
+
+        // Apply search filter if provided
+        if (isset($filters['search']) && !empty(trim($filters['search']))) {
+            $search = trim($filters['search']);
+            $query->where(function ($q) use ($search) {
+                $q->where('name_en', 'like', "%{$search}%")
+                  ->orWhere('name_ar', 'like', "%{$search}%");
+            });
+        }
+
+        return $query->orderBy('name_en', 'asc')->get();
     }
 
     /**

@@ -26,14 +26,14 @@ class AreaRepository implements AreaRepositoryInterface
         if (isset($filters['search']) && !empty(trim($filters['search']))) {
             $search = trim($filters['search']);
             $query->where(function ($q) use ($search) {
-                $q->where('name_en', 'like', "%{$search}%")
-                  ->orWhere('name_ar', 'like', "%{$search}%");
+                $q->where('areas.name_en', 'like', "%{$search}%")
+                  ->orWhere('areas.name_ar', 'like', "%{$search}%");
             });
         }
 
         // Apply governorate filter if provided
         if (isset($filters['governorate_id']) && !empty($filters['governorate_id'])) {
-            $query->where('governorate_id', $filters['governorate_id']);
+            $query->where('areas.governorate_id', $filters['governorate_id']);
         }
 
         // Apply country filter if provided
@@ -43,8 +43,11 @@ class AreaRepository implements AreaRepositoryInterface
             });
         }
 
-        // Default sorting by name_en asc
-        $query->orderBy('name_en', 'asc');
+        // Order by governorate name first, then by area name
+        $query->join('governorates', 'areas.governorate_id', '=', 'governorates.id')
+              ->orderBy('governorates.name_en', 'asc')
+              ->orderBy('areas.name_en', 'asc')
+              ->select('areas.*');
 
         return $query->paginate($perPage);
     }
@@ -54,7 +57,12 @@ class AreaRepository implements AreaRepositoryInterface
      */
     public function getAll(): Collection
     {
-        return $this->model->with(['governorate.country'])->orderBy('name_en', 'asc')->get();
+        return $this->model->with(['governorate.country'])
+                          ->join('governorates', 'areas.governorate_id', '=', 'governorates.id')
+                          ->orderBy('governorates.name_en', 'asc')
+                          ->orderBy('areas.name_en', 'asc')
+                          ->select('areas.*')
+                          ->get();
     }
 
     /**
@@ -82,7 +90,12 @@ class AreaRepository implements AreaRepositoryInterface
     {
         return $this->model->whereHas('governorate', function ($q) use ($countryId) {
             $q->where('country_id', $countryId);
-        })->orderBy('name_en', 'asc')->get();
+        })
+        ->join('governorates', 'areas.governorate_id', '=', 'governorates.id')
+        ->orderBy('governorates.name_en', 'asc')
+        ->orderBy('areas.name_en', 'asc')
+        ->select('areas.*')
+        ->get();
     }
 
     /**

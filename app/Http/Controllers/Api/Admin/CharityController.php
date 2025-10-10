@@ -23,7 +23,7 @@ class CharityController extends BaseApiController
      * 
      * Query Parameters:
      * - per_page: Number of items per page (1-100, default: 15)
-     * - search: Search term to filter by name (English/Arabic), phone, or address
+     * - search: Search term to filter by name (English/Arabic), phone, or location (country/governorate/area names)
      */
     public function index(Request $request): JsonResponse
     {

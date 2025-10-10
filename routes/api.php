@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\Web\CategoryController as WebCategoryController;
 use App\Http\Controllers\Api\Web\AuthController;
 use App\Http\Controllers\Api\Web\SocialMediaLinkController as WebSocialMediaLinkController;
 use App\Http\Controllers\Api\Shared\ContactUsController;
+use App\Http\Controllers\Api\UtilsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -59,7 +60,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:admins,delete');
       });
 
-         // Roles Management
+   // Roles Management
    Route::controller(RoleController::class)->prefix('roles')->group(function () {
       Route::get('/', 'index')->middleware('admin.permission:roles,view');
       Route::post('/', 'store')->middleware('admin.permission:roles,add');
@@ -87,7 +88,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
       Route::delete('/items/{item}', 'destroyItem')->middleware('admin.permission:permissions,delete');
    });
 
-            // Customers Management
+      // Customers Management
       Route::controller(CustomerController::class)->prefix('customers')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:customers,view');
          Route::post('/', 'store')->middleware('admin.permission:customers,add');
@@ -206,14 +207,24 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
 });
 
 
-// Shared Routes (No Authentication Required)
-Route::controller(ImageController::class)->prefix('file')->group(function () {
-   Route::post('/upload', 'upload');
-});
-
 // Contact Us Routes (Public)
 Route::controller(ContactUsController::class)->prefix('contact-us')->group(function () {
    Route::post('/', 'store');
+});
+
+// Utils Routes (Public)
+Route::controller(UtilsController::class)->prefix('utils')->group(function () {
+   Route::get('/categories', 'getCategories');
+   Route::get('/categories/{categoryId}/subcategories', 'getSubcategories');
+});
+
+// Location Routes (Public)
+Route::controller(GovernorateController::class)->prefix('governorates')->group(function () {
+   Route::get('/country/{countryId}', 'getByCountry');
+});
+
+Route::controller(AreaController::class)->prefix('admin/areas')->group(function () {
+   Route::get('/governorate/{governorateId}', 'getByGovernorate');
 });
 
 // Career Application Routes (Public)

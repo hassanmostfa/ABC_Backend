@@ -142,37 +142,78 @@ class ProductController extends BaseApiController
         // Remove variants from product data
         unset($validatedData['variants']);
         
+        // Get current product to preserve category/subcategory if not provided
+        $currentProduct = $this->productRepository->findById($id);
+        if (!$currentProduct) {
+            return $this->notFoundResponse('Product not found');
+        }
+        
+        // Preserve current category and subcategory if not provided in request
+        if (!isset($validatedData['category_id'])) {
+            $validatedData['category_id'] = $currentProduct->category_id;
+        }
+        if (!isset($validatedData['subcategory_id'])) {
+            $validatedData['subcategory_id'] = $currentProduct->subcategory_id;
+        }
+        
         $product = $this->productRepository->update($id, $validatedData);
 
         if (!$product) {
             return $this->notFoundResponse('Product not found');
         }
 
-        // Handle variants update - always update variants since they're required
-        // Get existing variants to delete their images
-        $existingVariants = $product->variants;
+        // Handle variants update - update existing variants or create new ones
+        $existingVariants = $product->variants->keyBy('id');
+        $processedVariantIds = [];
         
-        // Delete existing variants
-        $product->variants()->delete();
-        
-        // Delete old variant images
-        foreach ($existingVariants as $existingVariant) {
-            if ($existingVariant->image) {
-                $this->deleteFile($existingVariant->image, 'public');
+        foreach ($variants as $index => $variantData) {
+            $variantData['product_id'] = $product->id;
+            
+            // Check if this is an existing variant (has ID) or a new one
+            if (isset($variantData['id']) && $existingVariants->has($variantData['id'])) {
+                // Update existing variant
+                $existingVariant = $existingVariants->get($variantData['id']);
+                $processedVariantIds[] = $variantData['id'];
+                
+                // Handle image update - only if new image is provided
+                if (isset($variantData['image']) && $variantData['image'] instanceof \Illuminate\Http\UploadedFile) {
+                    // Delete old image if exists
+                    if ($existingVariant->image) {
+                        $this->deleteFile($existingVariant->image, 'public');
+                    }
+                    // Upload new image
+                    $imagePath = $this->uploadFile($variantData['image'], ProductVariant::$STORAGE_DIR, 'public');
+                    $variantData['image'] = $imagePath;
+                } else {
+                    // Keep existing image if no new image provided
+                    $variantData['image'] = $existingVariant->image;
+                }
+                
+                // Remove ID from data before updating
+                unset($variantData['id']);
+                $this->productVariantRepository->update($existingVariant->id, $variantData);
+            } else {
+                // Create new variant
+                unset($variantData['id']); // Remove ID if present
+                
+                // Handle variant image upload
+                if (isset($variantData['image']) && $variantData['image'] instanceof \Illuminate\Http\UploadedFile) {
+                    $imagePath = $this->uploadFile($variantData['image'], ProductVariant::$STORAGE_DIR, 'public');
+                    $variantData['image'] = $imagePath;
+                }
+                
+                $this->productVariantRepository->create($variantData);
             }
         }
         
-        // Create new variants (required - at least one)
-        foreach ($variants as $variantData) {
-            $variantData['product_id'] = $product->id;
-            
-            // Handle variant image upload
-            if (isset($variantData['image']) && $variantData['image'] instanceof \Illuminate\Http\UploadedFile) {
-                $imagePath = $this->uploadFile($variantData['image'], ProductVariant::$STORAGE_DIR, 'public');
-                $variantData['image'] = $imagePath;
+        // Delete variants that were not included in the update
+        $variantsToDelete = $existingVariants->whereNotIn('id', $processedVariantIds);
+        foreach ($variantsToDelete as $variantToDelete) {
+            // Delete variant image if exists
+            if ($variantToDelete->image) {
+                $this->deleteFile($variantToDelete->image, 'public');
             }
-            
-            $this->productVariantRepository->create($variantData);
+            $this->productVariantRepository->delete($variantToDelete->id);
         }
 
         // Reload the product with variants for response

@@ -28,7 +28,33 @@ class GovernorateController extends BaseApiController
             'per_page' => 'nullable|integer|min:1|max:100',
             'search' => 'nullable|string|max:255',
             'country_id' => 'nullable|integer|exists:countries,id',
+            'get_all' => 'nullable|boolean',
         ]);
+
+        $getAll = $request->boolean('get_all', false);
+        
+        if ($getAll) {
+            // Return all governorates without pagination
+            $filters = [
+                'search' => $request->input('search'),
+                'country_id' => $request->input('country_id'),
+            ];
+            
+            // Remove null values from filters
+            $filters = array_filter($filters, function($value) {
+                return $value !== null && $value !== '';
+            });
+            
+            $governorates = $this->governorateRepository->getAll($filters);
+            $transformedGovernorates = GovernorateResource::collection($governorates);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Governorates retrieved successfully',
+                'data' => $transformedGovernorates,
+                'total' => $governorates->count(),
+            ]);
+        }
 
         $perPage = $request->input('per_page', 15);
         $filters = [

@@ -45,9 +45,25 @@ class GovernorateRepository implements GovernorateRepositoryInterface
     /**
      * Get all governorates
      */
-    public function getAll(): Collection
+    public function getAll(array $filters = []): Collection
     {
-        return $this->model->with(['country'])->orderBy('name_en', 'asc')->get();
+        $query = $this->model->with(['country']);
+
+        // Apply search filter if provided
+        if (isset($filters['search']) && !empty(trim($filters['search']))) {
+            $search = trim($filters['search']);
+            $query->where(function ($q) use ($search) {
+                $q->where('name_en', 'like', "%{$search}%")
+                  ->orWhere('name_ar', 'like', "%{$search}%");
+            });
+        }
+
+        // Apply country filter if provided
+        if (isset($filters['country_id']) && !empty($filters['country_id'])) {
+            $query->where('country_id', $filters['country_id']);
+        }
+
+        return $query->orderBy('name_en', 'asc')->get();
     }
 
     /**

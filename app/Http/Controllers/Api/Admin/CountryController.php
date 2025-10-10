@@ -27,7 +27,32 @@ class CountryController extends BaseApiController
         $request->validate([
             'per_page' => 'nullable|integer|min:1|max:100',
             'search' => 'nullable|string|max:255',
+            'get_all' => 'nullable|boolean',
         ]);
+
+        $getAll = $request->boolean('get_all', false);
+        
+        if ($getAll) {
+            // Return all countries without pagination
+            $filters = [
+                'search' => $request->input('search'),
+            ];
+            
+            // Remove null values from filters
+            $filters = array_filter($filters, function($value) {
+                return $value !== null && $value !== '';
+            });
+            
+            $countries = $this->countryRepository->getAll($filters);
+            $transformedCountries = CountryResource::collection($countries);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Countries retrieved successfully',
+                'data' => $transformedCountries,
+                'total' => $countries->count(),
+            ]);
+        }
 
         $perPage = $request->input('per_page', 15);
         $filters = [

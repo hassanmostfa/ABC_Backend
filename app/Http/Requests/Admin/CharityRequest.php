@@ -39,7 +39,9 @@ class CharityRequest extends FormRequest
             'name_en' => 'required|string|max:255',
             'name_ar' => 'required|string|max:255',
             'phone' => 'nullable|string|max:20',
-            'address' => 'nullable|string|max:1000',
+            'country_id' => 'nullable|exists:countries,id',
+            'governorate_id' => 'nullable|exists:governorates,id',
+            'area_id' => 'nullable|exists:areas,id',
         ];
     }
 
@@ -59,8 +61,9 @@ class CharityRequest extends FormRequest
             'name_ar.max' => 'The Arabic name may not be greater than 255 characters.',
             'phone.string' => 'The phone must be a string.',
             'phone.max' => 'The phone may not be greater than 20 characters.',
-            'address.string' => 'The address must be a string.',
-            'address.max' => 'The address may not be greater than 1000 characters.',
+            'country_id.exists' => 'The selected country does not exist.',
+            'governorate_id.exists' => 'The selected governorate does not exist.',
+            'area_id.exists' => 'The selected area does not exist.',
         ];
     }
 
@@ -75,7 +78,9 @@ class CharityRequest extends FormRequest
             'name_en' => 'English name',
             'name_ar' => 'Arabic name',
             'phone' => 'phone',
-            'address' => 'address',
+            'country_id' => 'country',
+            'governorate_id' => 'governorate',
+            'area_id' => 'area',
         ];
     }
 }

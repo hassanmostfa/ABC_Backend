@@ -25,7 +25,9 @@ class SubcategoryResource extends JsonResource
             'category' => $this->whenLoaded('category', function () use ($lang) {
                 return [
                     'id' => $this->category->id,
-                    'name' => $lang === 'ar' ? $this->category->name_ar : $this->category->name_en,
+                    // 'name' => $lang === 'ar' ? $this->category->name_ar : $this->category->name_en,
+                    'name_ar' => $this->category->name_ar,
+                    'name_en' => $this->category->name_en,
                 ];
             }),
             // 'name' => $lang === 'ar' ? $this->name_ar : $this->name_en,
