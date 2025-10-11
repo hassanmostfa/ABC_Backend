@@ -59,6 +59,41 @@ class CharityRepository implements CharityRepositoryInterface
     }
 
     /**
+     * Get all charities with filters (no pagination)
+     */
+    public function getAllWithFilters(array $filters = []): Collection
+    {
+        $query = $this->model->with(['offers', 'country', 'governorate', 'area']);
+
+        // Apply search filter if provided
+        if (isset($filters['search']) && !empty(trim($filters['search']))) {
+            $search = trim($filters['search']);
+            $query->where(function ($q) use ($search) {
+                $q->where('name_en', 'like', "%{$search}%")
+                  ->orWhere('name_ar', 'like', "%{$search}%")
+                  ->orWhere('phone', 'like', "%{$search}%")
+                  ->orWhereHas('country', function ($countryQuery) use ($search) {
+                      $countryQuery->where('name_en', 'like', "%{$search}%")
+                                   ->orWhere('name_ar', 'like', "%{$search}%");
+                  })
+                  ->orWhereHas('governorate', function ($governorateQuery) use ($search) {
+                      $governorateQuery->where('name_en', 'like', "%{$search}%")
+                                       ->orWhere('name_ar', 'like', "%{$search}%");
+                  })
+                  ->orWhereHas('area', function ($areaQuery) use ($search) {
+                      $areaQuery->where('name_en', 'like', "%{$search}%")
+                                ->orWhere('name_ar', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        // Default sorting by created_at desc
+        $query->orderBy('created_at', 'desc');
+
+        return $query->get();
+    }
+
+    /**
      * Get charity by ID
      */
     public function findById(int $id): ?Charity

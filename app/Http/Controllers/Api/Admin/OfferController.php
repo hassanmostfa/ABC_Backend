@@ -6,11 +6,15 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Repositories\OfferRepositoryInterface;
 use App\Http\Resources\Admin\OfferResource;
 use App\Http\Requests\Admin\OfferRequest;
+use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use App\Models\Offer;
 
 class OfferController extends BaseApiController
 {
+    use ManagesFileUploads;
+    
     protected $offerRepository;
 
     public function __construct(OfferRepositoryInterface $offerRepository)
@@ -72,6 +76,12 @@ class OfferController extends BaseApiController
             $conditions = $validatedData['conditions'] ?? [];
             $rewards = $validatedData['rewards'] ?? [];
             
+            // Handle image upload
+            if ($request->hasFile('image')) {
+                $imagePath = $this->uploadFile($request->file('image'), Offer::$STORAGE_DIR, 'public');
+                $validatedData['image'] = $imagePath;
+            }
+            
             // Remove conditions and rewards from offer data
             unset($validatedData['conditions'], $validatedData['rewards']);
             
@@ -128,6 +138,20 @@ class OfferController extends BaseApiController
         $conditions = $validatedData['conditions'] ?? [];
         $rewards = $validatedData['rewards'] ?? [];
         
+        // Get the existing offer to check for old image
+        $existingOffer = $this->offerRepository->findById($id);
+        
+        // Handle image upload
+        if ($request->hasFile('image')) {
+            // Delete old image if it exists
+            if ($existingOffer && $existingOffer->image && $existingOffer->deleteImage()) {
+                $existingOffer->deleteImage();
+            }
+            
+            $imagePath = $this->uploadFile($request->file('image'), Offer::$STORAGE_DIR, 'public');
+            $validatedData['image'] = $imagePath;
+        }
+        
         // Remove conditions and rewards from offer data
         unset($validatedData['conditions'], $validatedData['rewards']);
         
@@ -162,6 +186,18 @@ class OfferController extends BaseApiController
      */
     public function destroy(int $id): JsonResponse
     {
+        // Get the offer to check for image before deletion
+        $offer = $this->offerRepository->findById($id);
+        
+        if (!$offer) {
+            return $this->notFoundResponse('Offer not found');
+        }
+        
+        // Delete the image file if it exists
+        if ($offer->image && $offer->deleteImage()) {
+            $offer->deleteImage();
+        }
+        
         $deleted = $this->offerRepository->delete($id);
 
         if (!$deleted) {

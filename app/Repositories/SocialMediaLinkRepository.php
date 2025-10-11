@@ -27,6 +27,8 @@ class SocialMediaLinkRepository implements SocialMediaLinkRepositoryInterface
             $search = $filters['search'];
             $query->where(function ($q) use ($search) {
                 $q->where('icon', 'LIKE', "%{$search}%")
+                  ->orWhere('title_en', 'LIKE', "%{$search}%")
+                  ->orWhere('title_ar', 'LIKE', "%{$search}%")
                   ->orWhere('url', 'LIKE', "%{$search}%");
             });
         }

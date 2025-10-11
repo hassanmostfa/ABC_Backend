@@ -3,6 +3,9 @@
 namespace App\Http\Requests\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+use App\Models\ProductVariant;
+use App\Models\Product;
 
 class OfferRequest extends FormRequest
 {
@@ -29,6 +32,27 @@ class OfferRequest extends FormRequest
     }
 
     /**
+     * Prepare the data for validation.
+     */
+    protected function prepareForValidation()
+    {
+        // Handle JSON strings for conditions and rewards
+        if ($this->has('conditions') && is_string($this->conditions)) {
+            $decoded = json_decode($this->conditions, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $this->merge(['conditions' => $decoded]);
+            }
+        }
+        
+        if ($this->has('rewards') && is_string($this->rewards)) {
+            $decoded = json_decode($this->rewards, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $this->merge(['rewards' => $decoded]);
+            }
+        }
+    }
+
+    /**
      * Get the validation rules that apply to the request.
      *
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
@@ -39,7 +63,7 @@ class OfferRequest extends FormRequest
             'offer_start_date' => 'required|date|after_or_equal:today',
             'offer_end_date' => 'required|date|after:offer_start_date',
             'is_active' => 'boolean',
-            'image' => 'nullable|string|max:500',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'type' => 'nullable|string|max:100',
             'points' => 'nullable|integer|min:0',
             'charity_id' => 'nullable|integer|exists:charities,id',
@@ -47,16 +71,30 @@ class OfferRequest extends FormRequest
             'conditions' => 'required|array|min:1',
             'conditions.*.product_id' => 'required|integer|exists:products,id',
             'conditions.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
-            'conditions.*.quantity' => 'required|integer|min:1',
+            'conditions.*.quantity' => [
+                'required',
+                'integer',
+                'min:1',
+                function ($attribute, $value, $fail) {
+                    $this->validateQuantityAvailability($attribute, $value, $fail, 'condition');
+                }
+            ],
             'conditions.*.is_active' => 'boolean',
         ];
 
         // Add reward validation based on reward_type
         if ($this->input('reward_type') === 'products') {
             $rules['rewards'] = 'required|array|min:1';
-            $rules['rewards.*.product_id'] = 'required|integer|exists:products,id';
+            $rules['rewards.*.product_id'] = 'nullable|integer|exists:products,id';
             $rules['rewards.*.product_variant_id'] = 'nullable|integer|exists:product_variants,id';
-            $rules['rewards.*.quantity'] = 'required|integer|min:1';
+            $rules['rewards.*.quantity'] = [
+                'required',
+                'integer',
+                'min:1',
+                function ($attribute, $value, $fail) {
+                    $this->validateQuantityAvailability($attribute, $value, $fail, 'reward');
+                }
+            ];
             $rules['rewards.*.discount_amount'] = 'nullable|numeric|min:0';
             $rules['rewards.*.discount_type'] = 'nullable|in:percentage,fixed';
             $rules['rewards.*.is_active'] = 'boolean';
@@ -75,6 +113,62 @@ class OfferRequest extends FormRequest
     }
 
     /**
+     * Validate quantity availability for product variants
+     */
+    private function validateQuantityAvailability($attribute, $value, $fail, $type)
+    {
+        // Extract the index from the attribute (e.g., "conditions.0.quantity" -> 0)
+        $attributeParts = explode('.', $attribute);
+        $index = $attributeParts[1];
+        
+        // Get the data for this condition/reward
+        $data = $this->input($type === 'condition' ? 'conditions' : 'rewards');
+        $itemData = $data[$index] ?? null;
+        
+        if (!$itemData) {
+            return; // Skip validation if data is not available
+        }
+        
+        $productId = $itemData['product_id'] ?? null;
+        $productVariantId = $itemData['product_variant_id'] ?? null;
+        $requestedQuantity = (int) $value;
+        
+        if ($productVariantId) {
+            // Check product variant quantity
+            $variant = ProductVariant::find($productVariantId);
+            if (!$variant) {
+                $fail("متغير المنتج المحدد غير موجود.");
+                return;
+            }
+            
+            if ($variant->quantity < $requestedQuantity) {
+                $fail("الكمية المتاحة غير كافية. المتاح: {$variant->quantity}, المطلوب: {$requestedQuantity}");
+                return;
+            }
+        } else if ($productId) {
+            // Check product quantity (when no variant is selected but product_id exists)
+            $product = Product::find($productId);
+            if (!$product) {
+                $fail("المنتج المحدد غير موجود.");
+                return;
+            }
+            
+            if ($product->quantity < $requestedQuantity) {
+                $fail("الكمية المتاحة غير كافية. المتاح: {$product->quantity}, المطلوب: {$requestedQuantity}");
+                return;
+            }
+        } else if ($type === 'reward') {
+            // For rewards, if both product_id and product_variant_id are null, 
+            // this might be a discount-only reward, so we skip quantity validation
+            return;
+        } else {
+            // For conditions, product_id is required
+            $fail("منتج الشرط مطلوب.");
+            return;
+        }
+    }
+
+    /**
      * Get custom messages for validator errors.
      *
      * @return array<string, string>
@@ -82,40 +176,43 @@ class OfferRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'offer_start_date.required' => 'The offer start date is required.',
-            'offer_start_date.date' => 'The offer start date must be a valid date.',
-            'offer_start_date.after_or_equal' => 'The offer start date must be today or in the future.',
-            'offer_end_date.required' => 'The offer end date is required.',
-            'offer_end_date.date' => 'The offer end date must be a valid date.',
-            'offer_end_date.after' => 'The offer end date must be after the start date.',
-            'is_active.boolean' => 'The is active field must be true or false.',
-            'image.max' => 'The image path may not be greater than 500 characters.',
-            'type.max' => 'The type may not be greater than 100 characters.',
-            'points.integer' => 'The points must be an integer.',
-            'points.min' => 'The points must be at least 0.',
-            'charity_id.integer' => 'The charity must be a valid ID.',
-            'charity_id.exists' => 'The selected charity does not exist.',
-            'reward_type.required' => 'The reward type is required.',
-            'reward_type.in' => 'The reward type must be either products or discount.',
-            'conditions.required' => 'At least one condition is required.',
-            'conditions.array' => 'The conditions must be an array.',
-            'conditions.min' => 'At least one condition is required.',
-            'conditions.*.product_id.required' => 'The condition product is required.',
-            'conditions.*.product_id.exists' => 'The selected condition product does not exist.',
-            'conditions.*.product_variant_id.exists' => 'The selected condition variant does not exist.',
-            'conditions.*.quantity.required' => 'The condition quantity is required.',
-            'conditions.*.quantity.min' => 'The condition quantity must be at least 1.',
-            'rewards.required' => 'At least one reward is required.',
-            'rewards.array' => 'The rewards must be an array.',
-            'rewards.min' => 'At least one reward is required.',
-            'rewards.*.product_id.required' => 'The reward product is required.',
-            'rewards.*.product_id.exists' => 'The selected reward product does not exist.',
-            'rewards.*.product_variant_id.exists' => 'The selected reward variant does not exist.',
-            'rewards.*.quantity.required' => 'The reward quantity is required.',
-            'rewards.*.quantity.min' => 'The reward quantity must be at least 1.',
-            'rewards.*.discount_amount.numeric' => 'The discount amount must be a number.',
-            'rewards.*.discount_amount.min' => 'The discount amount must be at least 0.',
-            'rewards.*.discount_type.in' => 'The discount type must be either percentage or fixed.',
+            'offer_start_date.required' => 'تاريخ بداية العرض مطلوب.',
+            'offer_start_date.date' => 'تاريخ بداية العرض يجب أن يكون تاريخ صحيح.',
+            'offer_start_date.after_or_equal' => 'تاريخ بداية العرض يجب أن يكون اليوم أو في المستقبل.',
+            'offer_end_date.required' => 'تاريخ انتهاء العرض مطلوب.',
+            'offer_end_date.date' => 'تاريخ انتهاء العرض يجب أن يكون تاريخ صحيح.',
+            'offer_end_date.after' => 'تاريخ انتهاء العرض يجب أن يكون بعد تاريخ البداية.',
+            'is_active.boolean' => 'حالة التفعيل يجب أن تكون صحيحة أو خاطئة.',
+            'image.image' => 'الصورة يجب أن تكون ملف صورة صحيح.',
+            'image.mimes' => 'الصورة يجب أن تكون من نوع: jpeg, png, jpg, gif, webp.',
+            'image.max' => 'حجم الصورة لا يجب أن يتجاوز 2048 كيلوبايت.',
+            'type.max' => 'النوع لا يجب أن يتجاوز 100 حرف.',
+            'points.integer' => 'النقاط يجب أن تكون رقم صحيح.',
+            'points.min' => 'النقاط يجب أن تكون على الأقل 0.',
+            'charity_id.integer' => 'الجمعية الخيرية يجب أن تكون معرف صحيح.',
+            'charity_id.exists' => 'الجمعية الخيرية المحددة غير موجودة.',
+            'reward_type.required' => 'نوع المكافأة مطلوب.',
+            'reward_type.in' => 'نوع المكافأة يجب أن يكون منتجات أو خصم.',
+            'conditions.required' => 'شرط واحد على الأقل مطلوب.',
+            'conditions.array' => 'الشروط يجب أن تكون مصفوفة.',
+            'conditions.min' => 'شرط واحد على الأقل مطلوب.',
+            'conditions.*.product_id.required' => 'منتج الشرط مطلوب.',
+            'conditions.*.product_id.exists' => 'منتج الشرط المحدد غير موجود.',
+            'conditions.*.product_variant_id.exists' => 'متغير منتج الشرط المحدد غير موجود.',
+            'conditions.*.quantity.required' => 'كمية الشرط مطلوبة.',
+            'conditions.*.quantity.min' => 'كمية الشرط يجب أن تكون على الأقل 1.',
+            'rewards.required' => 'مكافأة واحدة على الأقل مطلوبة.',
+            'rewards.array' => 'المكافآت يجب أن تكون مصفوفة.',
+            'rewards.min' => 'مكافأة واحدة على الأقل مطلوبة.',
+            'rewards.*.product_id.exists' => 'منتج المكافأة المحدد غير موجود.',
+            'rewards.*.product_variant_id.exists' => 'متغير منتج المكافأة المحدد غير موجود.',
+            'rewards.*.quantity.required' => 'كمية المكافأة مطلوبة.',
+            'rewards.*.quantity.min' => 'كمية المكافأة يجب أن تكون على الأقل 1.',
+            'rewards.*.discount_amount.numeric' => 'مبلغ الخصم يجب أن يكون رقم.',
+            'rewards.*.discount_amount.min' => 'مبلغ الخصم يجب أن يكون على الأقل 0.',
+            'rewards.*.discount_type.in' => 'نوع الخصم يجب أن يكون نسبة مئوية أو مبلغ ثابت.',
+            'conditions.*.quantity.insufficient' => 'الكمية المتاحة غير كافية للمتغير المحدد.',
+            'rewards.*.quantity.insufficient' => 'الكمية المتاحة غير كافية للمتغير المحدد.',
         ];
     }
 
@@ -127,16 +224,16 @@ class OfferRequest extends FormRequest
     public function attributes(): array
     {
         return [
-            'offer_start_date' => 'offer start date',
-            'offer_end_date' => 'offer end date',
-            'is_active' => 'is active',
-            'image' => 'image',
-            'type' => 'type',
-            'points' => 'points',
-            'charity_id' => 'charity',
-            'reward_type' => 'reward type',
-            'conditions' => 'conditions',
-            'rewards' => 'rewards',
+            'offer_start_date' => 'تاريخ بداية العرض',
+            'offer_end_date' => 'تاريخ انتهاء العرض',
+            'is_active' => 'حالة التفعيل',
+            'image' => 'الصورة',
+            'type' => 'النوع',
+            'points' => 'النقاط',
+            'charity_id' => 'الجمعية الخيرية',
+            'reward_type' => 'نوع المكافأة',
+            'conditions' => 'الشروط',
+            'rewards' => 'المكافآت',
         ];
     }
 }

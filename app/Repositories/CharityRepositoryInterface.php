@@ -19,6 +19,11 @@ interface CharityRepositoryInterface
     public function getAll(): Collection;
 
     /**
+     * Get all charities with filters (no pagination)
+     */
+    public function getAllWithFilters(array $filters = []): Collection;
+
+    /**
      * Get charity by ID
      */
     public function findById(int $id): ?Charity;

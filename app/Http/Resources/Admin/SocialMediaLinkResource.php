@@ -19,6 +19,8 @@ class SocialMediaLinkResource extends JsonResource
         return [
             'id' => $this->id,
             'icon_url' => $this->getFileUrl($this->icon, 'public', 'no-image.png'),
+            'title_en' => $this->title_en,
+            'title_ar' => $this->title_ar,
             'url' => $this->url,
             'is_active' => (bool) $this->is_active,
             'created_at' => $this->created_at?->toISOString(),

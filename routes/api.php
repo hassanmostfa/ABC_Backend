@@ -184,7 +184,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::post('/', 'store')->middleware('admin.permission:social_media_links,add');
          Route::get('/active', 'active')->middleware('admin.permission:social_media_links,view');
          Route::get('/{id}', 'show')->middleware('admin.permission:social_media_links,view');
-         Route::put('/{id}', 'update')->middleware('admin.permission:social_media_links,edit');
+         Route::post('/{id}', 'update')->middleware('admin.permission:social_media_links,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:social_media_links,delete');
       });
 

@@ -44,7 +44,7 @@ class OfferReward extends Model
     }
 
     /**
-     * Get the product for this reward
+     * Get the product for this reward (nullable)
      */
     public function product()
     {

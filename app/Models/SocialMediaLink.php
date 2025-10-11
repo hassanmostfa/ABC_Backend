@@ -18,6 +18,8 @@ class SocialMediaLink extends Model
      */
     protected $fillable = [
         'icon',
+        'title_en',
+        'title_ar',
         'url',
         'is_active',
     ];

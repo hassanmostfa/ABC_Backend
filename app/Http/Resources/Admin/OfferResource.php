@@ -4,9 +4,12 @@ namespace App\Http\Resources\Admin;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Traits\ManagesFileUploads;
 
 class OfferResource extends JsonResource
 {
+    use ManagesFileUploads;
+    
     /**
      * Transform the resource into an array.
      *
@@ -26,7 +29,9 @@ class OfferResource extends JsonResource
                 return [
                     'id' => $condition->id,
                     'product_id' => $product->id,
-                    'product_name' => $lang === 'ar' ? $product->name_ar : $product->name_en,
+                    // 'product_name' => $lang === 'ar' ? $product->name_ar : $product->name_en,
+                    'product_name_ar' => $product->name_ar,
+                    'product_name_en' => $product->name_en,
                     'product_sku' => $product->sku,
                     'variant_id' => $variant ? $variant->id : null,
                     'variant_size' => $variant ? $variant->size : null,
@@ -46,9 +51,11 @@ class OfferResource extends JsonResource
                 
                 return [
                     'id' => $reward->id,
-                    'product_id' => $product->id,
-                    'product_name' => $lang === 'ar' ? $product->name_ar : $product->name_en,
-                    'product_sku' => $product->sku,
+                    'product_id' => $product ? $product->id : null,
+                    // 'product_name' => $lang === 'ar' ? $product->name_ar : $product->name_en,
+                    'product_name_ar' => $product ? $product->name_ar : null,
+                    'product_name_en' => $product ? $product->name_en : null,
+                    'product_sku' => $product ? $product->sku : null,
                     'variant_id' => $variant ? $variant->id : null,
                     'variant_size' => $variant ? $variant->size : null,
                     'variant_short_item' => $variant ? $variant->short_item : null,
@@ -66,14 +73,16 @@ class OfferResource extends JsonResource
             'offer_start_date' => $this->offer_start_date?->toISOString(),
             'offer_end_date' => $this->offer_end_date?->toISOString(),
             'is_active' => (bool) $this->is_active,
-            'image' => $this->image ? url($this->image) : null,
+            'image' => $this->getFileUrl($this->image, 'public', 'no-image.png'),
             'type' => $this->type,
             'points' => (int) $this->points,
             'charity_id' => $this->charity_id,
             'charity' => $this->whenLoaded('charity', function () use ($lang) {
                 return [
                     'id' => $this->charity->id,
-                    'name' => $lang === 'ar' ? $this->charity->name_ar : $this->charity->name_en,
+                    // 'name' => $lang === 'ar' ? $this->charity->name_ar : $this->charity->name_en,
+                    'name_ar' => $this->charity->name_ar,
+                    'name_en' => $this->charity->name_en,
                     'description' => $lang === 'ar' ? $this->charity->description_ar : $this->charity->description_en,
                 ];
             }),

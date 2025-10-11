@@ -4,11 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Traits\ManagesFileUploads;
 use Carbon\Carbon;
 
 class Offer extends Model
 {
-    use HasFactory;
+    use HasFactory, ManagesFileUploads;
+
+    static string $STORAGE_DIR = "images/offers";
 
     /**
      * The attributes that are mass assignable.
@@ -130,5 +133,24 @@ class Offer extends Model
     public function scopeUpcoming($query)
     {
         return $query->where('offer_start_date', '>', Carbon::now());
+    }
+
+    /**
+     * Get the image URL for this offer
+     */
+    public function getImageUrlAttribute(): string
+    {
+        return $this->getFileUrl($this->image, 'public', 'no-image.png');
+    }
+
+    /**
+     * Delete the offer's image file
+     */
+    public function deleteImage(): bool
+    {
+        if ($this->image) {
+            return $this->deleteFile($this->image, 'public');
+        }
+        return false;
     }
 }

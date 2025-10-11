@@ -24,6 +24,7 @@ class CharityController extends BaseApiController
      * Query Parameters:
      * - per_page: Number of items per page (1-100, default: 15)
      * - search: Search term to filter by name (English/Arabic), phone, or location (country/governorate/area names)
+     * - get_all: Set to true to return all charities without pagination
      */
     public function index(Request $request): JsonResponse
     {
@@ -31,31 +32,51 @@ class CharityController extends BaseApiController
         $request->validate([
             'per_page' => 'nullable|integer|min:1|max:100',
             'search' => 'nullable|string|max:255',
+            'get_all' => 'nullable|boolean',
         ]);
 
-        $perPage = $request->input('per_page', 15);
+        $getAll = $request->boolean('get_all', false);
         $filters = $request->only(['search']);
         
-        $charities = $this->charityRepository->getAllPaginated($filters, $perPage);
+        if ($getAll) {
+            // Return all charities without pagination
+            $charities = $this->charityRepository->getAllWithFilters($filters);
+            
+            // Transform data using CharityResource
+            $transformedCharities = CharityResource::collection($charities);
 
-        // Transform data using CharityResource
-        $transformedCharities = CharityResource::collection($charities->items());
+            // Create response without pagination
+            $response = [
+                'success' => true,
+                'message' => 'All charities retrieved successfully',
+                'data' => $transformedCharities,
+                'total' => $charities->count(),
+                'search_applied' => !empty($filters['search']) ? $filters['search'] : null,
+            ];
+        } else {
+            // Return paginated results (existing behavior)
+            $perPage = $request->input('per_page', 15);
+            $charities = $this->charityRepository->getAllPaginated($filters, $perPage);
 
-        // Create a custom response with pagination
-        $response = [
-            'success' => true,
-            'message' => 'Charities retrieved successfully',
-            'data' => $transformedCharities,
-            'pagination' => [
-                'current_page' => $charities->currentPage(),
-                'last_page' => $charities->lastPage(),
-                'per_page' => $charities->perPage(),
-                'total' => $charities->total(),
-                'from' => $charities->firstItem(),
-                'to' => $charities->lastItem(),
-            ],
-            'search_applied' => !empty($filters['search']) ? $filters['search'] : null,
-        ];
+            // Transform data using CharityResource
+            $transformedCharities = CharityResource::collection($charities->items());
+
+            // Create a custom response with pagination
+            $response = [
+                'success' => true,
+                'message' => 'Charities retrieved successfully',
+                'data' => $transformedCharities,
+                'pagination' => [
+                    'current_page' => $charities->currentPage(),
+                    'last_page' => $charities->lastPage(),
+                    'per_page' => $charities->perPage(),
+                    'total' => $charities->total(),
+                    'from' => $charities->firstItem(),
+                    'to' => $charities->lastItem(),
+                ],
+                'search_applied' => !empty($filters['search']) ? $filters['search'] : null,
+            ];
+        }
 
         return response()->json($response);
     }
