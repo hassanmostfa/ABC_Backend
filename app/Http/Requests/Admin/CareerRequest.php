@@ -27,7 +27,7 @@ class CareerRequest extends FormRequest
             'phone' => 'required|string|max:20',
             'applying_position' => 'required|string|max:255',
             'message' => 'required|string|max:2000',
-            'file' => 'nullable|url|max:500', // URL to file
+            'file' => 'required|file|mimes:pdf,doc,docx,txt|max:10240', // File upload (10MB max)
         ];
     }
 
@@ -52,8 +52,10 @@ class CareerRequest extends FormRequest
             'message.required' => 'Message is required.',
             'message.string' => 'Message must be a string.',
             'message.max' => 'Message must not exceed 2000 characters.',
-            'file.url' => 'File must be a valid URL.',
-            'file.max' => 'File URL must not exceed 500 characters.',
+            'file.required' => 'File is required.',
+            'file.file' => 'الملف يجب أن يكون ملف صحيح.',
+            'file.mimes' => 'الملف يجب أن يكون من نوع: pdf, doc, docx, txt.',
+            'file.max' => 'حجم الملف لا يجب أن يتجاوز 10240 كيلوبايت.',
         ];
     }
 }

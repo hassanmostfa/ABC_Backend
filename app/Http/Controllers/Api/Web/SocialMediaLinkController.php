@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Repositories\SocialMediaLinkRepositoryInterface;
-use App\Http\Resources\Admin\SocialMediaLinkResource;
+use App\Http\Resources\Web\WebSocialMediaLinkResource;
 use Illuminate\Http\JsonResponse;
 
 class SocialMediaLinkController extends BaseApiController
@@ -25,7 +25,7 @@ class SocialMediaLinkController extends BaseApiController
             $socialMediaLinks = $this->socialMediaLinkRepository->getActive();
             
             return $this->collectionResponse(
-                SocialMediaLinkResource::collection($socialMediaLinks),
+                WebSocialMediaLinkResource::collection($socialMediaLinks),
                 'Active social media links retrieved successfully'
             );
         } catch (\Exception $e) {
@@ -42,7 +42,7 @@ class SocialMediaLinkController extends BaseApiController
             $socialMediaLinks = $this->socialMediaLinkRepository->getAll();
             
             return $this->collectionResponse(
-                SocialMediaLinkResource::collection($socialMediaLinks),
+                WebSocialMediaLinkResource::collection($socialMediaLinks),
                 'All social media links retrieved successfully'
             );
         } catch (\Exception $e) {
@@ -63,7 +63,7 @@ class SocialMediaLinkController extends BaseApiController
             }
             
             return $this->resourceResponse(
-                new SocialMediaLinkResource($socialMediaLink),
+                new WebSocialMediaLinkResource($socialMediaLink),
                 'Social media link retrieved successfully'
             );
         } catch (\Exception $e) {

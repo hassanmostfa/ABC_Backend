@@ -9,6 +9,8 @@ class Career extends Model
 {
     use HasFactory;
 
+    static string $STORAGE_DIR = "files/careers";
+
     /**
      * The attributes that are mass assignable.
      *

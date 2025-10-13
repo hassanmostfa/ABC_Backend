@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Shared;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Admin\ContactUsRequest;
+use App\Http\Resources\ContactUsResource;
 use App\Repositories\ContactUsRepositoryInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,8 +24,9 @@ class ContactUsController extends BaseApiController
     public function store(ContactUsRequest $request): JsonResponse
     {
         $contactUs = $this->contactUsRepository->create($request->validated());
+        $transformedContactUs = new ContactUsResource($contactUs);
 
-        return $this->createdResponse($contactUs, 'Contact message sent successfully');
+        return $this->createdResponse($transformedContactUs, 'Contact message sent successfully');
     }
 
     /**
@@ -57,11 +59,14 @@ class ContactUsController extends BaseApiController
         $perPage = $request->input('per_page', 15);
         $contactMessages = $this->contactUsRepository->getAllPaginated($filters, $perPage);
 
+        // Transform the data using ContactUsResource
+        $transformedMessages = ContactUsResource::collection($contactMessages->items());
+
         // Create a custom response with pagination and filters
         $response = [
             'success' => true,
             'message' => 'Contact messages retrieved successfully',
-            'data' => $contactMessages->items(),
+            'data' => $transformedMessages,
             'pagination' => [
                 'current_page' => $contactMessages->currentPage(),
                 'last_page' => $contactMessages->lastPage(),
@@ -90,7 +95,8 @@ class ContactUsController extends BaseApiController
             return $this->notFoundResponse('Contact message not found');
         }
 
-        return $this->resourceResponse($contactMessage, 'Contact message retrieved successfully');
+        $transformedContactMessage = new ContactUsResource($contactMessage);
+        return $this->resourceResponse($transformedContactMessage, 'Contact message retrieved successfully');
     }
 
     /**

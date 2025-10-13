@@ -22,9 +22,10 @@ class SocialMediaLinkRequest extends FormRequest
     public function rules(): array
     {
         $socialMediaLinkId = $this->route('social_media_link') ?? $this->route('id');
+        $isUpdate = !is_null($socialMediaLinkId);
         
         return [
-            'icon' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+            'icon' => $isUpdate ? 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048' : 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
             'title_en' => 'nullable|string|max:255',
             'title_ar' => 'nullable|string|max:255',
             'url' => 'required|url|max:500',
@@ -38,7 +39,8 @@ class SocialMediaLinkRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'icon.required' => 'الأيقونة مطلوبة.',
+            'icon.required' => 'الأيقونة مطلوبة عند الإنشاء.',
+            'icon.nullable' => 'الأيقونة اختيارية عند التحديث.',
             'icon.image' => 'الأيقونة يجب أن تكون ملف صورة صحيح.',
             'icon.mimes' => 'الأيقونة يجب أن تكون من نوع: jpeg, png, jpg, gif, svg.',
             'icon.max' => 'حجم الأيقونة لا يجب أن يتجاوز 2048 كيلوبايت.',

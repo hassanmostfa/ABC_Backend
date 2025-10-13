@@ -6,11 +6,15 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Repositories\CareerRepositoryInterface;
 use App\Http\Resources\Admin\CareerResource;
 use App\Http\Requests\Admin\CareerRequest;
+use App\Traits\ManagesFileUploads;
+use App\Models\Career;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 class CareerController extends BaseApiController
 {
+    use ManagesFileUploads;
+    
     protected $careerRepository;
 
     public function __construct(CareerRepositoryInterface $careerRepository)
@@ -74,7 +78,15 @@ class CareerController extends BaseApiController
      */
     public function store(CareerRequest $request): JsonResponse
     {
-        $career = $this->careerRepository->create($request->validated());
+        $validatedData = $request->validated();
+        
+        // Handle file upload
+        if ($request->hasFile('file')) {
+            $filePath = $this->uploadFile($request->file('file'), Career::$STORAGE_DIR, 'public');
+            $validatedData['file'] = $filePath;
+        }
+        
+        $career = $this->careerRepository->create($validatedData);
         $transformedCareer = new CareerResource($career);
 
         return $this->createdResponse($transformedCareer, 'Career application submitted successfully');
@@ -102,7 +114,23 @@ class CareerController extends BaseApiController
      */
     public function update(CareerRequest $request, int $id): JsonResponse
     {
-        $career = $this->careerRepository->update($id, $request->validated());
+        $validatedData = $request->validated();
+        
+        // Get the existing career to check for old file
+        $existingCareer = $this->careerRepository->findById($id);
+        
+        // Handle file upload
+        if ($request->hasFile('file')) {
+            // Delete old file if it exists
+            if ($existingCareer && $existingCareer->file) {
+                $this->deleteFile($existingCareer->file, 'public');
+            }
+            
+            $filePath = $this->uploadFile($request->file('file'), Career::$STORAGE_DIR, 'public');
+            $validatedData['file'] = $filePath;
+        }
+        
+        $career = $this->careerRepository->update($id, $validatedData);
 
         if (!$career) {
             return $this->notFoundResponse('Career application not found');
@@ -117,6 +145,18 @@ class CareerController extends BaseApiController
      */
     public function destroy(int $id): JsonResponse
     {
+        // Get the career to check for file before deletion
+        $career = $this->careerRepository->findById($id);
+        
+        if (!$career) {
+            return $this->notFoundResponse('Career application not found');
+        }
+        
+        // Delete the file if it exists
+        if ($career->file) {
+            $this->deleteFile($career->file, 'public');
+        }
+        
         $deleted = $this->careerRepository->delete($id);
 
         if (!$deleted) {

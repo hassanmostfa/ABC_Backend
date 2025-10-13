@@ -4,9 +4,11 @@ namespace App\Http\Resources\Admin;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Traits\ManagesFileUploads;
 
 class CareerResource extends JsonResource
 {
+    use ManagesFileUploads;
     /**
      * Transform the resource into an array.
      *
@@ -21,8 +23,7 @@ class CareerResource extends JsonResource
             'phone' => $this->phone,
             'applying_position' => $this->applying_position,
             'message' => $this->message,
-            'file_url' => $this->file,
-            'file_name' => $this->file ? basename(parse_url($this->file, PHP_URL_PATH)) : null,
+            'file_url' => $this->getFileUrl($this->file, 'public', 'no-file.pdf'),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];
