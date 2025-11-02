@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Api\Web;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Repositories\CategoryRepositoryInterface;
 use App\Repositories\SubcategoryRepositoryInterface;
-use App\Http\Resources\Admin\CategoryResource;
-use App\Http\Resources\Admin\SubcategoryResource;
+use App\Http\Resources\Web\WebCategoryResource;
+use App\Http\Resources\Web\WebSubcategoryResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -50,7 +50,7 @@ class CategoryController extends BaseApiController
         }]);
 
         // Transform data using CategoryResource
-        $transformedCategories = CategoryResource::collection($categories);
+        $transformedCategories = WebCategoryResource::collection($categories);
 
         return response()->json([
             'success' => true,
@@ -98,7 +98,7 @@ class CategoryController extends BaseApiController
         $subcategories->load('category');
 
         // Transform data using SubcategoryResource
-        $transformedSubcategories = SubcategoryResource::collection($subcategories);
+        $transformedSubcategories = WebSubcategoryResource::collection($subcategories);
 
         return response()->json([
             'success' => true,
@@ -145,18 +145,13 @@ class CategoryController extends BaseApiController
         $subcategories->load('category');
 
         // Transform data using SubcategoryResource
-        $transformedSubcategories = SubcategoryResource::collection($subcategories);
+        $transformedSubcategories = WebSubcategoryResource::collection($subcategories);
 
         return response()->json([
             'success' => true,
             'message' => 'Subcategories by category retrieved successfully',
             'data' => $transformedSubcategories,
             'count' => $subcategories->count(),
-            'category' => [
-                'id' => $category->id,
-                'name_en' => $category->name_en,
-                'name_ar' => $category->name_ar,
-            ],
         ]);
     }
 }

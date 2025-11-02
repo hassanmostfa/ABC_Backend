@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Repositories\ProductRepositoryInterface;
 use App\Http\Resources\Admin\ProductResource;
 use App\Http\Resources\Web\WebProductResource;
+use App\Http\Resources\Web\WebProductDetailsResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
@@ -174,8 +175,8 @@ class ProductController extends BaseApiController
             $query->where('is_active', true); // Only active variants for public API
         }, 'category', 'subcategory']);
 
-        // Transform data using ProductResource
-        $transformedProduct = new ProductResource($product);
+        // Transform data using WebProductDetailsResource
+        $transformedProduct = new WebProductDetailsResource($product);
 
         return $this->successResponse($transformedProduct, 'Product with variants retrieved successfully');
     }
