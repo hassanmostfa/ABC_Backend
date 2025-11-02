@@ -2,11 +2,13 @@
 
 namespace App\Http\Resources\Web;
 
+use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class WebProductResource extends JsonResource
 {
+    use ManagesFileUploads;
     /**
      * Transform the resource into an array.
      * This resource returns variants as separate products for web consumption.
@@ -56,7 +58,7 @@ class WebProductResource extends JsonResource
             'short_item' => $variant->short_item,
             'quantity' => $variant->quantity,
             'price' => (float) $variant->price,
-            'image' => $variant->image ? url($variant->image) : null,
+            'image' => $this->getFileUrl($variant->image, 'public', 'no-image.png'),
             'is_active' => (bool) $variant->is_active,
             'category' => $this->whenLoaded('product.category', function () use ($lang) {
                 return [
@@ -97,7 +99,7 @@ class WebProductResource extends JsonResource
                 'short_item' => $variant->short_item,
                 'quantity' => $variant->quantity,
                 'price' => (float) $variant->price,
-                'image' => $variant->image ? url($variant->image) : null,
+                'image' => $this->getFileUrl($variant->image, 'public', 'no-image.png'),
                 'is_active' => (bool) $variant->is_active,
                 'category' => $this->whenLoaded('category', function () use ($lang) {
                     return [
@@ -136,7 +138,7 @@ class WebProductResource extends JsonResource
             'short_item' => $variant->short_item,
             'quantity' => $variant->quantity,
             'price' => (float) $variant->price,
-            'image' => $variant->image ? url($variant->image) : null,
+            'image' => $this->getFileUrl($variant->image, 'public', 'no-image.png'),
             'is_active' => (bool) $variant->is_active,
             'category' => $variant->category ? [
                 'id' => $variant->category->id,
