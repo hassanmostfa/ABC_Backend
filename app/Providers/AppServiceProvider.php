@@ -29,6 +29,16 @@ use App\Repositories\SocialMediaLinkRepositoryInterface;
 use App\Repositories\SocialMediaLinkRepository;
 use App\Repositories\CareerRepositoryInterface;
 use App\Repositories\CareerRepository;
+use App\Repositories\OrderRepositoryInterface;
+use App\Repositories\OrderRepository;
+use App\Repositories\OrderItemRepositoryInterface;
+use App\Repositories\OrderItemRepository;
+use App\Repositories\InvoiceRepositoryInterface;
+use App\Repositories\InvoiceRepository;
+use App\Repositories\PaymentRepositoryInterface;
+use App\Repositories\PaymentRepository;
+use App\Repositories\DeliveryRepositoryInterface;
+use App\Repositories\DeliveryRepository;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -50,6 +60,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ContactUsRepositoryInterface::class, ContactUsRepository::class);
         $this->app->bind(SocialMediaLinkRepositoryInterface::class, SocialMediaLinkRepository::class);
         $this->app->bind(CareerRepositoryInterface::class, CareerRepository::class);
+        $this->app->bind(OrderRepositoryInterface::class, OrderRepository::class);
+        $this->app->bind(OrderItemRepositoryInterface::class, OrderItemRepository::class);
+        $this->app->bind(InvoiceRepositoryInterface::class, InvoiceRepository::class);
+        $this->app->bind(PaymentRepositoryInterface::class, PaymentRepository::class);
+        $this->app->bind(DeliveryRepositoryInterface::class, DeliveryRepository::class);
     }
 
     /**
