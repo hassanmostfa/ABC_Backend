@@ -6,6 +6,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Auth\AuthenticationException;
 use App\Http\Middleware\ApiAuth;
 use App\Http\Middleware\CheckAdminPermission;
+use App\Http\Middleware\PreventUpdateCompletedOrder;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Middleware\HandleCors;
@@ -22,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin.permission' => CheckAdminPermission::class,
             'api.auth' => ApiAuth::class,
+            'prevent.update.completed.order' => PreventUpdateCompletedOrder::class,
         ]);
         
         // Configure authentication for API

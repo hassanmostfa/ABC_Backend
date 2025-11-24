@@ -17,6 +17,10 @@ use App\Http\Controllers\Api\Admin\GovernorateController;
 use App\Http\Controllers\Api\Admin\AreaController;
 use App\Http\Controllers\Api\Admin\SocialMediaLinkController;
 use App\Http\Controllers\Api\Admin\CareerController;
+use App\Http\Controllers\Api\Admin\OrderController;
+use App\Http\Controllers\Api\Admin\InvoiceController;
+use App\Http\Controllers\Api\Admin\PaymentController;
+use App\Http\Controllers\Api\Admin\DeliveryController;
 use App\Http\Controllers\Api\Shared\ImageController;
 use App\Http\Controllers\Api\Web\ProductController as WebProductController;
 use App\Http\Controllers\Api\Web\CategoryController as WebCategoryController;
@@ -195,6 +199,40 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::get('/{id}', 'show')->middleware('admin.permission:careers,view');
          Route::put('/{id}', 'update')->middleware('admin.permission:careers,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:careers,delete');
+      });
+
+            // Orders Management
+      Route::controller(OrderController::class)->prefix('orders')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:orders,view');
+         Route::post('/', 'store')->middleware('admin.permission:orders,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:orders,view');
+         Route::put('/{id}', 'update')->middleware(['admin.permission:orders,edit', 'prevent.update.completed.order']);
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:orders,delete');
+      });
+
+            // Invoices Management
+      Route::controller(InvoiceController::class)->prefix('invoices')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:invoices,view');
+         Route::get('/{id}', 'show')->middleware('admin.permission:invoices,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:invoices,edit');
+      });
+
+            // Payments Management
+      Route::controller(PaymentController::class)->prefix('payments')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:payments,view');
+         Route::post('/', 'store')->middleware('admin.permission:payments,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:payments,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:payments,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:payments,delete');
+      });
+
+            // Deliveries Management
+      Route::controller(DeliveryController::class)->prefix('deliveries')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:deliveries,view');
+         Route::post('/', 'store')->middleware('admin.permission:deliveries,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:deliveries,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:deliveries,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:deliveries,delete');
       });
 
             // Contact Us Management (Admin)
