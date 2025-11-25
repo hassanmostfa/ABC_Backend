@@ -14,6 +14,8 @@ use App\Repositories\CustomerRepositoryInterface;
 use App\Models\ProductVariant;
 use App\Models\Offer;
 use App\Models\Order;
+use App\Models\Setting;
+use App\Models\Wallet;
 use App\Traits\ChecksOfferActive;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -337,15 +339,17 @@ class OrderController extends BaseApiController
             $pointsDiscount = 0.00;
             if ($request->has('used_points') && $request->input('used_points') > 0) {
                 $requestedPoints = $request->input('used_points');
-                // Calculate discount: 10 points = 1 dinar
-                $requestedDiscount = $requestedPoints / 10;
+                // Get one point discount value from settings
+                $onePointDiscount = (float) Setting::getValue('one_point_dicount', 0.1);
+                // Calculate discount: points * one_point_discount
+                $requestedDiscount = $requestedPoints * $onePointDiscount;
                 
                 // Don't allow points discount to exceed the remaining amount after offer discount
                 $remainingAmount = $totalAmount - $offerDiscount;
                 $pointsDiscount = min($requestedDiscount, $remainingAmount);
                 
                 // Recalculate actual points used based on capped discount
-                $usedPoints = (int)($pointsDiscount * 10);
+                $usedPoints = (int)($pointsDiscount / $onePointDiscount);
                 
                 // Reduce points from customer
                 if ($order->customer_id && $usedPoints > 0) {
@@ -364,6 +368,7 @@ class OrderController extends BaseApiController
             $finalAmount = $totalAmount - $offerDiscount - $pointsDiscount;
             $totalDiscount = $offerDiscount + $pointsDiscount;
 
+            // $taxAmount = $finalAmount * 0.15;
             // Generate invoice if it doesn't exist
             $existingInvoice = $this->invoiceRepository->getByOrder($order->id);
             if (!$existingInvoice) {
@@ -379,6 +384,49 @@ class OrderController extends BaseApiController
                     'total_discount' => $totalDiscount,
                     'status' => 'pending',
                 ]);
+            } else {
+                $invoice = $existingInvoice;
+            }
+
+            // Handle wallet payment if payment_method is wallet
+            $paymentMethod = $request->input('payment_method');
+            if ($paymentMethod === 'wallet') {
+                if (!$order->customer_id) {
+                    DB::rollBack();
+                    return $this->errorResponse('Customer ID is required for wallet payment', 400);
+                }
+
+                $customer = $this->customerRepository->findById($order->customer_id);
+                if (!$customer) {
+                    DB::rollBack();
+                    return $this->errorResponse('Customer not found', 404);
+                }
+
+                $wallet = Wallet::where('customer_id', $customer->id)->first();
+                if (!$wallet) {
+                    DB::rollBack();
+                    return $this->errorResponse('Customer wallet not found', 404);
+                }
+
+                // Check if wallet has enough balance
+                if ($wallet->balance < $finalAmount) {
+                    DB::rollBack();
+                    return $this->errorResponse(
+                        'Insufficient wallet balance. Available: ' . number_format($wallet->balance, 2) . ', Required: ' . number_format($finalAmount, 2),
+                        400
+                    );
+                }
+
+                // Deduct amount from wallet balance
+                $newBalance = max(0, $wallet->balance - $finalAmount);
+                $wallet->update(['balance' => $newBalance]);
+
+                // Update invoice status to paid
+                $this->invoiceRepository->update($invoice->id, [
+                    'paid_at' => now(),
+                    'status' => 'paid',
+                ]);
+
             }
 
             // Create delivery record if delivery_type is "delivery"
@@ -388,7 +436,8 @@ class OrderController extends BaseApiController
                     $deliveryData = $request->input('delivery', []);
                     $deliveryData['order_id'] = $order->id;
                     $deliveryData['delivery_status'] = $deliveryData['delivery_status'] ?? 'pending';
-                    $deliveryData['payment_method'] = $deliveryData['payment_method'] ?? 'cash';
+                    // Use payment_method from order level if provided, otherwise from delivery or default to cash
+                    $deliveryData['payment_method'] = $paymentMethod ?? $deliveryData['payment_method'] ?? 'cash';
                     $this->deliveryRepository->create($deliveryData);
                 }
             }
@@ -811,15 +860,17 @@ class OrderController extends BaseApiController
 
                 // Handle new points if provided
                 if ($requestedPoints > 0) {
-                    // Calculate discount: 10 points = 1 dinar
-                    $requestedDiscount = $requestedPoints / 10;
+                    // Get one point discount value from settings
+                    $onePointDiscount = (float) Setting::getValue('one_point_dicount', 0.1);
+                    // Calculate discount: points * one_point_discount
+                    $requestedDiscount = $requestedPoints * $onePointDiscount;
                     
                     // Don't allow points discount to exceed the remaining amount after offer discount
                     $remainingAmount = $currentTotalAmount - $offerDiscount;
                     $pointsDiscount = min($requestedDiscount, $remainingAmount);
                     
                     // Recalculate actual points used based on capped discount
-                    $usedPoints = (int)($pointsDiscount * 10);
+                    $usedPoints = (int)($pointsDiscount / $onePointDiscount);
                     
                     // Deduct new points from customer
                     if ($order->customer_id && $usedPoints > 0) {

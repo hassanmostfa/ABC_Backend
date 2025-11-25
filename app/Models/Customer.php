@@ -47,4 +47,28 @@ class Customer extends Authenticatable
     {
         return $query->where('is_active', false);
     }
+
+    /**
+     * Get the wallet for the customer
+     */
+    public function wallet()
+    {
+        return $this->hasOne(Wallet::class);
+    }
+
+    /**
+     * Boot the model
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Automatically create wallet when customer is created
+        static::created(function ($customer) {
+            Wallet::create([
+                'customer_id' => $customer->id,
+                'balance' => 0.00,
+            ]);
+        });
+    }
 }

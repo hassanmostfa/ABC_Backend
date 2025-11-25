@@ -28,14 +28,8 @@ class InvoiceController extends BaseApiController
             'search' => 'nullable|string|max:1000',
             'status' => 'nullable|in:pending,paid,cancelled,refunded',
             'order_id' => 'nullable|integer|exists:orders,id',
-            'min_amount' => 'nullable|numeric|min:0',
-            'max_amount' => 'nullable|numeric|min:0',
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date|after_or_equal:date_from',
-            'paid_from' => 'nullable|date',
-            'paid_to' => 'nullable|date|after_or_equal:paid_from',
-            'sort_by' => 'nullable|in:invoice_number,amount_due,status,paid_at,created_at,updated_at',
-            'sort_order' => 'nullable|in:asc,desc',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
@@ -44,14 +38,8 @@ class InvoiceController extends BaseApiController
             'search' => $request->input('search'),
             'status' => $request->input('status'),
             'order_id' => $request->input('order_id'),
-            'min_amount' => $request->input('min_amount'),
-            'max_amount' => $request->input('max_amount'),
             'date_from' => $request->input('date_from'),
             'date_to' => $request->input('date_to'),
-            'paid_from' => $request->input('paid_from'),
-            'paid_to' => $request->input('paid_to'),
-            'sort_by' => $request->input('sort_by', 'created_at'),
-            'sort_order' => $request->input('sort_order', 'desc'),
         ];
 
         // Remove empty filters

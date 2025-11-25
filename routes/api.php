@@ -210,7 +210,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:orders,delete');
       });
 
-            // Invoices Management
+      // Invoices Management
       Route::controller(InvoiceController::class)->prefix('invoices')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:invoices,view');
          Route::get('/{id}', 'show')->middleware('admin.permission:invoices,view');

@@ -23,7 +23,7 @@ class StorePaymentRequest extends FormRequest
     {
         return [
             'invoice_id' => 'required|integer|exists:invoices,id',
-            'amount' => 'required|numeric|min:0.01',
+            'amount' => 'nullable|numeric|min:0.01',
             'method' => 'required|in:cash,card,online,bank_transfer,wallet',
             'status' => 'nullable|in:pending,completed,failed,refunded',
             'paid_at' => 'nullable|date',
@@ -41,7 +41,6 @@ class StorePaymentRequest extends FormRequest
             'invoice_id.required' => 'The invoice ID is required.',
             'invoice_id.integer' => 'The invoice ID must be a valid integer.',
             'invoice_id.exists' => 'The selected invoice does not exist.',
-            'amount.required' => 'The amount is required.',
             'amount.numeric' => 'The amount must be a valid number.',
             'amount.min' => 'The amount must be at least 0.01.',
             'method.required' => 'The payment method is required.',

@@ -40,6 +40,7 @@ class StoreOrderRequest extends FormRequest
             'customer_id' => 'nullable|integer|exists:customers,id',
             'charity_id' => 'nullable|integer|exists:charities,id',
             'delivery_type' => 'required|in:pickup,delivery',
+            'payment_method' => 'nullable|in:cash,card,online,bank_transfer,wallet',
             'offer_id' => 'nullable|integer|exists:offers,id',
             'offer_snapshot' => 'nullable|array',
             'used_points' => [

@@ -8,7 +8,9 @@ use App\Http\Requests\Admin\UpdatePaymentRequest;
 use App\Http\Resources\Admin\PaymentResource;
 use App\Repositories\PaymentRepositoryInterface;
 use App\Repositories\InvoiceRepositoryInterface;
+use App\Repositories\OrderRepositoryInterface;
 use App\Models\Payment;
+use App\Models\Wallet;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -17,13 +19,16 @@ class PaymentController extends BaseApiController
 {
     protected $paymentRepository;
     protected $invoiceRepository;
+    protected $orderRepository;
 
     public function __construct(
         PaymentRepositoryInterface $paymentRepository,
-        InvoiceRepositoryInterface $invoiceRepository
+        InvoiceRepositoryInterface $invoiceRepository,
+        OrderRepositoryInterface $orderRepository
     ) {
         $this->paymentRepository = $paymentRepository;
         $this->invoiceRepository = $invoiceRepository;
+        $this->orderRepository = $orderRepository;
     }
 
     /**
@@ -37,14 +42,8 @@ class PaymentController extends BaseApiController
             'status' => 'nullable|in:pending,completed,failed,refunded',
             'method' => 'nullable|in:cash,card,online,bank_transfer,wallet',
             'invoice_id' => 'nullable|integer|exists:invoices,id',
-            'min_amount' => 'nullable|numeric|min:0',
-            'max_amount' => 'nullable|numeric|min:0',
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date|after_or_equal:date_from',
-            'paid_from' => 'nullable|date',
-            'paid_to' => 'nullable|date|after_or_equal:paid_from',
-            'sort_by' => 'nullable|in:payment_number,amount,method,status,paid_at,created_at,updated_at',
-            'sort_order' => 'nullable|in:asc,desc',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
@@ -54,14 +53,8 @@ class PaymentController extends BaseApiController
             'status' => $request->input('status'),
             'method' => $request->input('method'),
             'invoice_id' => $request->input('invoice_id'),
-            'min_amount' => $request->input('min_amount'),
-            'max_amount' => $request->input('max_amount'),
             'date_from' => $request->input('date_from'),
             'date_to' => $request->input('date_to'),
-            'paid_from' => $request->input('paid_from'),
-            'paid_to' => $request->input('paid_to'),
-            'sort_by' => $request->input('sort_by', 'created_at'),
-            'sort_order' => $request->input('sort_order', 'desc'),
         ];
 
         // Remove empty filters
@@ -105,19 +98,116 @@ class PaymentController extends BaseApiController
         try {
             DB::beginTransaction();
 
+            // Get invoice to calculate amount if not provided
+            $invoice = $this->invoiceRepository->findById($request->input('invoice_id'));
+            if (!$invoice) {
+                DB::rollBack();
+                return $this->errorResponse('Invoice not found', 404);
+            }
+
+            // Check if invoice is already paid
+            if ($invoice->status === 'paid') {
+                DB::rollBack();
+                return $this->errorResponse('This invoice is already paid. Cannot create additional payments.', 400);
+            }
+
+            // Calculate payment amount from invoice amount_due if not provided
+            $paymentData = $request->validated();
+            if (!isset($paymentData['amount']) || $paymentData['amount'] === null) {
+                // Calculate remaining amount due (amount_due - sum of completed payments)
+                $totalPaid = Payment::where('invoice_id', $invoice->id)
+                    ->where('status', 'completed')
+                    ->sum('amount');
+                $remainingAmount = max(0, $invoice->amount_due - $totalPaid);
+                $paymentData['amount'] = $remainingAmount;
+            }
+
+            // Validate wallet balance if payment method is wallet
+            if (isset($paymentData['method']) && $paymentData['method'] === 'wallet') {
+                // Load invoice with order and customer
+                $invoice->load('order.customer');
+                
+                if (!$invoice->order || !$invoice->order->customer) {
+                    DB::rollBack();
+                    return $this->errorResponse('Invoice does not have an associated customer', 400);
+                }
+
+                $customer = $invoice->order->customer;
+                $wallet = Wallet::where('customer_id', $customer->id)->first();
+
+                if (!$wallet) {
+                    DB::rollBack();
+                    return $this->errorResponse('Customer wallet not found', 404);
+                }
+
+                // Check if wallet has enough balance
+                if ($wallet->balance < $paymentData['amount']) {
+                    DB::rollBack();
+                    return $this->errorResponse(
+                        'Insufficient wallet balance. Available: ' . number_format($wallet->balance, 2) . ', Required: ' . number_format($paymentData['amount'], 2),
+                        400
+                    );
+                }
+            }
+
             // Generate payment number
             $paymentNumber = $this->generatePaymentNumber();
-
-            // Create payment data
-            $paymentData = $request->validated();
             $paymentData['payment_number'] = $paymentNumber;
 
+            // Set payment status to 'completed' by default if not provided
+            if (!isset($paymentData['status'])) {
+                $paymentData['status'] = 'completed';
+            }
+
             // If status is 'completed', set paid_at timestamp
-            if (isset($paymentData['status']) && $paymentData['status'] === 'completed') {
+            if ($paymentData['status'] === 'completed') {
                 $paymentData['paid_at'] = now();
             }
 
             $payment = $this->paymentRepository->create($paymentData);
+
+            // Deduct amount from wallet if payment method is wallet and payment is completed
+            if ($paymentData['status'] === 'completed' && isset($paymentData['method']) && $paymentData['method'] === 'wallet') {
+                // Load invoice with order and customer if not already loaded
+                if (!$invoice->relationLoaded('order')) {
+                    $invoice->load('order.customer');
+                }
+                
+                if ($invoice->order && $invoice->order->customer) {
+                    $customer = $invoice->order->customer;
+                    $wallet = Wallet::where('customer_id', $customer->id)->first();
+                    
+                    if ($wallet) {
+                        // Deduct payment amount from wallet balance
+                        $newBalance = max(0, $wallet->balance - $paymentData['amount']);
+                        $wallet->update(['balance' => $newBalance]);
+                    }
+                }
+            }
+
+            // Update invoice and order if payment is completed and invoice is fully paid
+            if ($paymentData['status'] === 'completed') {
+                // Calculate total paid including this new payment
+                $totalPaid = Payment::where('invoice_id', $invoice->id)
+                    ->where('status', 'completed')
+                    ->sum('amount');
+                
+                // If total paid equals or exceeds amount_due, mark invoice as paid and update order
+                if ($totalPaid >= $invoice->amount_due) {
+                    // Update invoice status and paid_at
+                    $this->invoiceRepository->update($invoice->id, [
+                        'paid_at' => now(),
+                        'status' => 'paid',
+                    ]);
+
+                    // Update order status to 'completed' if invoice is fully paid
+                    if ($invoice->order_id) {
+                        $this->orderRepository->update($invoice->order_id, [
+                            'status' => 'completed',
+                        ]);
+                    }
+                }
+            }
 
             DB::commit();
 
@@ -177,6 +267,10 @@ class PaymentController extends BaseApiController
 
             $updateData = $request->validated();
 
+            // Handle wallet balance changes when payment status changes
+            $oldStatus = $payment->status;
+            $paymentMethod = $updateData['method'] ?? $payment->method;
+            
             // If status is being updated to 'completed', set paid_at timestamp
             if (isset($updateData['status']) && $updateData['status'] === 'completed' && $payment->status !== 'completed') {
                 $updateData['paid_at'] = now();
@@ -190,6 +284,59 @@ class PaymentController extends BaseApiController
             if (!$payment) {
                 DB::rollBack();
                 return $this->errorResponse('Failed to update payment', 500);
+            }
+
+            // Handle wallet balance deduction/refund when payment method is wallet
+            if ($paymentMethod === 'wallet') {
+                $invoice = $this->invoiceRepository->findById($payment->invoice_id);
+                if ($invoice) {
+                    $invoice->load('order.customer');
+                    
+                    if ($invoice->order && $invoice->order->customer) {
+                        $customer = $invoice->order->customer;
+                        $wallet = Wallet::where('customer_id', $customer->id)->first();
+                        
+                        if ($wallet) {
+                            // If payment status changed to 'completed', deduct amount
+                            if (isset($updateData['status']) && $updateData['status'] === 'completed' && $oldStatus !== 'completed') {
+                                $newBalance = max(0, $wallet->balance - $payment->amount);
+                                $wallet->update(['balance' => $newBalance]);
+                            }
+                            // If payment status changed from 'completed' to something else, refund amount
+                            elseif (isset($updateData['status']) && $updateData['status'] !== 'completed' && $oldStatus === 'completed') {
+                                $newBalance = $wallet->balance + $payment->amount;
+                                $wallet->update(['balance' => $newBalance]);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Update invoice and order if payment status is completed and invoice is fully paid
+            if (isset($updateData['status']) && $updateData['status'] === 'completed') {
+                $invoice = $this->invoiceRepository->findById($payment->invoice_id);
+                if ($invoice) {
+                    // Calculate total paid including this payment
+                    $totalPaid = Payment::where('invoice_id', $invoice->id)
+                        ->where('status', 'completed')
+                        ->sum('amount');
+                    
+                    // If total paid equals or exceeds amount_due, mark invoice as paid and update order
+                    if ($totalPaid >= $invoice->amount_due) {
+                        // Update invoice status and paid_at
+                        $this->invoiceRepository->update($invoice->id, [
+                            'paid_at' => now(),
+                            'status' => 'paid',
+                        ]);
+
+                        // Update order status to 'completed' if invoice is fully paid
+                        if ($invoice->order_id) {
+                            $this->orderRepository->update($invoice->order_id, [
+                                'status' => 'completed',
+                            ]);
+                        }
+                    }
+                }
             }
 
             DB::commit();

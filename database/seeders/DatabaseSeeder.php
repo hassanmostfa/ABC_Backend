@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
             CharitySeeder::class,
             KuwaitGovernorateSeeder::class,
             KuwaitAreaSeeder::class,
+            SettingSeeder::class,
         ]);
 
         // Create a test admin with Super Admin role

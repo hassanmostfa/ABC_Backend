@@ -18,6 +18,7 @@ class InvoiceResource extends JsonResource
             'id' => $this->id,
             'order_id' => $this->order_id,
             'invoice_number' => $this->invoice_number,
+            'total_before_discounts' => (float) $this->order->total_amount,
             'amount_due' => (float) $this->amount_due,
             'tax_amount' => (float) $this->tax_amount,
             'offer_discount' => (float) $this->offer_discount,

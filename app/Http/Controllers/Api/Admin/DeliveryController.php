@@ -30,12 +30,6 @@ class DeliveryController extends BaseApiController
             'delivery_status' => 'nullable|in:pending,assigned,in_transit,delivered,failed,cancelled',
             'payment_method' => 'nullable|in:cash,card,online,bank_transfer,wallet',
             'order_id' => 'nullable|integer|exists:orders,id',
-            'delivery_date_from' => 'nullable|date',
-            'delivery_date_to' => 'nullable|date|after_or_equal:delivery_date_from',
-            'received_date_from' => 'nullable|date',
-            'received_date_to' => 'nullable|date|after_or_equal:received_date_from',
-            'sort_by' => 'nullable|in:delivery_status,payment_method,delivery_datetime,received_datetime,created_at,updated_at',
-            'sort_order' => 'nullable|in:asc,desc',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
@@ -45,12 +39,6 @@ class DeliveryController extends BaseApiController
             'delivery_status' => $request->input('delivery_status'),
             'payment_method' => $request->input('payment_method'),
             'order_id' => $request->input('order_id'),
-            'delivery_date_from' => $request->input('delivery_date_from'),
-            'delivery_date_to' => $request->input('delivery_date_to'),
-            'received_date_from' => $request->input('received_date_from'),
-            'received_date_to' => $request->input('received_date_to'),
-            'sort_by' => $request->input('sort_by', 'created_at'),
-            'sort_order' => $request->input('sort_order', 'desc'),
         ];
 
         // Remove empty filters
