@@ -31,6 +31,7 @@ class InvoiceResource extends JsonResource
                 return [
                     'id' => $this->order->id,
                     'order_number' => $this->order->order_number,
+                    'payment_method' => $this->order->payment_method,
                     'status' => $this->order->status,
                     'total_amount' => (float) $this->order->total_amount,
                     'delivery_type' => $this->order->delivery_type,

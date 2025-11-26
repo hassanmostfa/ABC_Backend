@@ -18,6 +18,7 @@ class Order extends Model
         'offer_id',
         'offer_snapshot',
         'delivery_type',
+        'payment_method',
     ];
 
 

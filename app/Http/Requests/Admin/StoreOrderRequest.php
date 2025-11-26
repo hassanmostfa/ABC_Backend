@@ -30,6 +30,22 @@ class StoreOrderRequest extends FormRequest
     }
 
     /**
+     * Prepare the data for validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        // If delivery_type is "delivery" and payment_method is at root level but not in delivery,
+        // copy it to delivery.payment_method
+        if ($this->input('delivery_type') === 'delivery' && $this->has('payment_method')) {
+            $delivery = $this->input('delivery', []);
+            if (!isset($delivery['payment_method']) && $this->has('payment_method')) {
+                $delivery['payment_method'] = $this->input('payment_method');
+                $this->merge(['delivery' => $delivery]);
+            }
+        }
+    }
+
+    /**
      * Get the validation rules that apply to the request.
      *
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
@@ -91,6 +107,7 @@ class StoreOrderRequest extends FormRequest
         // Add delivery validation rules when delivery_type is "delivery"
         if ($this->input('delivery_type') === 'delivery') {
             $rules['delivery'] = 'required|array';
+            // Payment method can be in delivery OR at root level (prepareForValidation handles copying it)
             $rules['delivery.payment_method'] = 'required|in:cash,card,online,bank_transfer,wallet';
             $rules['delivery.delivery_address'] = 'required|string';
             $rules['delivery.block'] = 'nullable|string|max:255';

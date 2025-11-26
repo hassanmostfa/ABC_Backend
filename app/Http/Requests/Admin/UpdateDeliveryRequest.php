@@ -22,8 +22,6 @@ class UpdateDeliveryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'order_id' => 'sometimes|integer|exists:orders,id',
-            'payment_method' => 'sometimes|nullable|in:cash,card,online,bank_transfer,wallet',
             'delivery_address' => 'sometimes|string|max:500',
             'block' => 'sometimes|nullable|string|max:255',
             'street' => 'sometimes|nullable|string|max:255',

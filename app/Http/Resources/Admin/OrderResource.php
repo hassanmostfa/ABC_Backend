@@ -18,6 +18,8 @@ class OrderResource extends JsonResource
             'id' => $this->id,
             'customer_id' => $this->customer_id,
             'charity_id' => $this->charity_id,
+            'type' => $this->charity_id ? 'charity' : ($this->customer_id ? 'customer' : null),
+            'payment_method' => $this->payment_method,
             'order_number' => $this->order_number,
             'status' => $this->status,
             'total_amount' => (float) $this->total_amount,

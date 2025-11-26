@@ -58,6 +58,11 @@ class OrderRepository implements OrderRepositoryInterface
             $query->where('delivery_type', $filters['delivery_type']);
         }
 
+        // Filter by payment_method
+        if (isset($filters['payment_method']) && !empty(trim($filters['payment_method']))) {
+            $query->where('payment_method', $filters['payment_method']);
+        }
+
         // Filter by offer_id
         if (isset($filters['offer_id']) && is_numeric($filters['offer_id'])) {
             $query->where('offer_id', $filters['offer_id']);

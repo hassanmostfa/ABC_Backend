@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\Admin\OrderController;
 use App\Http\Controllers\Api\Admin\InvoiceController;
 use App\Http\Controllers\Api\Admin\PaymentController;
 use App\Http\Controllers\Api\Admin\DeliveryController;
+use App\Http\Controllers\Api\Admin\SettingsController;
 use App\Http\Controllers\Api\Shared\ImageController;
 use App\Http\Controllers\Api\Web\ProductController as WebProductController;
 use App\Http\Controllers\Api\Web\CategoryController as WebCategoryController;
@@ -241,6 +242,12 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::get('/{id}', 'show')->middleware('admin.permission:contact_us,view');
          Route::patch('/{id}/mark-read', 'markAsRead')->middleware('admin.permission:contact_us,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:contact_us,delete');
+      });
+
+            // Settings Management
+      Route::controller(SettingsController::class)->prefix('settings')->group(function () {
+         Route::get('/', 'index');
+         Route::put('/', 'update');
       });
 });
 
