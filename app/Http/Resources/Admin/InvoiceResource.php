@@ -21,6 +21,7 @@ class InvoiceResource extends JsonResource
             'total_before_discounts' => (float) $this->order->total_amount,
             'amount_due' => (float) $this->amount_due,
             'tax_amount' => (float) $this->tax_amount,
+            'delivery_fee' => (float) ($this->delivery_fee ?? 0),
             'offer_discount' => (float) $this->offer_discount,
             'used_points' => (int) $this->used_points,
             'points_discount' => (float) $this->points_discount,

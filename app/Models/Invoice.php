@@ -14,6 +14,7 @@ class Invoice extends Model
         'invoice_number',
         'amount_due',
         'tax_amount',
+        'delivery_fee',
         'offer_discount',
         'used_points',
         'points_discount',
@@ -25,6 +26,7 @@ class Invoice extends Model
     protected $casts = [
         'amount_due' => 'decimal:2',
         'tax_amount' => 'decimal:2',
+        'delivery_fee' => 'decimal:2',
         'offer_discount' => 'decimal:2',
         'used_points' => 'integer',
         'points_discount' => 'decimal:2',

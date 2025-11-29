@@ -118,8 +118,36 @@ class OrderService
             $usedPoints = $pointsResult['usedPoints'];
             $pointsDiscount = $pointsResult['pointsDiscount'];
 
-            // Calculate invoice amounts (before creating order)
-            $invoiceAmounts = $this->invoiceService->calculateAmounts($totalAmount, $offerDiscount, $pointsDiscount);
+            // Determine delivery type for invoice calculation
+            $deliveryType = $data['delivery_type'] ?? null;
+            if (!$deliveryType && isset($data['customer_address_id']) && $data['customer_address_id']) {
+                $deliveryType = 'delivery';
+            } elseif (!$deliveryType) {
+                $deliveryType = 'pickup';
+            }
+
+            // Validate minimum order amount based on order type (charity vs customer)
+            $charityId = $data['charity_id'] ?? null;
+            $customerId = $data['customer_id'] ?? null;
+            
+            if ($charityId) {
+                // Charity order - check minimum charity order
+                $minimumCharityOrder = (float) \App\Models\Setting::getValue('minimum_charity_order', 13);
+                if ($totalAmount < $minimumCharityOrder) {
+                    DB::rollBack();
+                    throw new \Exception("Minimum charity order amount is {$minimumCharityOrder}. Current order amount is {$totalAmount}.");
+                }
+            } elseif ($customerId) {
+                // Customer/home order - check minimum home order
+                $minimumHomeOrder = (float) \App\Models\Setting::getValue('minimum_home_order', 5);
+                if ($totalAmount < $minimumHomeOrder) {
+                    DB::rollBack();
+                    throw new \Exception("Minimum home order amount is {$minimumHomeOrder}. Current order amount is {$totalAmount}.");
+                }
+            }
+
+            // Calculate invoice amounts (before creating order) - includes delivery fee if delivery
+            $invoiceAmounts = $this->invoiceService->calculateAmounts($totalAmount, $offerDiscount, $pointsDiscount, $deliveryType);
             $amountDue = $invoiceAmounts['amountDue'];
 
             // Get payment method from root level
@@ -187,6 +215,7 @@ class OrderService
                 $order->order_number,
                 $invoiceAmounts['amountDue'],
                 $invoiceAmounts['taxAmount'],
+                $invoiceAmounts['deliveryFee'],
                 $offerDiscount,
                 $usedPoints,
                 $pointsDiscount,
@@ -335,8 +364,36 @@ class OrderService
             $offerDiscount = $calculatedOfferDiscount ?? ($currentInvoice ? ($currentInvoice->offer_discount ?? 0.00) : 0.00);
             $currentTotalAmount = $recalculatedTotalAmount ?? ($order->total_amount ?? 0);
 
-            // Calculate invoice amounts
-            $invoiceAmounts = $this->invoiceService->calculateAmounts($currentTotalAmount, $offerDiscount, $pointsDiscount);
+            // Validate minimum order amount based on order type (charity vs customer)
+            $charityId = $data['charity_id'] ?? $order->charity_id;
+            $customerId = $data['customer_id'] ?? $order->customer_id;
+            
+            if ($charityId) {
+                // Charity order - check minimum charity order
+                $minimumCharityOrder = (float) \App\Models\Setting::getValue('minimum_charity_order', 13);
+                if ($currentTotalAmount < $minimumCharityOrder) {
+                    DB::rollBack();
+                    throw new \Exception("Minimum charity order amount is {$minimumCharityOrder}. Current order amount is {$currentTotalAmount}.");
+                }
+            } elseif ($customerId) {
+                // Customer/home order - check minimum home order
+                $minimumHomeOrder = (float) \App\Models\Setting::getValue('minimum_home_order', 5);
+                if ($currentTotalAmount < $minimumHomeOrder) {
+                    DB::rollBack();
+                    throw new \Exception("Minimum home order amount is {$minimumHomeOrder}. Current order amount is {$currentTotalAmount}.");
+                }
+            }
+
+            // Determine delivery type for invoice calculation
+            $deliveryType = $data['delivery_type'] ?? $order->delivery_type ?? null;
+            if (!$deliveryType && isset($data['customer_address_id']) && $data['customer_address_id']) {
+                $deliveryType = 'delivery';
+            } elseif (!$deliveryType) {
+                $deliveryType = 'pickup';
+            }
+
+            // Calculate invoice amounts (includes delivery fee if delivery)
+            $invoiceAmounts = $this->invoiceService->calculateAmounts($currentTotalAmount, $offerDiscount, $pointsDiscount, $deliveryType);
             $newAmountDue = $invoiceAmounts['amountDue'];
 
             // Get payment method from root level or existing order payment method
@@ -388,6 +445,7 @@ class OrderService
                     $currentInvoice->id,
                     $invoiceAmounts['amountDue'],
                     $invoiceAmounts['taxAmount'],
+                    $invoiceAmounts['deliveryFee'],
                     $offerDiscount,
                     $usedPoints,
                     $pointsDiscount,

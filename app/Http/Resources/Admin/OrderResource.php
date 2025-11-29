@@ -119,6 +119,7 @@ class OrderResource extends JsonResource
                     'invoice_number' => $this->invoice->invoice_number,
                     'total_before_discounts' => $totalBeforeDiscounts,
                     'tax_amount' => (float) $this->invoice->tax_amount,
+                    'delivery_fee' => (float) ($this->invoice->delivery_fee ?? 0),
                     'offer_discount' => (float) $this->invoice->offer_discount,
                     'used_points' => (int) $this->invoice->used_points,
                     'points_discount' => (float) $this->invoice->points_discount,

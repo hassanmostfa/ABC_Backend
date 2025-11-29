@@ -30,6 +30,43 @@ class SettingSeeder extends Seeder
                 'key' => 'is_production',
                 'value' => '0', // 0 = false (development), 1 = true (production)
             ],
+            // Delivery Settings
+            [
+                'key' => 'delivery_price',
+                'value' => '3', // Delivery price
+            ],
+            [
+                'key' => 'minimum_home_order',
+                'value' => '5', // Minimum home order amount
+            ],
+            [
+                'key' => 'minimum_charity_order',
+                'value' => '13', // Minimum charity order amount
+            ],
+            [
+                'key' => 'opening_time',
+                'value' => '10:00 am', // Opening time
+            ],
+            [
+                'key' => 'closing_time',
+                'value' => '10:00 pm', // Closing time
+            ],
+            [
+                'key' => 'delivery_days',
+                'value' => '7', // Delivery days
+            ],
+            [
+                'key' => 'slot_interval',
+                'value' => '720', // Slot interval (in minutes)
+            ],
+            [
+                'key' => 'max_delivery_per_slot',
+                'value' => '999', // Maximum delivery per slot
+            ],
+            [
+                'key' => 'day_offs',
+                'value' => '[]', // Day offs (JSON array, e.g., ["saturday", "sunday"])
+            ],
         ];
 
         foreach ($settings as $setting) {
