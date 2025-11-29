@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Repositories\DeliveryRepositoryInterface;
+use App\Models\CustomerAddress;
+use App\Models\Order;
 
 class DeliveryService
 {
@@ -34,11 +36,60 @@ class DeliveryService
 
         $existingDelivery = $this->deliveryRepository->getByOrder($orderId);
         if (!$existingDelivery) {
+            // Get order to fetch customer_address_id
+            $order = Order::with('customerAddress.country', 'customerAddress.governorate', 'customerAddress.area')->find($orderId);
+            
             $deliveryData = $data['delivery'] ?? [];
             $deliveryData['order_id'] = $orderId;
             $deliveryData['delivery_status'] = $deliveryData['delivery_status'] ?? 'pending';
+            
             // Use payment_method from order level if provided, otherwise from delivery or default to cash
             $deliveryData['payment_method'] = $paymentMethod ?? $deliveryData['payment_method'] ?? 'cash';
+            
+            // If customer_address_id exists, fetch address from customer_addresses table
+            $customerAddressId = $data['customer_address_id'] ?? ($order ? $order->customer_address_id : null);
+            
+            if ($customerAddressId) {
+                $customerAddress = CustomerAddress::with(['country', 'governorate', 'area'])
+                    ->find($customerAddressId);
+                
+                if ($customerAddress) {
+                    // Build delivery address string from customer address
+                    $addressParts = [];
+                    if ($customerAddress->country) {
+                        $addressParts[] = $customerAddress->country->name_en ?? $customerAddress->country->name_ar;
+                    }
+                    if ($customerAddress->governorate) {
+                        $addressParts[] = $customerAddress->governorate->name_en ?? $customerAddress->governorate->name_ar;
+                    }
+                    if ($customerAddress->area) {
+                        $addressParts[] = $customerAddress->area->name_en ?? $customerAddress->area->name_ar;
+                    }
+                    if ($customerAddress->street) {
+                        $addressParts[] = $customerAddress->street;
+                    }
+                    
+                    // Only use customer address if delivery_address is not already provided
+                    if (empty($deliveryData['delivery_address'])) {
+                        $deliveryData['delivery_address'] = implode(', ', $addressParts);
+                    }
+                    if (empty($deliveryData['block'])) {
+                        $deliveryData['block'] = $customerAddress->block;
+                    }
+                    if (empty($deliveryData['street'])) {
+                        $deliveryData['street'] = $customerAddress->street;
+                    }
+                    if (empty($deliveryData['house_number'])) {
+                        $deliveryData['house_number'] = $customerAddress->house;
+                    }
+                }
+            }
+            
+            // Set delivery_datetime if not provided
+            if (!isset($deliveryData['delivery_datetime'])) {
+                $deliveryData['delivery_datetime'] = $deliveryData['delivery_datetime'] ?? now()->addDay();
+            }
+            
             $this->deliveryRepository->create($deliveryData);
         }
     }
@@ -68,6 +119,37 @@ class DeliveryService
             } else {
                 // Keep existing payment_method if not provided
                 $deliveryData['payment_method'] = $existingDelivery->payment_method;
+            }
+            
+            // If customer_address_id is provided in order data, fetch address from customer_addresses
+            if (isset($data['customer_address_id']) || (isset($data['order']) && isset($data['order']['customer_address_id']))) {
+                $customerAddressId = $data['customer_address_id'] ?? $data['order']['customer_address_id'] ?? null;
+                
+                if ($customerAddressId) {
+                    $customerAddress = CustomerAddress::with(['country', 'governorate', 'area'])->find($customerAddressId);
+                    
+                    if ($customerAddress) {
+                        // Build delivery address string from customer address
+                        $addressParts = [];
+                        if ($customerAddress->country) {
+                            $addressParts[] = $customerAddress->country->name_en ?? $customerAddress->country->name_ar;
+                        }
+                        if ($customerAddress->governorate) {
+                            $addressParts[] = $customerAddress->governorate->name_en ?? $customerAddress->governorate->name_ar;
+                        }
+                        if ($customerAddress->area) {
+                            $addressParts[] = $customerAddress->area->name_en ?? $customerAddress->area->name_ar;
+                        }
+                        if ($customerAddress->street) {
+                            $addressParts[] = $customerAddress->street;
+                        }
+                        
+                        $deliveryData['delivery_address'] = implode(', ', $addressParts);
+                        $deliveryData['block'] = $customerAddress->block;
+                        $deliveryData['street'] = $customerAddress->street;
+                        $deliveryData['house_number'] = $customerAddress->house;
+                    }
+                }
             }
             
             // Only update if there's data to update

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
+use App\Http\Resources\Admin\CustomerResource;
 use App\Repositories\CustomerRepositoryInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -50,11 +51,14 @@ class CustomerController extends BaseApiController
         $perPage = $request->input('per_page', 15);
         $customers = $this->customerRepository->getAllPaginated($filters, $perPage);
 
+        // Transform customers using resource
+        $transformedCustomers = CustomerResource::collection($customers->items());
+
         // Create a custom response with pagination and filters
         $response = [
             'success' => true,
             'message' => 'Customers retrieved successfully',
-            'data' => $customers->items(),
+            'data' => $transformedCustomers,
             'pagination' => [
                 'current_page' => $customers->currentPage(),
                 'last_page' => $customers->lastPage(),
@@ -86,8 +90,11 @@ class CustomerController extends BaseApiController
         ]);
 
         $customer = $this->customerRepository->create($request->all());
+        
+        // Load relationships
+        $customer->load(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area']);
 
-        return $this->createdResponse($customer, 'Customer created successfully');
+        return $this->createdResponse(new CustomerResource($customer), 'Customer created successfully');
     }
 
     /**
@@ -101,7 +108,7 @@ class CustomerController extends BaseApiController
             return $this->notFoundResponse('Customer not found');
         }
 
-        return $this->resourceResponse($customer, 'Customer retrieved successfully');
+        return $this->resourceResponse(new CustomerResource($customer), 'Customer retrieved successfully');
     }
 
     /**
@@ -123,7 +130,7 @@ class CustomerController extends BaseApiController
             return $this->notFoundResponse('Customer not found');
         }
 
-        return $this->updatedResponse($customer, 'Customer updated successfully');
+        return $this->updatedResponse(new CustomerResource($customer), 'Customer updated successfully');
     }
 
     /**

@@ -17,13 +17,24 @@ class OrderResource extends JsonResource
         return [
             'id' => $this->id,
             'customer_id' => $this->customer_id,
+            'customer_address' => $this->whenLoaded('customerAddress', function () {
+                return [
+                    'id' => $this->customerAddress->id,
+                    'address' => $this->customerAddress->address,
+                    'block' => $this->customerAddress->block,
+                    'street' => $this->customerAddress->street,
+                    'house_number' => $this->customerAddress->house,
+                    'country' => $this->customerAddress->country->name_en,
+                    'governorate' => $this->customerAddress->governorate->name_en,
+                    'area' => $this->customerAddress->area->name_en,
+                ];
+            }),
             'charity_id' => $this->charity_id,
             'type' => $this->charity_id ? 'charity' : ($this->customer_id ? 'customer' : null),
             'payment_method' => $this->payment_method,
             'order_number' => $this->order_number,
             'status' => $this->status,
             'total_amount' => (float) $this->total_amount,
-            'offer_id' => $this->offer_id,
             'offer_snapshot' => $this->offer_snapshot,
             'delivery_type' => $this->delivery_type,
             'customer' => $this->whenLoaded('customer', function () {
@@ -44,15 +55,18 @@ class OrderResource extends JsonResource
                     'phone' => $this->charity->phone,
                 ];
             }),
-            'offer' => $this->whenLoaded('offer', function () {
-                return [
-                    'id' => $this->offer->id,
-                    'reward_type' => $this->offer->reward_type,
-                    'points' => (int) ($this->offer->points ?? 0),
-                    'offer_start_date' => $this->offer->offer_start_date?->toISOString(),
-                    'offer_end_date' => $this->offer->offer_end_date?->toISOString(),
-                    'is_active' => (bool) $this->offer->is_active,
-                ];
+            'offers' => $this->whenLoaded('offers', function () {
+                return $this->offers->map(function ($offer) {
+                    return [
+                        'id' => $offer->id,
+                        'quantity' => (int) ($offer->pivot->quantity ?? 1),
+                        'reward_type' => $offer->reward_type,
+                        'points' => (int) ($offer->points ?? 0),
+                        'offer_start_date' => $offer->offer_start_date?->toISOString(),
+                        'offer_end_date' => $offer->offer_end_date?->toISOString(),
+                        'is_active' => (bool) $offer->is_active,
+                    ];
+                });
             }),
             'items' => $this->whenLoaded('items', function () {
                 return $this->items->map(function ($item) {

@@ -12,10 +12,10 @@ class Order extends Model
     protected $fillable = [
         'customer_id',
         'charity_id',
+        'customer_address_id',
         'order_number',
         'status',
         'total_amount',
-        'offer_id',
         'offer_snapshot',
         'delivery_type',
         'payment_method',
@@ -40,9 +40,14 @@ class Order extends Model
     }
 
 
-    public function offer()
+    /**
+     * Get all offers for this order (many-to-many relationship)
+     */
+    public function offers()
     {
-        return $this->belongsTo(Offer::class);
+        return $this->belongsToMany(Offer::class, 'order_offers', 'order_id', 'offer_id')
+            ->withPivot('quantity')
+            ->withTimestamps();
     }
 
     public function items()
@@ -58,5 +63,10 @@ class Order extends Model
     public function delivery()
     {
         return $this->hasOne(Delivery::class);
+    }
+
+    public function customerAddress()
+    {
+        return $this->belongsTo(CustomerAddress::class, 'customer_address_id');
     }
 }

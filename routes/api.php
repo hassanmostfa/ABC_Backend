@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\Admin\InvoiceController;
 use App\Http\Controllers\Api\Admin\PaymentController;
 use App\Http\Controllers\Api\Admin\DeliveryController;
 use App\Http\Controllers\Api\Admin\SettingsController;
+use App\Http\Controllers\Api\Admin\CustomerAddressController;
 use App\Http\Controllers\Api\Shared\ImageController;
 use App\Http\Controllers\Api\Web\ProductController as WebProductController;
 use App\Http\Controllers\Api\Web\CategoryController as WebCategoryController;
@@ -99,6 +100,16 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::post('/', 'store')->middleware('admin.permission:customers,add');
          Route::get('/active', 'active')->middleware('admin.permission:customers,view');
          Route::get('/inactive', 'inactive')->middleware('admin.permission:customers,view');
+         Route::get('/{id}', 'show')->middleware('admin.permission:customers,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:customers,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:customers,delete');
+      });
+
+      // Customer Addresses Management
+      Route::controller(CustomerAddressController::class)->prefix('customer-addresses')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:customers,view');
+         Route::post('/', 'store')->middleware('admin.permission:customers,add');
+         Route::get('/customer/{customerId}', 'getByCustomer')->middleware('admin.permission:customers,view');
          Route::get('/{id}', 'show')->middleware('admin.permission:customers,view');
          Route::put('/{id}', 'update')->middleware('admin.permission:customers,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:customers,delete');
@@ -227,15 +238,6 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:payments,delete');
       });
 
-            // Deliveries Management
-      Route::controller(DeliveryController::class)->prefix('deliveries')->group(function () {
-         Route::get('/', 'index')->middleware('admin.permission:deliveries,view');
-         Route::post('/', 'store')->middleware('admin.permission:deliveries,add');
-         Route::get('/{id}', 'show')->middleware('admin.permission:deliveries,view');
-         Route::put('/{id}', 'update')->middleware('admin.permission:deliveries,edit');
-         Route::delete('/{id}', 'destroy')->middleware('admin.permission:deliveries,delete');
-      });
-
             // Contact Us Management (Admin)
       Route::controller(ContactUsController::class)->prefix('contact-us')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:contact_us,view');
@@ -249,6 +251,8 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::get('/', 'index');
          Route::put('/', 'update');
       });
+
+
 });
 
 

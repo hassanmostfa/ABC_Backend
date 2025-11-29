@@ -92,7 +92,8 @@ class OrderController extends BaseApiController
             $result = $this->orderService->createOrder($request->validated());
             return $this->createdResponse(new OrderResource($result['order']), 'Order created successfully');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 500);
+            $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 500;
+            return $this->errorResponse($e->getMessage(), $code);
         }
     }
 
@@ -108,7 +109,7 @@ class OrderController extends BaseApiController
         }
 
         // Load all relationships
-        $order->load(['customer', 'charity', 'offer', 'items.product', 'items.variant', 'invoice', 'delivery']);
+        $order->load(['customer', 'charity', 'offer', 'items.product', 'items.variant', 'invoice', 'customerAddress']);
 
         return $this->resourceResponse(new OrderResource($order), 'Order retrieved successfully');
     }
@@ -128,7 +129,8 @@ class OrderController extends BaseApiController
             $result = $this->orderService->updateOrder($id, $request->validated());
             return $this->updatedResponse(new OrderResource($result['order']), 'Order updated successfully');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 500);
+            $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 500;
+            return $this->errorResponse($e->getMessage(), $code);
         }
     }
 

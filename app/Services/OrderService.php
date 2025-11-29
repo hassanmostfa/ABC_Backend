@@ -19,7 +19,6 @@ class OrderService
     protected $invoiceService;
     protected $walletService;
     protected $pointsService;
-    protected $deliveryService;
     protected $customerRepository;
 
     public function __construct(
@@ -30,7 +29,6 @@ class OrderService
         InvoiceService $invoiceService,
         WalletService $walletService,
         PointsService $pointsService,
-        DeliveryService $deliveryService,
         CustomerRepositoryInterface $customerRepository
     ) {
         $this->orderRepository = $orderRepository;
@@ -40,7 +38,6 @@ class OrderService
         $this->invoiceService = $invoiceService;
         $this->walletService = $walletService;
         $this->pointsService = $pointsService;
-        $this->deliveryService = $deliveryService;
         $this->customerRepository = $customerRepository;
     }
 
@@ -56,11 +53,44 @@ class OrderService
         DB::beginTransaction();
 
         try {
-            // Validate offer if provided
-            $offer = $this->offerService->validateOffer(
-                $data['offer_id'] ?? null,
-                $data['customer_id'] ?? null
-            );
+            // Collect offers - support both old format (offer_ids) and new format (offers with quantity)
+            $offersData = [];
+            if (isset($data['offers']) && is_array($data['offers'])) {
+                // New format: [{"offer_id": 10, "quantity": 2}, ...]
+                foreach ($data['offers'] as $offerData) {
+                    if (isset($offerData['offer_id'])) {
+                        $offersData[] = [
+                            'offer_id' => $offerData['offer_id'],
+                            'quantity' => isset($offerData['quantity']) ? (int) $offerData['quantity'] : 1
+                        ];
+                    }
+                }
+            } elseif (isset($data['offer_ids']) && is_array($data['offer_ids'])) {
+                // Old format: [10, 11, 12] - default quantity is 1
+                foreach ($data['offer_ids'] as $offerId) {
+                    $offersData[] = [
+                        'offer_id' => $offerId,
+                        'quantity' => 1
+                    ];
+                }
+            }
+
+            // Validate all offers and prepare for processing
+            $offersToProcess = []; // For processing rewards
+            $offersToAttach = []; // For attaching to order with quantities
+            
+            foreach ($offersData as $offerData) {
+                $offer = $this->offerService->validateOffer($offerData['offer_id'], $data['customer_id'] ?? null);
+                if ($offer) {
+                    $quantity = $offerData['quantity'];
+                    // Add offer multiple times based on quantity for processing
+                    for ($i = 0; $i < $quantity; $i++) {
+                        $offersToProcess[] = $offer;
+                    }
+                    // Store for attaching with quantity
+                    $offersToAttach[$offer->id] = ['quantity' => $quantity];
+                }
+            }
 
             // Process order items
             $items = $data['items'] ?? [];
@@ -73,13 +103,13 @@ class OrderService
                 $totalAmount = $result['totalAmount'];
             }
 
-            // Handle offer rewards
+            // Handle offer rewards for all offers (process sequentially, respecting quantities)
             $offerDiscount = 0.00;
-            if ($offer) {
+            foreach ($offersToProcess as $offer) {
                 $offerResult = $this->offerService->processOfferRewards($offer, $orderItemsData, $totalAmount);
                 $orderItemsData = $offerResult['orderItemsData'];
                 $totalAmount = $offerResult['totalAmount'];
-                $offerDiscount = $offerResult['offerDiscount'];
+                $offerDiscount += $offerResult['offerDiscount']; // Accumulate discounts from all offers
             }
 
             // Handle points discount (calculate before creating order)
@@ -92,8 +122,8 @@ class OrderService
             $invoiceAmounts = $this->invoiceService->calculateAmounts($totalAmount, $offerDiscount, $pointsDiscount);
             $amountDue = $invoiceAmounts['amountDue'];
 
-            // Get payment method from root level or delivery level
-            $paymentMethod = $data['payment_method'] ?? $data['delivery']['payment_method'] ?? null;
+            // Get payment method from root level
+            $paymentMethod = $data['payment_method'] ?? null;
             $isWalletPayment = ($paymentMethod === 'wallet');
             
             // Validate wallet balance BEFORE creating order if payment method is wallet
@@ -110,21 +140,43 @@ class OrderService
             $source = 'call_center'; // Default to call_center for admin
             $orderNumber = $this->generateOrderNumber($source);
             
-            // Get payment method from root level or delivery level
-            $paymentMethod = $data['payment_method'] ?? $data['delivery']['payment_method'] ?? null;
+            // Get payment method from root level
+            $paymentMethod = $data['payment_method'] ?? null;
             // Normalize payment method to 'cash' or 'wallet' only for orders table
             $paymentMethodForOrder = ($paymentMethod && in_array($paymentMethod, ['cash', 'wallet'])) 
                 ? $paymentMethod 
                 : null;
             
             // Create the order
-            $orderData = Arr::except($data, ['items', 'source']);
+            $orderData = Arr::except($data, ['items', 'source', 'offer_ids', 'offers']); // Remove offer_ids and offers from order data
+            
+            // Remove delivery_type if it's "delivery" - it will be auto-determined
+            if (isset($orderData['delivery_type']) && $orderData['delivery_type'] === 'delivery') {
+                unset($orderData['delivery_type']);
+            }
+            
             $orderData['total_amount'] = $totalAmount;
             $orderData['order_number'] = $orderNumber;
+            
+            // Auto-determine delivery_type if not provided
+            // If customer_address_id is provided, it's delivery; otherwise pickup
+            if (!isset($orderData['delivery_type']) || $orderData['delivery_type'] === null) {
+                if (isset($data['customer_address_id']) && $data['customer_address_id']) {
+                    $orderData['delivery_type'] = 'delivery';
+                } else {
+                    $orderData['delivery_type'] = 'pickup';
+                }
+            }
+            
             if ($paymentMethodForOrder) {
                 $orderData['payment_method'] = $paymentMethodForOrder;
             }
             $order = $this->orderRepository->create($orderData);
+
+            // Attach all offers to the order (many-to-many) with quantities
+            if (!empty($offersToAttach)) {
+                $order->offers()->attach($offersToAttach);
+            }
 
             // Create order items
             $this->orderItemService->createOrderItems($order->id, $orderItemsData);
@@ -152,18 +204,10 @@ class OrderService
                 $this->walletService->deductBalance($order->customer_id, $amountDue);
             }
 
-            // Create delivery record
-            $this->deliveryService->createDeliveryRecord(
-                $order->id,
-                $order->delivery_type ?? 'pickup',
-                $data,
-                $paymentMethod
-            );
-
             DB::commit();
 
             // Reload order with relationships
-            $order->load(['customer', 'charity', 'offer', 'items.product', 'items.variant', 'invoice', 'delivery']);
+            $order->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice', 'customerAddress']);
 
             return [
                 'success' => true,
@@ -200,21 +244,20 @@ class OrderService
             $currentInvoice = $this->invoiceRepository->getByOrder($id);
             $oldUsedPoints = $currentInvoice ? $currentInvoice->used_points : 0;
             
-            // Get current delivery to check old payment method
-            $currentDelivery = $this->deliveryService->getDeliveryByOrder($id);
-            $oldDeliveryPaymentMethod = $currentDelivery ? $currentDelivery->payment_method : null;
 
-            // Validate offer if provided
             $customerId = $data['customer_id'] ?? $currentOrder->customer_id;
-            $offer = $this->offerService->validateOffer(
-                $data['offer_id'] ?? null,
-                $customerId
-            );
 
-            // Update the order (excluding items and total_amount)
-            $orderData = Arr::except($data, ['items', 'total_amount', 'used_points']);
+            // Get payment method from root level
+            $paymentMethod = $data['payment_method'] ?? null;
+            // Normalize payment method to 'cash' or 'wallet' only for orders table
+            $paymentMethodForOrder = ($paymentMethod && in_array($paymentMethod, ['cash', 'wallet'])) 
+                ? $paymentMethod 
+                : null;
+            
+            // Update the order (excluding items, total_amount, offer_ids, and offers)
+            $orderData = Arr::except($data, ['items', 'total_amount', 'used_points', 'offer_ids', 'offers']);
             // Add payment_method to order data if it's cash or wallet
-            if (isset($paymentMethodForOrder)) {
+            if ($paymentMethodForOrder) {
                 $orderData['payment_method'] = $paymentMethodForOrder;
             }
             if (!empty($orderData)) {
@@ -234,12 +277,14 @@ class OrderService
             $recalculatedTotalAmount = null;
             $calculatedOfferDiscount = null;
             if (isset($data['items'])) {
-                // Clear items if empty and no offer
+                // Clear items if empty and no offers
                 if (empty($data['items'])) {
-                    $updatedOfferId = $data['offer_id'] ?? $order->offer_id;
-                    if (!$updatedOfferId) {
+                    $updatedOfferIds = $data['offer_ids'] ?? [];
+                    $currentOfferIds = $order->offers()->pluck('offers.id')->toArray();
+                    $hasOffers = !empty($updatedOfferIds) || !empty($currentOfferIds);
+                    if (!$hasOffers) {
                         DB::rollBack();
-                        throw new \Exception('Items are required when no offer is provided.');
+                        throw new \Exception('Items are required when no offers are provided.');
                     }
                     $this->orderItemService->clearOrderItems($id);
                     $recalculatedTotalAmount = 0;
@@ -248,21 +293,36 @@ class OrderService
                     $recalculatedTotalAmount = $result['totalAmount'];
                 }
                 
-                // Calculate offer discount if offer is present
-                $updatedOfferId = $data['offer_id'] ?? $order->offer_id;
-                $currentOffer = $updatedOfferId ? Offer::find($updatedOfferId) : null;
-                if ($currentOffer) {
-                    // Create offer reward items if reward type is products
-                    if ($currentOffer->reward_type === 'products') {
-                        $additionalTotal = $this->offerService->createOfferRewardItems($id, $currentOffer);
-                        $recalculatedTotalAmount = ($recalculatedTotalAmount ?? $order->total_amount ?? 0) + $additionalTotal;
-                        $this->orderRepository->update($id, ['total_amount' => $recalculatedTotalAmount]);
-                    }
+                // Calculate offer discount if offers are present
+                $calculatedOfferDiscount = 0.00;
+                $updatedOfferIds = $data['offer_ids'] ?? [];
+                $offersToProcess = [];
+                
+                if (!empty($updatedOfferIds)) {
+                    // Use updated offer IDs
+                    $offersToProcess = Offer::whereIn('id', $updatedOfferIds)->get();
+                } else {
+                    // Use current order offers (load them if not already loaded)
+                    $offersToProcess = $order->relationLoaded('offers') 
+                        ? $order->offers 
+                        : $order->offers()->get();
+                }
                     
-                    $calculatedOfferDiscount = $this->offerService->calculateOfferDiscount(
-                        $currentOffer,
-                        $recalculatedTotalAmount ?? $order->total_amount ?? 0
-                    );
+                if ($offersToProcess->isNotEmpty()) {
+                    foreach ($offersToProcess as $currentOffer) {
+                        // Create offer reward items if reward type is products
+                        if ($currentOffer->reward_type === 'products') {
+                            $additionalTotal = $this->offerService->createOfferRewardItems($id, $currentOffer);
+                            $recalculatedTotalAmount = ($recalculatedTotalAmount ?? $order->total_amount ?? 0) + $additionalTotal;
+                            $this->orderRepository->update($id, ['total_amount' => $recalculatedTotalAmount]);
+                        }
+                        
+                        $discount = $this->offerService->calculateOfferDiscount(
+                            $currentOffer,
+                            $recalculatedTotalAmount ?? $order->total_amount ?? 0
+                        );
+                        $calculatedOfferDiscount += $discount;
+                    }
                 }
             }
 
@@ -284,14 +344,13 @@ class OrderService
             $invoiceAmounts = $this->invoiceService->calculateAmounts($currentTotalAmount, $offerDiscount, $pointsDiscount);
             $newAmountDue = $invoiceAmounts['amountDue'];
 
-            // Get payment method from root level or delivery level, or use existing delivery payment method
-            // Use the payment method we already determined for the order update
-            $paymentMethod = $paymentMethodForUpdate ?? $oldDeliveryPaymentMethod ?? null;
+            // Get payment method from root level or existing order payment method
+            $paymentMethod = $paymentMethodForOrder ?? $currentOrder->payment_method ?? null;
             $isWalletPayment = ($paymentMethod === 'wallet');
             
-            // Get old payment method from order or delivery
+            // Get old payment method from order
             $oldOrderPaymentMethod = $currentOrder->payment_method ?? null;
-            $oldPaymentMethod = $oldOrderPaymentMethod ?? $oldDeliveryPaymentMethod ?? null;
+            $oldPaymentMethod = $oldOrderPaymentMethod ?? null;
             
             // Check payment method changes
             $paymentMethodChangedToWallet = ($isWalletPayment && $oldPaymentMethod !== 'wallet');
@@ -342,16 +401,50 @@ class OrderService
                 );
             }
 
-            // Update delivery record if it exists
-            if (isset($data['delivery']) || $paymentMethod) {
-                $this->deliveryService->updateDeliveryRecord($id, $data, $paymentMethod);
+            // Handle offers sync if provided (before commit)
+            if (isset($data['offers']) || isset($data['offer_ids'])) {
+                $offersData = [];
+                
+                if (isset($data['offers']) && is_array($data['offers'])) {
+                    // New format: [{"offer_id": 10, "quantity": 2}, ...]
+                    foreach ($data['offers'] as $offerData) {
+                        if (isset($offerData['offer_id'])) {
+                            $offersData[] = [
+                                'offer_id' => $offerData['offer_id'],
+                                'quantity' => isset($offerData['quantity']) ? (int) $offerData['quantity'] : 1
+                            ];
+                        }
+                    }
+                } elseif (isset($data['offer_ids']) && is_array($data['offer_ids'])) {
+                    // Old format: [10, 11, 12] - default quantity is 1
+                    foreach ($data['offer_ids'] as $offerId) {
+                        $offersData[] = [
+                            'offer_id' => $offerId,
+                            'quantity' => 1
+                        ];
+                    }
+                }
+                
+                // Validate all offers and prepare for sync
+                $offersToSync = [];
+                foreach ($offersData as $offerData) {
+                    $offer = $this->offerService->validateOffer($offerData['offer_id'], $customerId);
+                    if ($offer) {
+                        $offersToSync[$offer->id] = ['quantity' => $offerData['quantity']];
+                    }
+                }
+                
+                // Sync offers to order with quantities
+                if (!empty($offersToSync)) {
+                    $order->offers()->sync($offersToSync);
+                }
             }
 
             DB::commit();
 
             // Reload order with relationships
             $order = $this->orderRepository->findById($id);
-            $order->load(['customer', 'charity', 'offer', 'items.product', 'items.variant', 'invoice', 'delivery']);
+            $order->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice', 'customerAddress']);
 
             return [
                 'success' => true,
@@ -398,3 +491,4 @@ class OrderService
         return sprintf('%s-%s-%06d', $prefix, $year, $sequence);
     }
 }
+

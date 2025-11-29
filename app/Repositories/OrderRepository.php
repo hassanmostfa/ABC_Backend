@@ -20,7 +20,7 @@ class OrderRepository implements OrderRepositoryInterface
      */
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
-        $query = $this->model->with(['customer', 'charity', 'offer']);
+        $query = $this->model->with(['customer', 'charity', 'offers']);
 
         // Search functionality
         if (isset($filters['search']) && !empty($filters['search'])) {
@@ -63,9 +63,11 @@ class OrderRepository implements OrderRepositoryInterface
             $query->where('payment_method', $filters['payment_method']);
         }
 
-        // Filter by offer_id
+        // Filter by offer_id (using many-to-many relationship)
         if (isset($filters['offer_id']) && is_numeric($filters['offer_id'])) {
-            $query->where('offer_id', $filters['offer_id']);
+            $query->whereHas('offers', function ($q) use ($filters) {
+                $q->where('offers.id', $filters['offer_id']);
+            });
         }
 
         // Filter by total_amount range
@@ -111,7 +113,7 @@ class OrderRepository implements OrderRepositoryInterface
      */
     public function getAll(): Collection
     {
-        return $this->model->with(['customer', 'charity', 'offer'])->get();
+        return $this->model->with(['customer', 'charity', 'offers'])->get();
     }
 
     /**
@@ -119,7 +121,7 @@ class OrderRepository implements OrderRepositoryInterface
      */
     public function findById(int $id): ?Order
     {
-        return $this->model->with(['customer', 'charity', 'offer'])->find($id);
+        return $this->model->with(['customer', 'charity', 'offers'])->find($id);
     }
 
     /**
@@ -127,7 +129,7 @@ class OrderRepository implements OrderRepositoryInterface
      */
     public function findByOrderNumber(string $orderNumber): ?Order
     {
-        return $this->model->with(['customer', 'charity', 'offer'])
+        return $this->model->with(['customer', 'charity', 'offers'])
             ->where('order_number', $orderNumber)
             ->first();
     }
@@ -149,7 +151,7 @@ class OrderRepository implements OrderRepositoryInterface
         
         if ($order) {
             $order->update($data);
-            return $order->fresh(['customer', 'charity', 'offer']);
+            return $order->fresh(['customer', 'charity', 'offers']);
         }
 
         return null;
@@ -174,7 +176,7 @@ class OrderRepository implements OrderRepositoryInterface
      */
     public function getByCustomer(int $customerId): Collection
     {
-        return $this->model->with(['customer', 'charity', 'offer'])
+        return $this->model->with(['customer', 'charity', 'offers'])
             ->where('customer_id', $customerId)
             ->orderBy('created_at', 'desc')
             ->get();
@@ -185,7 +187,7 @@ class OrderRepository implements OrderRepositoryInterface
      */
     public function getByCharity(int $charityId): Collection
     {
-        return $this->model->with(['customer', 'charity', 'offer'])
+        return $this->model->with(['customer', 'charity', 'offers'])
             ->where('charity_id', $charityId)
             ->orderBy('created_at', 'desc')
             ->get();
@@ -196,7 +198,7 @@ class OrderRepository implements OrderRepositoryInterface
      */
     public function getByStatus(string $status): Collection
     {
-        return $this->model->with(['customer', 'charity', 'offer'])
+        return $this->model->with(['customer', 'charity', 'offers'])
             ->where('status', $status)
             ->orderBy('created_at', 'desc')
             ->get();

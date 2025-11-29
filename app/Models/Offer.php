@@ -19,6 +19,10 @@ class Offer extends Model
      * @var array<int, string>
      */
     protected $fillable = [
+        'title_en',
+        'title_ar',
+        'description_en',
+        'description_ar',
         'offer_start_date',
         'offer_end_date',
         'is_active',

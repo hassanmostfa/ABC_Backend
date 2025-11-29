@@ -20,16 +20,93 @@ class OfferResource extends JsonResource
         // Get language from request header
         $lang = $this->getLanguageFromHeader($request);
         
+        // Calculate total price of all condition products
+        $conditionProductsTotal = 0.00;
+        foreach ($this->conditions as $condition) {
+            $variant = $condition->productVariant;
+            $product = $condition->product;
+            
+            if ($variant) {
+                $unitPrice = (float) $variant->price;
+            } elseif ($product) {
+                $unitPrice = (float) $product->price;
+            } else {
+                $unitPrice = 0.00;
+            }
+            
+            $quantity = (int) $condition->quantity;
+            $conditionProductsTotal += $unitPrice * $quantity;
+        }
+        
+        // Calculate total price of all reward products
+        $rewardProductsTotal = 0.00;
+        foreach ($this->rewards as $reward) {
+            $variant = $reward->productVariant;
+            $product = $reward->product;
+            
+            if ($variant) {
+                $unitPrice = (float) $variant->price;
+            } elseif ($product) {
+                $unitPrice = (float) $product->price;
+            } else {
+                $unitPrice = 0.00;
+            }
+            
+            $quantity = (int) $reward->quantity;
+            $rewardProductsTotal += $unitPrice * $quantity;
+        }
+        
+        // Calculate price_before_discount and price_after_discount based on reward_type
+        if ($this->reward_type === 'products') {
+            // For product rewards: before = conditions + rewards, after = conditions only (rewards are free)
+            $priceBeforeDiscount = $conditionProductsTotal + $rewardProductsTotal;
+            $priceAfterDiscount = $conditionProductsTotal;
+            
+        } elseif ($this->reward_type === 'discount') {
+            // For discount rewards: before = conditions only, after = conditions - discount
+            $priceBeforeDiscount = $conditionProductsTotal;
+            
+            // Calculate total discount from all rewards
+            $totalDiscount = 0.00;
+            foreach ($this->rewards as $reward) {
+                if ($reward->discount_amount && $reward->discount_type) {
+                    if ($reward->discount_type === 'percentage') {
+                        // Percentage discount on total price
+                        $discount = ($priceBeforeDiscount * (float) $reward->discount_amount) / 100;
+                        $totalDiscount += $discount;
+                    } else {
+                        // Fixed discount amount
+                        $totalDiscount += (float) $reward->discount_amount;
+                    }
+                }
+            }
+            // Don't allow discount to exceed total price
+            $totalDiscount = min($totalDiscount, $priceBeforeDiscount);
+            $priceAfterDiscount = max(0.00, $priceBeforeDiscount - $totalDiscount);
+            
+        } else {
+            // No reward type or unknown type: before = after = conditions only
+            $priceBeforeDiscount = $conditionProductsTotal;
+            $priceAfterDiscount = $conditionProductsTotal;
+        }
+        
         return [
             'id' => $this->id,
+            'title_en' => $this->title_en,
+            'title_ar' => $this->title_ar,
+            'description_en' => $this->description_en,
+            'description_ar' => $this->description_ar,
+            'price_before_discount' => round($priceBeforeDiscount, 2),
+            'price_after_discount' => round($priceAfterDiscount, 2),
             'conditions' => $this->conditions->map(function ($condition) use ($lang) {
                 $product = $condition->product;
                 $variant = $condition->productVariant;
                 
+                $originalPrice = $variant ? (float) $variant->price : ($product ? (float) $product->price : null);
+                
                 return [
                     'id' => $condition->id,
                     'product_id' => $product->id,
-                    // 'product_name' => $lang === 'ar' ? $product->name_ar : $product->name_en,
                     'product_name_ar' => $product->name_ar,
                     'product_name_en' => $product->name_en,
                     'product_sku' => $product->sku,
@@ -37,7 +114,7 @@ class OfferResource extends JsonResource
                     'variant_size' => $variant ? $variant->size : null,
                     'variant_short_item' => $variant ? $variant->short_item : null,
                     'variant_sku' => $variant ? $variant->sku : null,
-                    'price' => $variant ? (float) $variant->price : null,
+                    'price' => $originalPrice,
                     'available_quantity' => $variant ? $variant->quantity : null,
                     'image' => $variant && $variant->image ? url($variant->image) : null,
                     'variant_is_active' => $variant ? (bool) $variant->is_active : null,
@@ -49,10 +126,12 @@ class OfferResource extends JsonResource
                 $product = $reward->product;
                 $variant = $reward->productVariant;
                 
+                // Get original price
+                $originalPrice = $variant ? (float) $variant->price : ($product ? (float) $product->price : null);
+                
                 return [
                     'id' => $reward->id,
                     'product_id' => $product ? $product->id : null,
-                    // 'product_name' => $lang === 'ar' ? $product->name_ar : $product->name_en,
                     'product_name_ar' => $product ? $product->name_ar : null,
                     'product_name_en' => $product ? $product->name_en : null,
                     'product_sku' => $product ? $product->sku : null,
@@ -60,7 +139,7 @@ class OfferResource extends JsonResource
                     'variant_size' => $variant ? $variant->size : null,
                     'variant_short_item' => $variant ? $variant->short_item : null,
                     'variant_sku' => $variant ? $variant->sku : null,
-                    'price' => $variant ? (float) $variant->price : null,
+                    'price' => $originalPrice,
                     'available_quantity' => $variant ? $variant->quantity : null,
                     'image' => $variant && $variant->image ? url($variant->image) : null,
                     'variant_is_active' => $variant ? (bool) $variant->is_active : null,

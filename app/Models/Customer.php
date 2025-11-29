@@ -57,6 +57,14 @@ class Customer extends Authenticatable
     }
 
     /**
+     * Get the addresses for the customer
+     */
+    public function addresses()
+    {
+        return $this->hasMany(CustomerAddress::class);
+    }
+
+    /**
      * Boot the model
      */
     protected static function boot()

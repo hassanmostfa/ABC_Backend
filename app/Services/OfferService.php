@@ -310,12 +310,29 @@ class OfferService
      */
     public function addOfferPointsToCustomer($order, $customerRepository): void
     {
-        if (!$order->customer_id || !$order->offer_id) {
+        if (!$order->customer_id) {
             return;
         }
 
-        $offer = Offer::find($order->offer_id);
-        if (!$offer || !$offer->points || $offer->points <= 0) {
+        // Load offers if not already loaded
+        if (!$order->relationLoaded('offers')) {
+            $order->load('offers');
+        }
+
+        if ($order->offers->isEmpty()) {
+            return;
+        }
+
+        // Calculate total points from all offers (multiply by quantity)
+        $totalPoints = 0;
+        foreach ($order->offers as $offer) {
+            if ($offer->points && $offer->points > 0) {
+                $quantity = isset($offer->pivot->quantity) ? (int) $offer->pivot->quantity : 1;
+                $totalPoints += $offer->points * $quantity;
+            }
+        }
+
+        if ($totalPoints <= 0) {
             return;
         }
 
@@ -323,7 +340,7 @@ class OfferService
         if ($customer) {
             $currentPoints = $customer->points ?? 0;
             $customerRepository->update($customer->id, [
-                'points' => $currentPoints + $offer->points
+                'points' => $currentPoints + $totalPoints
             ]);
         }
     }

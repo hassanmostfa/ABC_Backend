@@ -42,6 +42,7 @@ class UpdateOrderRequest extends FormRequest
         return [
             'customer_id' => 'sometimes|nullable|integer|exists:customers,id',
             'charity_id' => 'sometimes|nullable|integer|exists:charities,id',
+            'customer_address_id' => 'sometimes|nullable|integer|exists:customer_addresses,id',
             'order_number' => [
                 'sometimes',
                 'required',
@@ -50,9 +51,13 @@ class UpdateOrderRequest extends FormRequest
                 Rule::unique('orders', 'order_number')->ignore($orderId)
             ],
             'status' => 'sometimes|required|in:pending,processing,completed,cancelled',
-            'offer_id' => 'sometimes|nullable|integer|exists:offers,id',
+            'offer_ids' => 'sometimes|nullable|array', // Backward compatibility: simple array of IDs
+            'offer_ids.*' => 'required_with:offer_ids|integer|exists:offers,id',
+            'offers' => 'sometimes|nullable|array', // New format: array of objects with offer_id and quantity
+            'offers.*.offer_id' => 'required_with:offers|integer|exists:offers,id',
+            'offers.*.quantity' => 'required_with:offers.*.offer_id|integer|min:1',
             'offer_snapshot' => 'sometimes|nullable|array',
-            'delivery_type' => 'sometimes|required|in:pickup,delivery',
+            'delivery_type' => 'sometimes|nullable|in:pickup,delivery',
             'used_points' => [
                 'sometimes',
                 'nullable',
@@ -130,16 +135,18 @@ class UpdateOrderRequest extends FormRequest
             'customer_id.exists' => 'The selected customer does not exist.',
             'charity_id.integer' => 'The charity ID must be a valid integer.',
             'charity_id.exists' => 'The selected charity does not exist.',
+            'customer_address_id.integer' => 'The customer address ID must be a valid integer.',
+            'customer_address_id.exists' => 'The selected customer address does not exist.',
             'order_number.required' => 'The order number is required.',
             'order_number.string' => 'The order number must be a string.',
             'order_number.max' => 'The order number may not be greater than 255 characters.',
             'order_number.unique' => 'The order number has already been taken.',
             'status.required' => 'The status is required.',
             'status.in' => 'The status must be one of: pending, processing, completed, cancelled.',
-            'delivery_type.required' => 'The delivery type is required.',
             'delivery_type.in' => 'The delivery type must be either pickup or delivery.',
-            'offer_id.integer' => 'The offer ID must be a valid integer.',
-            'offer_id.exists' => 'The selected offer does not exist.',
+            'offer_ids.array' => 'The offer IDs must be an array.',
+            'offer_ids.*.integer' => 'Each offer ID must be a valid integer.',
+            'offer_ids.*.exists' => 'One or more selected offers do not exist.',
             'offer_snapshot.array' => 'The offer snapshot must be an array.',
             'items.array' => 'The items must be an array.',
             'items.min' => 'At least one order item is required when items are provided.',
@@ -166,10 +173,11 @@ class UpdateOrderRequest extends FormRequest
         return [
             'customer_id' => 'customer',
             'charity_id' => 'charity',
+            'customer_address_id' => 'customer address',
             'order_number' => 'order number',
             'status' => 'status',
             'delivery_type' => 'delivery type',
-            'offer_id' => 'offer',
+            'offer_ids' => 'offers',
             'offer_snapshot' => 'offer snapshot',
             'items' => 'order items',
             'items.*.id' => 'item ID',

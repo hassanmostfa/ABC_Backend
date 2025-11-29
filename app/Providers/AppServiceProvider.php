@@ -39,6 +39,8 @@ use App\Repositories\PaymentRepositoryInterface;
 use App\Repositories\PaymentRepository;
 use App\Repositories\DeliveryRepositoryInterface;
 use App\Repositories\DeliveryRepository;
+use App\Repositories\CustomerAddressRepositoryInterface;
+use App\Repositories\CustomerAddressRepository;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -65,6 +67,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(InvoiceRepositoryInterface::class, InvoiceRepository::class);
         $this->app->bind(PaymentRepositoryInterface::class, PaymentRepository::class);
         $this->app->bind(DeliveryRepositoryInterface::class, DeliveryRepository::class);
+        $this->app->bind(CustomerAddressRepositoryInterface::class, CustomerAddressRepository::class);
     }
 
     /**

@@ -20,7 +20,7 @@ class CustomerRepository implements CustomerRepositoryInterface
      */
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
-        $query = $this->model->query();
+        $query = $this->model->with(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area']);
 
         // Search functionality
         if (isset($filters['search']) && !empty($filters['search'])) {
@@ -75,7 +75,7 @@ class CustomerRepository implements CustomerRepositoryInterface
      */
     public function getAll(): Collection
     {
-        return $this->model->all();
+        return $this->model->with(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area'])->get();
     }
 
     /**
@@ -83,7 +83,7 @@ class CustomerRepository implements CustomerRepositoryInterface
      */
     public function findById(int $id): ?Customer
     {
-        return $this->model->find($id);
+        return $this->model->with(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area'])->find($id);
     }
 
     /**
@@ -103,7 +103,7 @@ class CustomerRepository implements CustomerRepositoryInterface
         
         if ($customer) {
             $customer->update($data);
-            return $customer->fresh();
+            return $customer->fresh(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area']);
         }
 
         return null;
@@ -128,7 +128,7 @@ class CustomerRepository implements CustomerRepositoryInterface
      */
     public function getActive(): Collection
     {
-        return $this->model->active()->get();
+        return $this->model->with(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area'])->active()->get();
     }
 
     /**
@@ -136,6 +136,6 @@ class CustomerRepository implements CustomerRepositoryInterface
      */
     public function getInactive(): Collection
     {
-        return $this->model->inactive()->get();
+        return $this->model->with(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area'])->inactive()->get();
     }
 }

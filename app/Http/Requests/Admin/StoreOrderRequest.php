@@ -32,18 +32,6 @@ class StoreOrderRequest extends FormRequest
     /**
      * Prepare the data for validation.
      */
-    protected function prepareForValidation(): void
-    {
-        // If delivery_type is "delivery" and payment_method is at root level but not in delivery,
-        // copy it to delivery.payment_method
-        if ($this->input('delivery_type') === 'delivery' && $this->has('payment_method')) {
-            $delivery = $this->input('delivery', []);
-            if (!isset($delivery['payment_method']) && $this->has('payment_method')) {
-                $delivery['payment_method'] = $this->input('payment_method');
-                $this->merge(['delivery' => $delivery]);
-            }
-        }
-    }
 
     /**
      * Get the validation rules that apply to the request.
@@ -53,11 +41,16 @@ class StoreOrderRequest extends FormRequest
     public function rules(): array
     {
         $rules = [
-            'customer_id' => 'nullable|integer|exists:customers,id',
+            'customer_id' => 'required|integer|exists:customers,id',
             'charity_id' => 'nullable|integer|exists:charities,id',
-            'delivery_type' => 'required|in:pickup,delivery',
-            'payment_method' => 'nullable|in:cash,card,online,bank_transfer,wallet',
-            'offer_id' => 'nullable|integer|exists:offers,id',
+            'customer_address_id' => 'required|integer|exists:customer_addresses,id',
+            'delivery_type' => 'nullable|in:pickup,delivery', // Will be auto-determined if not provided
+            'payment_method' => 'nullable|in:cash,card,online_link,bank_transfer,wallet',
+            'offer_ids' => 'nullable|array', // Backward compatibility: simple array of IDs
+            'offer_ids.*' => 'required_with:offer_ids|integer|exists:offers,id',
+            'offers' => 'nullable|array', // New format: array of objects with offer_id and quantity
+            'offers.*.offer_id' => 'required_with:offers|integer|exists:offers,id',
+            'offers.*.quantity' => 'required_with:offers.*.offer_id|integer|min:1',
             'offer_snapshot' => 'nullable|array',
             'used_points' => [
                 'nullable',
@@ -87,37 +80,26 @@ class StoreOrderRequest extends FormRequest
                 },
             ],
             'items' => [
-                'required_without:offer_id',
+                'required_without_all:offer_ids,offers',
                 'nullable',
                 'array',
                 function ($attribute, $value, $fail) {
-                    // If no offer_id, items are required and must not be empty
-                    if (!$this->input('offer_id')) {
+                    // If no offer_ids or offers, items are required and must not be empty
+                    $offerIds = $this->input('offer_ids');
+                    $offers = $this->input('offers');
+                    $hasOffers = (!empty($offerIds) && is_array($offerIds) && count($offerIds) > 0) 
+                               || (!empty($offers) && is_array($offers) && count($offers) > 0);
+                    if (!$hasOffers) {
                         if (empty($value) || !is_array($value) || count($value) === 0) {
-                            $fail('Items are required when no offer is provided.');
+                            $fail('Items are required when no offers are provided.');
                         }
                     }
-                    // If offer_id is provided, items can be empty or not provided (offer will add items)
+                    // If offer_ids or offers are provided, items can be empty or not provided (offers will add items)
                 },
             ],
             'items.*.variant_id' => 'required_with:items|integer|exists:product_variants,id',
             'items.*.quantity' => 'required_with:items|integer|min:1',
         ];
-
-        // Add delivery validation rules when delivery_type is "delivery"
-        if ($this->input('delivery_type') === 'delivery') {
-            $rules['delivery'] = 'required|array';
-            // Payment method can be in delivery OR at root level (prepareForValidation handles copying it)
-            $rules['delivery.payment_method'] = 'required|in:cash,card,online,bank_transfer,wallet';
-            $rules['delivery.delivery_address'] = 'required|string';
-            $rules['delivery.block'] = 'nullable|string|max:255';
-            $rules['delivery.street'] = 'nullable|string|max:255';
-            $rules['delivery.house_number'] = 'nullable|string|max:255';
-            $rules['delivery.delivery_datetime'] = 'required|date';
-            $rules['delivery.received_datetime'] = 'nullable|date';
-            $rules['delivery.delivery_status'] = 'nullable|in:pending,assigned,in_transit,delivered,failed,cancelled';
-            $rules['delivery.notes'] = 'nullable|string';
-        }
 
         return $rules;
     }
@@ -134,14 +116,26 @@ class StoreOrderRequest extends FormRequest
             'customer_id.exists' => 'The selected customer does not exist.',
             'charity_id.integer' => 'The charity ID must be a valid integer.',
             'charity_id.exists' => 'The selected charity does not exist.',
+            'customer_address_id.integer' => 'The customer address ID must be a valid integer.',
+            'customer_address_id.exists' => 'The selected customer address does not exist.',
+            'customer_address_id.required' => 'The customer address ID is required.',
+            'customer_address_id.integer' => 'The customer address ID must be a valid integer.',
+            'customer_address_id.exists' => 'The selected customer address does not exist.',
             'source.required' => 'The order source is required.',
             'source.in' => 'The order source must be one of: app, web, call_center.',
             'status.required' => 'The status is required.',
             'status.in' => 'The status must be one of: pending, processing, completed, cancelled.',
-            'delivery_type.required' => 'The delivery type is required.',
             'delivery_type.in' => 'The delivery type must be either pickup or delivery.',
-            'offer_id.integer' => 'The offer ID must be a valid integer.',
-            'offer_id.exists' => 'The selected offer does not exist.',
+            'offer_ids.array' => 'The offer IDs must be an array.',
+            'offer_ids.*.integer' => 'Each offer ID must be a valid integer.',
+            'offer_ids.*.exists' => 'One or more selected offers do not exist.',
+            'offers.array' => 'The offers must be an array.',
+            'offers.*.offer_id.required' => 'The offer ID is required for each offer.',
+            'offers.*.offer_id.integer' => 'Each offer ID must be a valid integer.',
+            'offers.*.offer_id.exists' => 'One or more selected offers do not exist.',
+            'offers.*.quantity.required' => 'The quantity is required for each offer.',
+            'offers.*.quantity.integer' => 'The quantity must be a valid integer.',
+            'offers.*.quantity.min' => 'The quantity must be at least 1.',
             'offer_snapshot.array' => 'The offer snapshot must be an array.',
             'items.required' => 'At least one order item is required.',
             'items.array' => 'The items must be an array.',
@@ -154,21 +148,6 @@ class StoreOrderRequest extends FormRequest
             'items.*.quantity.min' => 'The quantity must be at least 1.',
             'used_points.integer' => 'The used points must be a valid integer.',
             'used_points.min' => 'The minimum points to use is 10.',
-            'delivery.required' => 'Delivery information is required when delivery type is delivery.',
-            'delivery.array' => 'Delivery must be an array.',
-            'delivery.payment_method.in' => 'The payment method must be one of: cash, card, online, bank_transfer, wallet.',
-            'delivery.delivery_address.required' => 'The delivery address is required.',
-            'delivery.delivery_address.string' => 'The delivery address must be a string.',
-            'delivery.block.string' => 'The block must be a string.',
-            'delivery.block.max' => 'The block may not be greater than 255 characters.',
-            'delivery.street.string' => 'The street must be a string.',
-            'delivery.street.max' => 'The street may not be greater than 255 characters.',
-            'delivery.house_number.string' => 'The house number must be a string.',
-            'delivery.house_number.max' => 'The house number may not be greater than 255 characters.',
-            'delivery.delivery_datetime.date' => 'The delivery datetime must be a valid date.',
-            'delivery.received_datetime.date' => 'The received datetime must be a valid date.',
-            'delivery.delivery_status.in' => 'The delivery status must be one of: pending, assigned, in_transit, delivered, failed, cancelled.',
-            'delivery.notes.string' => 'The notes must be a string.',
         ];
     }
 
@@ -182,25 +161,18 @@ class StoreOrderRequest extends FormRequest
         return [
             'customer_id' => 'customer',
             'charity_id' => 'charity',
+            'customer_address_id' => 'customer address',
             'source' => 'order source',
             'status' => 'status',
             'delivery_type' => 'delivery type',
-            'offer_id' => 'offer',
             'offer_snapshot' => 'offer snapshot',
+            'offers' => 'offers',
+            'offers.*.offer_id' => 'offer ID',
+            'offers.*.quantity' => 'quantity',
             'items' => 'order items',
             'items.*.variant_id' => 'variant',
             'items.*.quantity' => 'quantity',
             'used_points' => 'used points',
-            'delivery' => 'delivery information',
-            'delivery.payment_method' => 'payment method',
-            'delivery.delivery_address' => 'delivery address',
-            'delivery.block' => 'block',
-            'delivery.street' => 'street',
-            'delivery.house_number' => 'house number',
-            'delivery.delivery_datetime' => 'delivery datetime',
-            'delivery.received_datetime' => 'received datetime',
-            'delivery.delivery_status' => 'delivery status',
-            'delivery.notes' => 'notes',
         ];
     }
 }

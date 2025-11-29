@@ -60,6 +60,10 @@ class OfferRequest extends FormRequest
     public function rules(): array
     {
         $rules = [
+            'title_en' => 'required|string|max:255',
+            'title_ar' => 'required|string|max:255',
+            'description_en' => 'required|string',
+            'description_ar' => 'required|string',
             'offer_start_date' => 'required|date|after_or_equal:today',
             'offer_end_date' => 'required|date|after:offer_start_date',
             'is_active' => 'boolean',
@@ -176,6 +180,18 @@ class OfferRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'title_en.required' => 'العنوان بالإنجليزية مطلوب.',
+            'title_en.string' => 'العنوان بالإنجليزية يجب أن يكون نص.',
+            'title_en.max' => 'العنوان بالإنجليزية لا يجب أن يتجاوز 255 حرف.',
+            'title_ar.required' => 'العنوان بالعربية مطلوب.',
+            'title_ar.string' => 'العنوان بالعربية يجب أن يكون نص.',
+            'title_ar.max' => 'العنوان بالعربية لا يجب أن يتجاوز 255 حرف.',
+            'description_en.required' => 'الوصف بالإنجليزية مطلوب.',
+            'description_en.string' => 'الوصف بالإنجليزية يجب أن يكون نص.',
+            'description_ar.required' => 'الوصف بالعربية مطلوب.',
+            'description_ar.string' => 'الوصف بالعربية يجب أن يكون نص.',
+            'description_ar.max' => 'الوصف بالعربية لا يجب أن يتجاوز 255 حرف.',
+            'description_en.max' => 'الوصف بالإنجليزية لا يجب أن يتجاوز 255 حرف.',
             'offer_start_date.required' => 'تاريخ بداية العرض مطلوب.',
             'offer_start_date.date' => 'تاريخ بداية العرض يجب أن يكون تاريخ صحيح.',
             'offer_start_date.after_or_equal' => 'تاريخ بداية العرض يجب أن يكون اليوم أو في المستقبل.',
@@ -224,6 +240,10 @@ class OfferRequest extends FormRequest
     public function attributes(): array
     {
         return [
+            'title_en' => 'العنوان بالإنجليزية',
+            'title_ar' => 'العنوان بالعربية',
+            'description_en' => 'الوصف بالإنجليزية',
+            'description_ar' => 'الوصف بالعربية',
             'offer_start_date' => 'تاريخ بداية العرض',
             'offer_end_date' => 'تاريخ انتهاء العرض',
             'is_active' => 'حالة التفعيل',
