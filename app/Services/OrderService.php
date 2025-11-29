@@ -140,13 +140,6 @@ class OrderService
             $source = 'call_center'; // Default to call_center for admin
             $orderNumber = $this->generateOrderNumber($source);
             
-            // Get payment method from root level
-            $paymentMethod = $data['payment_method'] ?? null;
-            // Normalize payment method to 'cash' or 'wallet' only for orders table
-            $paymentMethodForOrder = ($paymentMethod && in_array($paymentMethod, ['cash', 'wallet'])) 
-                ? $paymentMethod 
-                : null;
-            
             // Create the order
             $orderData = Arr::except($data, ['items', 'source', 'offer_ids', 'offers']); // Remove offer_ids and offers from order data
             
@@ -168,8 +161,10 @@ class OrderService
                 }
             }
             
-            if ($paymentMethodForOrder) {
-                $orderData['payment_method'] = $paymentMethodForOrder;
+            // Normalize payment method to allowed values for orders table
+            $paymentMethod = $data['payment_method'] ?? null;
+            if ($paymentMethod && in_array($paymentMethod, ['cash', 'wallet', 'online_link'])) {
+                $orderData['payment_method'] = $paymentMethod;
             }
             $order = $this->orderRepository->create($orderData);
 
@@ -249,14 +244,14 @@ class OrderService
 
             // Get payment method from root level
             $paymentMethod = $data['payment_method'] ?? null;
-            // Normalize payment method to 'cash' or 'wallet' only for orders table
-            $paymentMethodForOrder = ($paymentMethod && in_array($paymentMethod, ['cash', 'wallet'])) 
+            // Normalize payment method to allowed values for orders table
+            $paymentMethodForOrder = ($paymentMethod && in_array($paymentMethod, ['cash', 'wallet', 'online_link'])) 
                 ? $paymentMethod 
                 : null;
             
             // Update the order (excluding items, total_amount, offer_ids, and offers)
             $orderData = Arr::except($data, ['items', 'total_amount', 'used_points', 'offer_ids', 'offers']);
-            // Add payment_method to order data if it's cash or wallet
+            // Add payment_method to order data if it's a valid value
             if ($paymentMethodForOrder) {
                 $orderData['payment_method'] = $paymentMethodForOrder;
             }

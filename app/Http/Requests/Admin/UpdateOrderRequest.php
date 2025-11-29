@@ -58,6 +58,7 @@ class UpdateOrderRequest extends FormRequest
             'offers.*.quantity' => 'required_with:offers.*.offer_id|integer|min:1',
             'offer_snapshot' => 'sometimes|nullable|array',
             'delivery_type' => 'sometimes|nullable|in:pickup,delivery',
+            'payment_method' => 'sometimes|nullable|in:cash,card,online_link,bank_transfer,wallet',
             'used_points' => [
                 'sometimes',
                 'nullable',
