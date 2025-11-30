@@ -109,7 +109,7 @@ class OrderController extends BaseApiController
         }
 
         // Load all relationships
-        $order->load(['customer', 'charity', 'offer', 'items.product', 'items.variant', 'invoice', 'customerAddress']);
+        $order->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice', 'customerAddress']);
 
         return $this->resourceResponse(new OrderResource($order), 'Order retrieved successfully');
     }

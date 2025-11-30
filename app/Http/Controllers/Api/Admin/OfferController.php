@@ -30,15 +30,19 @@ class OfferController extends BaseApiController
         // Validate filter parameters
         $request->validate([
             'per_page' => 'nullable|integer|min:1|max:100',
-            'type' => 'nullable|string|max:255',
+            'type' => 'nullable|in:normal,charity',
+            'category_id' => 'nullable|integer|exists:categories,id',
+            'search' => 'nullable|string|max:1000',
         ]);
 
         $perPage = $request->input('per_page', 15);
         $filters = [
             'type' => $request->input('type'),
+            'category_id' => $request->input('category_id'),
+            'search' => $request->input('search'),
         ];
         
-        // Remove null values from filters
+        // Remove null and empty values from filters
         $filters = array_filter($filters, function($value) {
             return $value !== null && $value !== '';
         });
@@ -48,7 +52,7 @@ class OfferController extends BaseApiController
         // Transform data using OfferResource
         $transformedOffers = OfferResource::collection($offers->items());
 
-        // Create a custom response with pagination
+        // Create a custom response with pagination and filters
         $response = [
             'success' => true,
             'message' => 'Offers retrieved successfully',
@@ -62,6 +66,10 @@ class OfferController extends BaseApiController
                 'to' => $offers->lastItem(),
             ]
         ];
+
+        if (!empty($filters)) {
+            $response['filters'] = $filters;
+        }
 
         return response()->json($response);
     }

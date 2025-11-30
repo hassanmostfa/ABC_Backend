@@ -29,10 +29,36 @@ class OfferRepository implements OfferRepositoryInterface
             'charity'
         ]);
 
-        // Apply type filter if provided
+        // Search functionality
+        if (isset($filters['search']) && !empty(trim($filters['search']))) {
+            $search = trim($filters['search']);
+            $query->where(function ($q) use ($search) {
+                $q->where('title_en', 'LIKE', "%{$search}%")
+                  ->orWhere('title_ar', 'LIKE', "%{$search}%")
+                  ->orWhere('description_en', 'LIKE', "%{$search}%")
+                  ->orWhere('description_ar', 'LIKE', "%{$search}%");
+            });
+        }
+
+        // Filter by type
         if (isset($filters['type']) && !empty(trim($filters['type']))) {
             $type = trim($filters['type']);
-            $query->where('type', 'like', "%{$type}%");
+            $query->where('type', $type);
+        }
+
+        // Filter by category_id (through conditions or rewards products)
+        if (isset($filters['category_id']) && is_numeric($filters['category_id'])) {
+            $categoryId = $filters['category_id'];
+            $query->where(function ($q) use ($categoryId) {
+                // Search in conditions products
+                $q->whereHas('conditions.product', function ($productQuery) use ($categoryId) {
+                    $productQuery->where('category_id', $categoryId);
+                })
+                // Or search in rewards products
+                ->orWhereHas('rewards.product', function ($productQuery) use ($categoryId) {
+                    $productQuery->where('category_id', $categoryId);
+                });
+            });
         }
 
         // Default sorting by created_at desc

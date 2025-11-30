@@ -103,6 +103,9 @@ class OrderService
                 $totalAmount = $result['totalAmount'];
             }
 
+            // Store original total before offers for minimum order validation
+            $originalTotalAmount = $totalAmount;
+
             // Handle offer rewards for all offers (process sequentially, respecting quantities)
             $offerDiscount = 0.00;
             foreach ($offersToProcess as $offer) {
@@ -112,11 +115,17 @@ class OrderService
                 $offerDiscount += $offerResult['offerDiscount']; // Accumulate discounts from all offers
             }
 
+            // Calculate final amount after discounts for minimum validation
+            $finalAmountAfterDiscounts = $totalAmount - $offerDiscount;
+
             // Handle points discount (calculate before creating order)
             $requestedPoints = $data['used_points'] ?? 0;
             $pointsResult = $this->pointsService->calculateDiscount($requestedPoints, $totalAmount, $offerDiscount);
             $usedPoints = $pointsResult['usedPoints'];
             $pointsDiscount = $pointsResult['pointsDiscount'];
+
+            // Calculate final amount after all discounts for minimum validation
+            $finalAmountAfterAllDiscounts = $totalAmount - $offerDiscount - $pointsDiscount;
 
             // Determine delivery type for invoice calculation
             $deliveryType = $data['delivery_type'] ?? null;
@@ -127,22 +136,23 @@ class OrderService
             }
 
             // Validate minimum order amount based on order type (charity vs customer)
+            // Check on the final amount after all discounts
             $charityId = $data['charity_id'] ?? null;
             $customerId = $data['customer_id'] ?? null;
             
             if ($charityId) {
                 // Charity order - check minimum charity order
                 $minimumCharityOrder = (float) \App\Models\Setting::getValue('minimum_charity_order', 13);
-                if ($totalAmount < $minimumCharityOrder) {
+                if ($finalAmountAfterAllDiscounts < $minimumCharityOrder) {
                     DB::rollBack();
-                    throw new \Exception("Minimum charity order amount is {$minimumCharityOrder}. Current order amount is {$totalAmount}.");
+                    throw new \Exception("Minimum charity order amount is {$minimumCharityOrder}. Current order amount after discounts is {$finalAmountAfterAllDiscounts}.");
                 }
             } elseif ($customerId) {
                 // Customer/home order - check minimum home order
                 $minimumHomeOrder = (float) \App\Models\Setting::getValue('minimum_home_order', 5);
-                if ($totalAmount < $minimumHomeOrder) {
+                if ($finalAmountAfterAllDiscounts < $minimumHomeOrder) {
                     DB::rollBack();
-                    throw new \Exception("Minimum home order amount is {$minimumHomeOrder}. Current order amount is {$totalAmount}.");
+                    throw new \Exception("Minimum home order amount is {$minimumHomeOrder}. Current order amount after discounts is {$finalAmountAfterAllDiscounts}.");
                 }
             }
 

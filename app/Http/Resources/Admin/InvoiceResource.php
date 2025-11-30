@@ -66,12 +66,34 @@ class InvoiceResource extends JsonResource
                             ];
                         });
                     }),
-                    'delivery' => $this->when($this->order->relationLoaded('delivery') && $this->order->delivery, function () {
+                    'customer_address' => $this->when($this->order->relationLoaded('customerAddress') && $this->order->customerAddress, function () {
                         return [
-                            'id' => $this->order->delivery->id,
-                            'delivery_address' => $this->order->delivery->delivery_address,
-                            'delivery_status' => $this->order->delivery->delivery_status,
-                            'payment_method' => $this->order->delivery->payment_method,
+                            'id' => $this->order->customerAddress->id,
+                            'street' => $this->order->customerAddress->street,
+                            'house' => $this->order->customerAddress->house,
+                            'block' => $this->order->customerAddress->block,
+                            'floor' => $this->order->customerAddress->floor,
+                            'country' => $this->when($this->order->customerAddress->relationLoaded('country'), function () {
+                                return [
+                                    'id' => $this->order->customerAddress->country->id,
+                                    'name_ar' => $this->order->customerAddress->country->name_ar,
+                                    'name_en' => $this->order->customerAddress->country->name_en,
+                                ];
+                            }),
+                            'governorate' => $this->when($this->order->customerAddress->relationLoaded('governorate'), function () {
+                                return [
+                                    'id' => $this->order->customerAddress->governorate->id,
+                                    'name_ar' => $this->order->customerAddress->governorate->name_ar,
+                                    'name_en' => $this->order->customerAddress->governorate->name_en,
+                                ];
+                            }),
+                            'area' => $this->when($this->order->customerAddress->relationLoaded('area'), function () {
+                                return [
+                                    'id' => $this->order->customerAddress->area->id,
+                                    'name_ar' => $this->order->customerAddress->area->name_ar,
+                                    'name_en' => $this->order->customerAddress->area->name_en,
+                                ];
+                            }),
                         ];
                     }),
                     'created_at' => $this->order->created_at?->toISOString(),

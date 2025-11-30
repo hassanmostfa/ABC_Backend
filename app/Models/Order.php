@@ -60,11 +60,6 @@ class Order extends Model
         return $this->hasOne(Invoice::class);
     }
 
-    public function delivery()
-    {
-        return $this->hasOne(Delivery::class);
-    }
-
     public function customerAddress()
     {
         return $this->belongsTo(CustomerAddress::class, 'customer_address_id');

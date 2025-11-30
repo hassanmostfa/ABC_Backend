@@ -90,11 +90,11 @@ class InvoiceController extends BaseApiController
         $invoice->load([
             'order.customer',
             'order.charity',
-            'order.offer',
+            'order.offers',
             'order.items.product',
             'order.items.variant',
             'order.invoice',
-            'order.delivery',
+            'order.customerAddress',
             'payments'
         ]);
 
@@ -134,11 +134,11 @@ class InvoiceController extends BaseApiController
             $invoice->load([
                 'order.customer',
                 'order.charity',
-                'order.offer',
+                'order.offers',
                 'order.items.product',
                 'order.items.variant',
                 'order.invoice',
-                'order.delivery',
+                'order.customerAddress',
                 'payments'
             ]);
 
