@@ -64,36 +64,44 @@ class OfferService
                 if ($condition->product_variant_id) {
                     $variant = ProductVariant::with('product')->find($condition->product_variant_id);
                     if ($variant && $variant->is_active) {
-                        // Check if this variant is already in order items
-                        $existingItem = collect($orderItemsData)->firstWhere('variant_id', $variant->id);
+                        // Find existing item index (if exists)
+                        $existingItemIndex = collect($orderItemsData)->search(function ($item) use ($variant) {
+                            return isset($item['variant_id']) && $item['variant_id'] == $variant->id;
+                        });
                         
                         $conditionQuantity = $condition->quantity;
                         
-                        // Calculate total quantity needed (existing + condition)
-                        $existingQuantity = $existingItem ? $existingItem['quantity'] : 0;
-                        $totalNeededQuantity = $existingQuantity + $conditionQuantity;
-                        
                         // Check if variant has sufficient quantity
                         $availableQuantity = $variant->quantity ?? 0;
-                        if ($availableQuantity < $totalNeededQuantity) {
+                        if ($availableQuantity < $conditionQuantity) {
                             DB::rollBack();
                             $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
                             $sizeInfo = $variant->size ? ' - ' . $variant->size : '';
                             throw new \Exception(
-                                "Insufficient quantity for offer condition product {$productName}{$sizeInfo}. Available: {$availableQuantity}, Required: {$totalNeededQuantity}"
+                                "Insufficient quantity for offer condition product {$productName}{$sizeInfo}. Available: {$availableQuantity}, Required: {$conditionQuantity}"
                             );
                         }
                         
-                        if (!$existingItem) {
-                            // Add condition product with normal price
-                            $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
-                            if ($variant->size) {
-                                $productName .= ' - ' . $variant->size;
-                            }
+                        $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
+                        if ($variant->size) {
+                            $productName .= ' - ' . $variant->size;
+                        }
+                        
+                        $conditionUnitPrice = $variant->price;
+                        $conditionTotalPrice = $conditionUnitPrice * $conditionQuantity;
+                        
+                        if ($existingItemIndex !== false) {
+                            // Item exists - update quantity and price
+                            $existingItem = $orderItemsData[$existingItemIndex];
+                            $oldTotalPrice = $existingItem['total_price'];
+                            $existingItem['quantity'] += $conditionQuantity;
+                            $existingItem['total_price'] = $existingItem['unit_price'] * $existingItem['quantity'];
+                            $orderItemsData[$existingItemIndex] = $existingItem;
                             
-                            $conditionUnitPrice = $variant->price;
-                            $conditionTotalPrice = $conditionUnitPrice * $conditionQuantity;
-                            
+                            // Update total amount (remove old, add new)
+                            $totalAmount = $totalAmount - $oldTotalPrice + $existingItem['total_price'];
+                        } else {
+                            // Add new condition product item
                             $orderItemsData[] = [
                                 'variant_id' => $variant->id,
                                 'product_id' => $variant->product_id,
@@ -112,7 +120,8 @@ class OfferService
                 }
             }
             
-            // Add reward products to order items with normal prices
+            // Add ALL reward products to order items (always add, even if duplicates from multiple offers)
+            // Reward products are free, so they should always be added as separate items
             // Their total price will be added to offer_discount
             $rewardProductsTotal = 0.00;
             $activeRewards = $offer->activeRewards()->with(['product', 'productVariant'])->get();
@@ -141,6 +150,7 @@ class OfferService
                         $rewardTotalPrice = $rewardUnitPrice * $rewardQuantity;
                         $rewardProductsTotal += $rewardTotalPrice;
                         
+                        // IMPORTANT: Always add reward products to order items (they're free)
                         $orderItemsData[] = [
                             'variant_id' => $variant->id,
                             'product_id' => $variant->product_id,
@@ -161,7 +171,70 @@ class OfferService
             // Add reward products total price to offer discount
             $offerDiscount = $rewardProductsTotal;
         } elseif ($offer->reward_type === 'discount') {
-            // Calculate discount from rewards
+            // Add condition products to order items (if not already present)
+            // Discount offers also need their conditions fulfilled
+            $activeConditions = $offer->activeConditions()->with(['product', 'productVariant'])->get();
+            foreach ($activeConditions as $condition) {
+                if ($condition->product_variant_id) {
+                    $variant = ProductVariant::with('product')->find($condition->product_variant_id);
+                    if ($variant && $variant->is_active) {
+                        // Find existing item index (if exists)
+                        $existingItemIndex = collect($orderItemsData)->search(function ($item) use ($variant) {
+                            return isset($item['variant_id']) && $item['variant_id'] == $variant->id;
+                        });
+                        
+                        $conditionQuantity = $condition->quantity;
+                        
+                        // Check if variant has sufficient quantity
+                        $availableQuantity = $variant->quantity ?? 0;
+                        if ($availableQuantity < $conditionQuantity) {
+                            DB::rollBack();
+                            $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
+                            $sizeInfo = $variant->size ? ' - ' . $variant->size : '';
+                            throw new \Exception(
+                                "Insufficient quantity for offer condition product {$productName}{$sizeInfo}. Available: {$availableQuantity}, Required: {$conditionQuantity}"
+                            );
+                        }
+                        
+                        $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
+                        if ($variant->size) {
+                            $productName .= ' - ' . $variant->size;
+                        }
+                        
+                        $conditionUnitPrice = $variant->price;
+                        $conditionTotalPrice = $conditionUnitPrice * $conditionQuantity;
+                        
+                        if ($existingItemIndex !== false) {
+                            // Item exists - update quantity and price
+                            $existingItem = $orderItemsData[$existingItemIndex];
+                            $oldTotalPrice = $existingItem['total_price'];
+                            $existingItem['quantity'] += $conditionQuantity;
+                            $existingItem['total_price'] = $existingItem['unit_price'] * $existingItem['quantity'];
+                            $orderItemsData[$existingItemIndex] = $existingItem;
+                            
+                            // Update total amount (remove old, add new)
+                            $totalAmount = $totalAmount - $oldTotalPrice + $existingItem['total_price'];
+                        } else {
+                            // Add new condition product item
+                            $orderItemsData[] = [
+                                'variant_id' => $variant->id,
+                                'product_id' => $variant->product_id,
+                                'name' => $productName,
+                                'sku' => $variant->sku,
+                                'quantity' => $conditionQuantity,
+                                'unit_price' => $conditionUnitPrice,
+                                'total_price' => $conditionTotalPrice,
+                                'is_offer' => true,
+                            ];
+                            
+                            // Add to total amount
+                            $totalAmount += $conditionTotalPrice;
+                        }
+                    }
+                }
+            }
+            
+            // Calculate discount from rewards (on the updated totalAmount)
             $activeRewards = $offer->activeRewards()->get();
             foreach ($activeRewards as $reward) {
                 if ($reward->discount_amount && $reward->discount_type) {
