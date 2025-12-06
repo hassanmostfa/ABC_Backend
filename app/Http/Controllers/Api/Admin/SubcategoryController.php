@@ -97,6 +97,9 @@ class SubcategoryController extends BaseApiController
 
         $subcategory = $this->subcategoryRepository->create($data);
 
+        // Log activity
+        logAdminActivity('created', 'Subcategory', $subcategory->id);
+
         return $this->createdResponse($subcategory, 'Subcategory created successfully');
     }
 
@@ -152,6 +155,9 @@ class SubcategoryController extends BaseApiController
 
         $updatedSubcategory = $this->subcategoryRepository->update($id, $data);
 
+        // Log activity
+        logAdminActivity('updated', 'Subcategory', $id);
+
         return $this->updatedResponse($updatedSubcategory, 'Subcategory updated successfully');
     }
 
@@ -176,6 +182,9 @@ class SubcategoryController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Subcategory not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'Subcategory', $id);
 
         return $this->deletedResponse('Subcategory deleted successfully');
     }

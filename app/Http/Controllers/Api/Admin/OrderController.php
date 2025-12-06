@@ -90,6 +90,10 @@ class OrderController extends BaseApiController
     {
         try {
             $result = $this->orderService->createOrder($request->validated());
+            
+            // Log activity
+            logAdminActivity('created', 'Order', $result['order']->id);
+            
             return $this->createdResponse(new OrderResource($result['order']), 'Order created successfully');
         } catch (\Exception $e) {
             $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 500;
@@ -127,6 +131,10 @@ class OrderController extends BaseApiController
 
         try {
             $result = $this->orderService->updateOrder($id, $request->validated());
+            
+            // Log activity
+            logAdminActivity('updated', 'Order', $id);
+            
             return $this->updatedResponse(new OrderResource($result['order']), 'Order updated successfully');
         } catch (\Exception $e) {
             $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 500;
@@ -144,6 +152,9 @@ class OrderController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Order not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'Order', $id);
 
         return $this->deletedResponse('Order deleted successfully');
     }

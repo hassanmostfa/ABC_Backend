@@ -190,6 +190,9 @@ class AdminController extends Controller
 
             $admin->load('role');
 
+            // Log activity
+            logAdminActivity('created', 'Admin', $admin->id);
+
             return response()->json([
                 'success' => true,
                 'data' => $admin,
@@ -272,6 +275,9 @@ class AdminController extends Controller
         $admin->update($updateData);
         $admin->load('role');
 
+        // Log activity
+        logAdminActivity('updated', 'Admin', $id);
+
         return response()->json([
             'success' => true,
             'data' => $admin,
@@ -294,6 +300,9 @@ class AdminController extends Controller
         }
 
         $admin->delete();
+
+        // Log activity
+        logAdminActivity('deleted', 'Admin', $id);
 
         return response()->json([
             'success' => true,

@@ -94,6 +94,9 @@ class CategoryController extends BaseApiController
 
         $category = $this->categoryRepository->create($data);
 
+        // Log activity
+        logAdminActivity('created', 'Category', $category->id);
+
         return $this->createdResponse($category, 'Category created successfully');
     }
 
@@ -148,6 +151,9 @@ class CategoryController extends BaseApiController
 
         $updatedCategory = $this->categoryRepository->update($id, $data);
 
+        // Log activity
+        logAdminActivity('updated', 'Category', $id);
+
         return $this->updatedResponse($updatedCategory, 'Category updated successfully');
     }
 
@@ -172,6 +178,9 @@ class CategoryController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Category not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'Category', $id);
 
         return $this->deletedResponse('Category deleted successfully');
     }

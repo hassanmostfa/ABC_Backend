@@ -65,6 +65,22 @@ class Customer extends Authenticatable
     }
 
     /**
+     * Get the notifications for the customer.
+     */
+    public function notifications()
+    {
+        return $this->morphMany(Notification::class, 'notifiable');
+    }
+
+    /**
+     * Get unread notifications for the customer.
+     */
+    public function unreadNotifications()
+    {
+        return $this->morphMany(Notification::class, 'notifiable')->where('is_read', false);
+    }
+
+    /**
      * Boot the model
      */
     protected static function boot()

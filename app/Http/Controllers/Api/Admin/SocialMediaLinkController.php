@@ -89,6 +89,9 @@ class SocialMediaLinkController extends BaseApiController
         $socialMediaLink = $this->socialMediaLinkRepository->create($validatedData);
         $transformedSocialMediaLink = new SocialMediaLinkResource($socialMediaLink);
 
+        // Log activity
+        logAdminActivity('created', 'SocialMediaLink', $socialMediaLink->id);
+
         return $this->createdResponse($transformedSocialMediaLink, 'Social media link created successfully');
     }
 
@@ -136,6 +139,9 @@ class SocialMediaLinkController extends BaseApiController
 
         $updatedSocialMediaLink = $this->socialMediaLinkRepository->update($id, $validatedData);
 
+        // Log activity
+        logAdminActivity('updated', 'SocialMediaLink', $id);
+
         $transformedSocialMediaLink = new SocialMediaLinkResource($updatedSocialMediaLink);
         return $this->updatedResponse($transformedSocialMediaLink, 'Social media link updated successfully');
     }
@@ -161,6 +167,9 @@ class SocialMediaLinkController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Social media link not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'SocialMediaLink', $id);
 
         return $this->deletedResponse('Social media link deleted successfully');
     }

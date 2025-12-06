@@ -41,6 +41,12 @@ use App\Repositories\DeliveryRepositoryInterface;
 use App\Repositories\DeliveryRepository;
 use App\Repositories\CustomerAddressRepositoryInterface;
 use App\Repositories\CustomerAddressRepository;
+use App\Repositories\TeamMemberRepositoryInterface;
+use App\Repositories\TeamMemberRepository;
+use App\Repositories\SliderRepositoryInterface;
+use App\Repositories\SliderRepository;
+use App\Repositories\NotificationRepositoryInterface;
+use App\Repositories\NotificationRepository;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -68,6 +74,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(PaymentRepositoryInterface::class, PaymentRepository::class);
         $this->app->bind(DeliveryRepositoryInterface::class, DeliveryRepository::class);
         $this->app->bind(CustomerAddressRepositoryInterface::class, CustomerAddressRepository::class);
+        $this->app->bind(TeamMemberRepositoryInterface::class, TeamMemberRepository::class);
+        $this->app->bind(SliderRepositoryInterface::class, SliderRepository::class);
+        $this->app->bind(NotificationRepositoryInterface::class, NotificationRepository::class);
     }
 
     /**

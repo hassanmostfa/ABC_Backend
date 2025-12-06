@@ -111,6 +111,9 @@ class ProductController extends BaseApiController
         // Reload the product with variants for response
         $product = $this->productRepository->findById($product->id);
 
+        // Log activity
+        logAdminActivity('created', 'Product', $product->id);
+
         return $this->createdResponse($product, 'Product created successfully');
     }
 
@@ -219,6 +222,9 @@ class ProductController extends BaseApiController
         // Reload the product with variants for response
         $product = $this->productRepository->findById($product->id);
 
+        // Log activity
+        logAdminActivity('updated', 'Product', $product->id);
+
         return $this->updatedResponse($product, 'Product updated successfully');
     }
 
@@ -245,6 +251,9 @@ class ProductController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Product not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'Product', $id);
 
         return $this->deletedResponse('Product deleted successfully');
     }

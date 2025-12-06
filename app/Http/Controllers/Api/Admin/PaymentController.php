@@ -220,6 +220,9 @@ class PaymentController extends BaseApiController
                 'invoice.order.items.variant',
             ]);
 
+            // Log activity
+            logAdminActivity('created', 'Payment', $payment->id);
+
             return $this->createdResponse(new PaymentResource($payment), 'Payment created successfully');
         } catch (\Exception $e) {
             DB::rollBack();
@@ -352,6 +355,9 @@ class PaymentController extends BaseApiController
                 'invoice.order.delivery',
             ]);
 
+            // Log activity
+            logAdminActivity('updated', 'Payment', $id);
+
             return $this->updatedResponse(new PaymentResource($payment), 'Payment updated successfully');
         } catch (\Exception $e) {
             DB::rollBack();
@@ -369,6 +375,9 @@ class PaymentController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Payment not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'Payment', $id);
 
         return $this->deletedResponse('Payment deleted successfully');
     }

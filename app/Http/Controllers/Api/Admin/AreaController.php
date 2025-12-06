@@ -75,6 +75,9 @@ class AreaController extends BaseApiController
             $validatedData = $request->validated();
             $area = $this->areaRepository->create($validatedData);
             
+            // Log activity
+            logAdminActivity('created', 'Area', $area->id);
+            
             return $this->createdResponse($area, 'Area created successfully');
         } catch (\Exception $e) {
             return response()->json([
@@ -115,6 +118,9 @@ class AreaController extends BaseApiController
                 return $this->notFoundResponse('Area not found');
             }
 
+            // Log activity
+            logAdminActivity('updated', 'Area', $id);
+
             return $this->updatedResponse($area, 'Area updated successfully');
         } catch (\Exception $e) {
             return response()->json([
@@ -135,6 +141,9 @@ class AreaController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Area not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'Area', $id);
 
         return $this->deletedResponse('Area deleted successfully');
     }

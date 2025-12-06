@@ -40,5 +40,20 @@ class Admin extends Authenticatable
         return $this->belongsTo(Role::class);
     }
 
+    /**
+     * Get the notifications for the admin.
+     */
+    public function notifications()
+    {
+        return $this->morphMany(Notification::class, 'notifiable');
+    }
+
+    /**
+     * Get unread notifications for the admin.
+     */
+    public function unreadNotifications()
+    {
+        return $this->morphMany(Notification::class, 'notifiable')->where('is_read', false);
+    }
 
 }

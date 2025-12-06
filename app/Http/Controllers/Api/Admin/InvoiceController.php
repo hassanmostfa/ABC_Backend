@@ -142,6 +142,9 @@ class InvoiceController extends BaseApiController
                 'payments'
             ]);
 
+            // Log activity
+            logAdminActivity('updated', 'Invoice', $id);
+
             return $this->updatedResponse(new InvoiceResource($invoice), 'Invoice updated successfully');
         } catch (\Exception $e) {
             return $this->errorResponse('Failed to update invoice: ' . $e->getMessage(), 500);

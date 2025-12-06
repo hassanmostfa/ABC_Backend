@@ -110,6 +110,9 @@ class OfferController extends BaseApiController
             // Reload the offer with all relationships for response
             $offer = $this->offerRepository->findById($offer->id);
             
+            // Log activity
+            logAdminActivity('created', 'Offer', $offer->id);
+            
             return $this->createdResponse($offer, 'Offer created successfully');
         } catch (\Exception $e) {
             return response()->json([
@@ -186,6 +189,9 @@ class OfferController extends BaseApiController
         // Reload the offer with all relationships for response
         $offer = $this->offerRepository->findById($offer->id);
 
+        // Log activity
+        logAdminActivity('updated', 'Offer', $offer->id);
+
         return $this->updatedResponse($offer, 'Offer updated successfully');
     }
 
@@ -211,6 +217,9 @@ class OfferController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Offer not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'Offer', $id);
 
         return $this->deletedResponse('Offer deleted successfully');
     }

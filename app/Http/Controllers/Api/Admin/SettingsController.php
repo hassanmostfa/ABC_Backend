@@ -70,6 +70,9 @@ class SettingsController extends BaseApiController
 
             DB::commit();
 
+            // Log activity
+            logAdminActivity('updated', 'Settings', null, ['updated_keys' => array_column($updatedSettings, 'key')]);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Settings updated successfully',

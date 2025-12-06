@@ -89,6 +89,9 @@ class CareerController extends BaseApiController
         $career = $this->careerRepository->create($validatedData);
         $transformedCareer = new CareerResource($career);
 
+        // Log activity
+        logAdminActivity('created', 'Career', $career->id);
+
         return $this->createdResponse($transformedCareer, 'Career application submitted successfully');
     }
 
@@ -137,6 +140,10 @@ class CareerController extends BaseApiController
         }
 
         $transformedCareer = new CareerResource($career);
+        
+        // Log activity
+        logAdminActivity('updated', 'Career', $id);
+        
         return $this->updatedResponse($transformedCareer, 'Career application updated successfully');
     }
 
@@ -162,6 +169,9 @@ class CareerController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Career application not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'Career', $id);
 
         return $this->deletedResponse('Career application deleted successfully');
     }

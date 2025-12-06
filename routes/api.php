@@ -23,11 +23,18 @@ use App\Http\Controllers\Api\Admin\PaymentController;
 use App\Http\Controllers\Api\Admin\DeliveryController;
 use App\Http\Controllers\Api\Admin\SettingsController;
 use App\Http\Controllers\Api\Admin\CustomerAddressController;
+use App\Http\Controllers\Api\Admin\TeamMemberController;
+use App\Http\Controllers\Api\Admin\SliderController;
+use App\Http\Controllers\Api\Admin\ActivityLogController;
+use App\Http\Controllers\Api\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\Api\Shared\ImageController;
 use App\Http\Controllers\Api\Web\ProductController as WebProductController;
 use App\Http\Controllers\Api\Web\CategoryController as WebCategoryController;
 use App\Http\Controllers\Api\Web\AuthController;
 use App\Http\Controllers\Api\Web\SocialMediaLinkController as WebSocialMediaLinkController;
+use App\Http\Controllers\Api\Web\TeamMemberController as WebTeamMemberController;
+use App\Http\Controllers\Api\Web\SliderController as WebSliderController;
+use App\Http\Controllers\Api\Web\NotificationController as CustomerNotificationController;
 use App\Http\Controllers\Api\Shared\ContactUsController;
 use App\Http\Controllers\Api\UtilsController;
 
@@ -213,6 +220,25 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:careers,delete');
       });
 
+            // Team Members Management
+      Route::controller(TeamMemberController::class)->prefix('team-members')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:team_members,view');
+         Route::post('/', 'store')->middleware('admin.permission:team_members,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:team_members,view');
+         Route::post('/{id}', 'update')->middleware('admin.permission:team_members,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:team_members,delete');
+      });
+
+            // Sliders Management
+      Route::controller(SliderController::class)->prefix('sliders')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:sliders,view');
+         Route::post('/', 'store')->middleware('admin.permission:sliders,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:sliders,view');
+         Route::post('/{id}', 'update')->middleware('admin.permission:sliders,edit');
+         Route::patch('/{id}/toggle-published', 'togglePublished')->middleware('admin.permission:sliders,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:sliders,delete');
+      });
+
             // Orders Management
       Route::controller(OrderController::class)->prefix('orders')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:orders,view');
@@ -228,16 +254,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::get('/{id}', 'show')->middleware('admin.permission:invoices,view');
          Route::put('/{id}', 'update')->middleware('admin.permission:invoices,edit');
       });
-
-            // Payments Management
-      Route::controller(PaymentController::class)->prefix('payments')->group(function () {
-         Route::get('/', 'index')->middleware('admin.permission:payments,view');
-         Route::post('/', 'store')->middleware('admin.permission:payments,add');
-         Route::get('/{id}', 'show')->middleware('admin.permission:payments,view');
-         Route::put('/{id}', 'update')->middleware('admin.permission:payments,edit');
-         Route::delete('/{id}', 'destroy')->middleware('admin.permission:payments,delete');
-      });
-
+      
             // Contact Us Management (Admin)
       Route::controller(ContactUsController::class)->prefix('contact-us')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:contact_us,view');
@@ -248,8 +265,24 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
 
             // Settings Management
       Route::controller(SettingsController::class)->prefix('settings')->group(function () {
-         Route::get('/', 'index');
-         Route::put('/', 'update');
+         Route::get('/', 'index')->middleware('admin.permission:settings,view');
+         Route::put('/', 'update')->middleware('admin.permission:settings,edit');
+      });
+
+            // Activity Logs Management
+      Route::controller(ActivityLogController::class)->prefix('activity-logs')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:activity_logs,view');
+      });
+
+            // Admin Notifications Management
+      Route::controller(AdminNotificationController::class)->prefix('notifications')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:notifications,view');
+         Route::get('/unread', 'unread')->middleware('admin.permission:notifications,view');
+         Route::get('/unread-count', 'unreadCount')->middleware('admin.permission:notifications,view');
+         Route::get('/{id}', 'show')->middleware('admin.permission:notifications,view');
+         Route::patch('/{id}/mark-read', 'markAsRead')->middleware('admin.permission:notifications,edit');
+         Route::patch('/mark-all-read', 'markAllAsRead')->middleware('admin.permission:notifications,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:notifications,delete');
       });
 
 
@@ -302,6 +335,16 @@ Route::controller(WebSocialMediaLinkController::class)->prefix('social-media-lin
    Route::get('/', 'getAllActiveLinks');
 });
 
+// Web Team Members Routes (Public)
+Route::controller(WebTeamMemberController::class)->prefix('team-members')->group(function () {
+   Route::get('/', 'getAll');
+});
+
+// Web Sliders Routes (Public)
+Route::controller(WebSliderController::class)->prefix('sliders')->group(function () {
+   Route::get('/', 'getAllPublished');
+});
+
 // Customer Authentication Routes (Public)
 Route::controller(AuthController::class)->prefix('auth')->group(function () {
    Route::post('/register', 'register');
@@ -313,4 +356,15 @@ Route::controller(AuthController::class)->prefix('auth')->group(function () {
 Route::middleware('api.auth')->controller(AuthController::class)->prefix('auth')->group(function () {
    Route::post('/logout', 'logout');
    Route::get('/profile', 'profile');
+});
+
+// Customer Notifications Routes (Protected)
+Route::middleware('api.auth')->controller(CustomerNotificationController::class)->prefix('notifications')->group(function () {
+   Route::get('/', 'index');
+   Route::get('/unread', 'unread');
+   Route::get('/unread-count', 'unreadCount');
+   Route::get('/{id}', 'show');
+   Route::patch('/{id}/mark-read', 'markAsRead');
+   Route::patch('/mark-all-read', 'markAllAsRead');
+   Route::delete('/{id}', 'destroy');
 });

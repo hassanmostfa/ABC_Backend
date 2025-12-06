@@ -92,6 +92,9 @@ class DeliveryController extends BaseApiController
                 'order.invoice',
             ]);
 
+            // Log activity
+            logAdminActivity('created', 'Delivery', $delivery->id);
+
             return $this->createdResponse(new DeliveryResource($delivery), 'Delivery created successfully');
         } catch (\Exception $e) {
             return $this->errorResponse('Failed to create delivery: ' . $e->getMessage(), 500);
@@ -162,6 +165,9 @@ class DeliveryController extends BaseApiController
                 'order.delivery',
             ]);
 
+            // Log activity
+            logAdminActivity('updated', 'Delivery', $id);
+
             return $this->updatedResponse(new DeliveryResource($delivery), 'Delivery updated successfully');
         } catch (\Exception $e) {
             return $this->errorResponse('Failed to update delivery: ' . $e->getMessage(), 500);
@@ -178,6 +184,9 @@ class DeliveryController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Delivery not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'Delivery', $id);
 
         return $this->deletedResponse('Delivery deleted successfully');
     }

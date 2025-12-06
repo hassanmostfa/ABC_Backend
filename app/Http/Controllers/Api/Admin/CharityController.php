@@ -90,6 +90,9 @@ class CharityController extends BaseApiController
             $validatedData = $request->validated();
             $charity = $this->charityRepository->create($validatedData);
             
+            // Log activity
+            logAdminActivity('created', 'Charity', $charity->id);
+            
             return $this->createdResponse($charity, 'Charity created successfully');
         } catch (\Exception $e) {
             return response()->json([
@@ -129,6 +132,9 @@ class CharityController extends BaseApiController
             return $this->notFoundResponse('Charity not found');
         }
 
+        // Log activity
+        logAdminActivity('updated', 'Charity', $id);
+
         return $this->updatedResponse($charity, 'Charity updated successfully');
     }
 
@@ -142,6 +148,9 @@ class CharityController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Charity not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'Charity', $id);
 
         return $this->deletedResponse('Charity deleted successfully');
     }

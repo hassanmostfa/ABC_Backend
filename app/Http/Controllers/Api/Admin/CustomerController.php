@@ -94,6 +94,9 @@ class CustomerController extends BaseApiController
         // Load relationships
         $customer->load(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area']);
 
+        // Log activity
+        logAdminActivity('created', 'Customer', $customer->id);
+
         return $this->createdResponse(new CustomerResource($customer), 'Customer created successfully');
     }
 
@@ -130,6 +133,9 @@ class CustomerController extends BaseApiController
             return $this->notFoundResponse('Customer not found');
         }
 
+        // Log activity
+        logAdminActivity('updated', 'Customer', $id);
+
         return $this->updatedResponse(new CustomerResource($customer), 'Customer updated successfully');
     }
 
@@ -143,6 +149,9 @@ class CustomerController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Customer not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'Customer', $id);
 
         return $this->deletedResponse('Customer deleted successfully');
     }

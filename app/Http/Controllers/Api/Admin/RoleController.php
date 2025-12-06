@@ -108,6 +108,9 @@ class RoleController extends Controller
                 ];
             });
 
+        // Log activity
+        logAdminActivity('created', 'Role', $role->id);
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -223,6 +226,9 @@ class RoleController extends Controller
                 ];
             });
 
+        // Log activity
+        logAdminActivity('updated', 'Role', $id);
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -260,6 +266,9 @@ class RoleController extends Controller
 
         $role->permissions()->delete();
         $role->delete();
+
+        // Log activity
+        logAdminActivity('deleted', 'Role', $id);
 
         return response()->json([
             'success' => true,

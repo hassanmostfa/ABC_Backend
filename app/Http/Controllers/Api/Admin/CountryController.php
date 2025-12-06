@@ -96,6 +96,9 @@ class CountryController extends BaseApiController
             $validatedData = $request->validated();
             $country = $this->countryRepository->create($validatedData);
             
+            // Log activity
+            logAdminActivity('created', 'Country', $country->id);
+            
             return $this->createdResponse($country, 'Country created successfully');
         } catch (\Exception $e) {
             return response()->json([
@@ -136,6 +139,9 @@ class CountryController extends BaseApiController
                 return $this->notFoundResponse('Country not found');
             }
 
+            // Log activity
+            logAdminActivity('updated', 'Country', $id);
+
             return $this->updatedResponse($country, 'Country updated successfully');
         } catch (\Exception $e) {
             return response()->json([
@@ -156,6 +162,9 @@ class CountryController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Country not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'Country', $id);
 
         return $this->deletedResponse('Country deleted successfully');
     }

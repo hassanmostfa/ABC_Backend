@@ -90,6 +90,9 @@ class CustomerAddressController extends BaseApiController
         // Load relationships
         $address->load(['customer', 'country', 'governorate', 'area']);
 
+        // Log activity
+        logAdminActivity('created', 'CustomerAddress', $address->id);
+
         return $this->createdResponse(new CustomerAddressResource($address), 'Customer address created successfully');
     }
 
@@ -118,6 +121,9 @@ class CustomerAddressController extends BaseApiController
             return $this->notFoundResponse('Customer address not found');
         }
 
+        // Log activity
+        logAdminActivity('updated', 'CustomerAddress', $id);
+
         return $this->updatedResponse(new CustomerAddressResource($address), 'Customer address updated successfully');
     }
 
@@ -131,6 +137,9 @@ class CustomerAddressController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Customer address not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'CustomerAddress', $id);
 
         return $this->deletedResponse('Customer address deleted successfully');
     }

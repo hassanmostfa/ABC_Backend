@@ -99,6 +99,9 @@ class GovernorateController extends BaseApiController
             $validatedData = $request->validated();
             $governorate = $this->governorateRepository->create($validatedData);
             
+            // Log activity
+            logAdminActivity('created', 'Governorate', $governorate->id);
+            
             return $this->createdResponse($governorate, 'Governorate created successfully');
         } catch (\Exception $e) {
             return response()->json([
@@ -139,6 +142,9 @@ class GovernorateController extends BaseApiController
                 return $this->notFoundResponse('Governorate not found');
             }
 
+            // Log activity
+            logAdminActivity('updated', 'Governorate', $id);
+
             return $this->updatedResponse($governorate, 'Governorate updated successfully');
         } catch (\Exception $e) {
             return response()->json([
@@ -159,6 +165,9 @@ class GovernorateController extends BaseApiController
         if (!$deleted) {
             return $this->notFoundResponse('Governorate not found');
         }
+
+        // Log activity
+        logAdminActivity('deleted', 'Governorate', $id);
 
         return $this->deletedResponse('Governorate deleted successfully');
     }
