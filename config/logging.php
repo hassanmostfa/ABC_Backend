@@ -128,10 +128,9 @@ return [
         ],
 
         'activity' => [
-            'driver' => 'daily',
+            'driver' => 'single',
             'path' => storage_path('logs/activity.log'),
             'level' => env('LOG_LEVEL', 'info'),
-            'days' => env('LOG_ACTIVITY_DAYS', 90),
             'replace_placeholders' => true,
         ],
 

@@ -46,7 +46,7 @@ class ActivityLogService
     }
 
     /**
-     * Read logs from file
+     * Read logs from single activity log file
      *
      * @return Collection
      */
@@ -64,6 +64,11 @@ class ActivityLogService
         $currentLog = null;
         
         foreach ($lines as $line) {
+            $line = trim($line);
+            if (empty($line)) {
+                continue;
+            }
+            
             // Check if line starts a new log entry (contains timestamp)
             if (preg_match('/\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/', $line, $matches)) {
                 // Save previous log if exists
@@ -80,7 +85,7 @@ class ActivityLogService
             }
         }
         
-        // Don't forget the last log
+        // Don't forget the last log in the file
         if ($currentLog !== null) {
             $parsedLog = $this->parseLogEntry($currentLog);
             if ($parsedLog) {
@@ -99,24 +104,42 @@ class ActivityLogService
      */
     protected function parseLogEntry(string $logEntry): ?array
     {
+        // Clean the log entry
+        $logEntry = trim($logEntry);
+        
         // Try to extract JSON data from the log entry (Laravel logs JSON in context)
         // Laravel log format: [2024-12-06 17:30:45] local.INFO: Admin Activity {"timestamp":"...","admin_id":1,...}
         if (preg_match('/\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\].*local\.(\w+):\s*Admin Activity\s*(\{.*\})/s', $logEntry, $matches)) {
-            $timestamp = $matches[1];
-            $level = $matches[2];
             $jsonString = $matches[3] ?? '';
             
             $jsonData = json_decode($jsonString, true);
-            if ($jsonData && is_array($jsonData)) {
+            if ($jsonData && is_array($jsonData) && isset($jsonData['action']) && isset($jsonData['model'])) {
                 return $jsonData;
             }
         }
         
-        // Alternative: Try to find any JSON object in the log entry
-        if (preg_match('/\{.*\}/s', $logEntry, $matches)) {
-            $jsonData = json_decode($matches[0], true);
+        // Alternative: Try to find any JSON object in the log entry (more flexible)
+        // This pattern matches JSON objects that span multiple lines
+        if (preg_match('/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/s', $logEntry, $matches)) {
+            $jsonString = $matches[0];
+            $jsonData = json_decode($jsonString, true);
             if ($jsonData && is_array($jsonData) && isset($jsonData['action']) && isset($jsonData['model'])) {
                 return $jsonData;
+            }
+        }
+        
+        // Another alternative: Try to find JSON starting from the first {
+        $jsonStart = strpos($logEntry, '{');
+        if ($jsonStart !== false) {
+            $jsonString = substr($logEntry, $jsonStart);
+            // Try to find the end of JSON (last })
+            $jsonEnd = strrpos($jsonString, '}');
+            if ($jsonEnd !== false) {
+                $jsonString = substr($jsonString, 0, $jsonEnd + 1);
+                $jsonData = json_decode($jsonString, true);
+                if ($jsonData && is_array($jsonData) && isset($jsonData['action']) && isset($jsonData['model'])) {
+                    return $jsonData;
+                }
             }
         }
         
