@@ -27,7 +27,7 @@ class SliderRequest extends FormRequest
         ];
 
         // For create requests, image is required
-        if ($this->isMethod('POST')) {
+        if ($this->isMethod('POST') && $this->route('id') == null) {
             $rules['image'] = 'required|image|mimes:jpeg,png,jpg,gif|max:5120';
         }
 
