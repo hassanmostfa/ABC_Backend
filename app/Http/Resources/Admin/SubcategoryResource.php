@@ -35,8 +35,8 @@ class SubcategoryResource extends JsonResource
             'name_en' => $this->name_en,
             'image_url' => $this->getFileUrl($this->image_path, 'public', 'no-image.png'),
             'is_active' => (bool) $this->is_active,
-            'created_at' => $this->created_at?->toISOString(),
-            'updated_at' => $this->updated_at?->toISOString(),
+            'created_at' => $this->created_at?->format('Y-m-d'),
+            'updated_at' => $this->updated_at?->format('Y-m-d'),
         ];
     }
 

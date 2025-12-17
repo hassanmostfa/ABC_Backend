@@ -29,6 +29,11 @@ class OfferRepository implements OfferRepositoryInterface
             'charity'
         ]);
 
+        // Filter by active offers only (for mobile API)
+        if (isset($filters['active_only']) && $filters['active_only'] === true) {
+            $query->active();
+        }
+
         // Search functionality
         if (isset($filters['search']) && !empty(trim($filters['search']))) {
             $search = trim($filters['search']);

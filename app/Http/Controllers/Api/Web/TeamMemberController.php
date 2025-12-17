@@ -17,20 +17,45 @@ class TeamMemberController extends BaseApiController
     }
 
     /**
-     * Get all team members
+     * Get all team members grouped by level
      */
     public function getAll(): JsonResponse
     {
         try {
             $teamMembers = $this->teamMemberRepository->getAll();
             
-            return $this->collectionResponse(
-                WebTeamMemberResource::collection($teamMembers),
+            // Group team members by level
+            $grouped = $teamMembers->groupBy('level')->map(function ($members, $level) {
+                return [
+                    'level' => $level,
+                    'title' => $this->getLevelTitle($level),
+                    'members' => WebTeamMemberResource::collection($members)
+                ];
+            })->values();
+            
+            return $this->successResponse(
+                $grouped,
                 'Team members retrieved successfully'
             );
         } catch (\Exception $e) {
-            return $this->serverErrorResponse('An error occurred while retrieving team members' . $e->getMessage());
+            return $this->serverErrorResponse('An error occurred while retrieving team members: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Get title for a level
+     */
+    private function getLevelTitle(string $level): string
+    {
+        // Map level values to titles
+        $levelTitles = [
+            '1' => 'Level 1',
+            '2' => 'Level 2',
+            '3' => 'Level 3',
+            '4' => 'Level 4',
+        ];
+
+        return $levelTitles[$level] ?? $level;
     }
 }
 

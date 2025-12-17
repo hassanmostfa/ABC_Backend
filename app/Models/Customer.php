@@ -17,6 +17,7 @@ class Customer extends Authenticatable
         'email',
         'password',
         'is_active',
+        'is_completed',
         'points',
     ];
 
@@ -29,6 +30,7 @@ class Customer extends Authenticatable
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
         'is_active' => 'boolean',
+        'is_completed' => 'boolean',
         'points' => 'integer',
     ];
 
@@ -78,6 +80,14 @@ class Customer extends Authenticatable
     public function unreadNotifications()
     {
         return $this->morphMany(Notification::class, 'notifiable')->where('is_read', false);
+    }
+
+    /**
+     * Get the device tokens for the customer
+     */
+    public function deviceTokens()
+    {
+        return $this->hasMany(DeviceToken::class);
     }
 
     /**

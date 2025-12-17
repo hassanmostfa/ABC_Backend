@@ -28,7 +28,8 @@
         },
         "files": [
             "app/Helpers/ActivityLogHelper.php",
-            "app/Helpers/NotificationHelper.php"
+            "app/Helpers/NotificationHelper.php",
+            "app/Helpers/SettingHelper.php"
         ]
     },
     "autoload-dev": {

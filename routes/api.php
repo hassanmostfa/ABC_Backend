@@ -37,6 +37,9 @@ use App\Http\Controllers\Api\Web\SliderController as WebSliderController;
 use App\Http\Controllers\Api\Web\NotificationController as CustomerNotificationController;
 use App\Http\Controllers\Api\Shared\ContactUsController;
 use App\Http\Controllers\Api\UtilsController;
+use App\Http\Controllers\Api\Mobile\auth\AuthController as MobileAuthController;
+use App\Http\Controllers\Api\Mobile\offers\OfferController as MobileOfferController;
+use App\Http\Controllers\Api\Mobile\categories\CategoryController as MobileCategoryController;
 
 /*
 |--------------------------------------------------------------------------
@@ -368,3 +371,34 @@ Route::middleware('api.auth')->controller(CustomerNotificationController::class)
    Route::patch('/mark-all-read', 'markAllAsRead');
    Route::delete('/{id}', 'destroy');
 });
+
+
+// =====================================================================================================
+// ================== Mobile Authentication Routes ======================================================
+// =====================================================================================================
+Route::prefix('mobile/auth')->group(function () {
+   Route::post('/send-otp', [MobileAuthController::class, 'sendOtp']);
+   Route::post('/verify-otp', [MobileAuthController::class, 'verifyOtp']);
+   Route::post('/resend-otp', [MobileAuthController::class, 'resendOtp']);
+   Route::post('/complete-registration', [MobileAuthController::class, 'completeRegistration'])->middleware('api.auth');
+   Route::post('/logout', [MobileAuthController::class, 'logout'])->middleware('api.auth');
+   Route::delete('/account', [MobileAuthController::class, 'deleteAccount'])->middleware('api.auth');
+});
+// =====================================================================================================
+// ================== Mobile  Routes (Public) =====================================================
+// =====================================================================================================
+Route::prefix('mobile/offers')->group(function () {
+      Route::get('/', [MobileOfferController::class, 'index']);
+      Route::get('/{id}', [MobileOfferController::class, 'show']);
+   });
+
+Route::prefix('mobile/categories')->group(function () {
+      Route::get('/', [MobileCategoryController::class, 'getAllCategories']);
+      Route::get('/subcategories', [MobileCategoryController::class, 'getAllSubcategories']);
+      Route::get('/{categoryId}/subcategories', [MobileCategoryController::class, 'getSubcategoriesByCategory']);
+   });
+   
+Route::middleware('api.auth')->group(function () {
+});
+// =====================================================================================================
+// =====================================================================================================
