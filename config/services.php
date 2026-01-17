@@ -34,5 +34,12 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
+    'upayments' => [
+    'key' => env('UPAYMENTS_API_KEY'),
+    'url' => env('UPAYMENTS_API_URL'),
+    'logging_channel' => env('UPAYMENTS_LOGGING_CHANNEL'),
+    'logging_enabled' => env('UPAYMENTS_LOGGING_ENABLED'),
+],
+
 
 ];

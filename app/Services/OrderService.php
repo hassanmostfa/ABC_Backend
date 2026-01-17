@@ -6,9 +6,12 @@ use App\Repositories\OrderRepositoryInterface;
 use App\Repositories\InvoiceRepositoryInterface;
 use App\Repositories\CustomerRepositoryInterface;
 use App\Models\Order;
+use App\Models\Invoice;
 use App\Models\Offer;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use App\Services\UpaymentsService;
 
 class OrderService
 {
@@ -20,6 +23,7 @@ class OrderService
     protected $walletService;
     protected $pointsService;
     protected $customerRepository;
+    protected $upaymentsService;
 
     public function __construct(
         OrderRepositoryInterface $orderRepository,
@@ -29,7 +33,8 @@ class OrderService
         InvoiceService $invoiceService,
         WalletService $walletService,
         PointsService $pointsService,
-        CustomerRepositoryInterface $customerRepository
+        CustomerRepositoryInterface $customerRepository,
+        UpaymentsService $upaymentsService
     ) {
         $this->orderRepository = $orderRepository;
         $this->invoiceRepository = $invoiceRepository;
@@ -39,6 +44,7 @@ class OrderService
         $this->walletService = $walletService;
         $this->pointsService = $pointsService;
         $this->customerRepository = $customerRepository;
+        $this->upaymentsService = $upaymentsService;
     }
 
     /**
@@ -238,15 +244,51 @@ class OrderService
                 $this->walletService->deductBalance($order->customer_id, $amountDue);
             }
 
+            // Generate payment link if payment method is online_link
+            $paymentLink = null;
+            if ($paymentMethod === 'online_link') {
+                try {
+                    $paymentLink = $this->generatePaymentLink($order, $invoice, $amountDue);
+                    Log::info('Payment link generated for order ' . $order->id . ': ' . ($paymentLink ? 'Success' : 'Failed'));
+                    
+                    // Store payment link in invoice
+                    if ($paymentLink && $invoice) {
+                        $this->invoiceRepository->update($invoice->id, [
+                            'payment_link' => $paymentLink
+                        ]);
+                        Log::info('Payment link stored in invoice ' . $invoice->id . ' for order ' . $order->id);
+                    }
+                } catch (\Osama\Upayments\Exceptions\UpaymentsApiException $e) {
+                    // Log Upayments API error with full details
+                    Log::error('Upayments API error for order ' . $order->id, [
+                        'message' => $e->getMessage(),
+                        'code' => $e->getCode(),
+                    ]);
+                } catch (\Exception $e) {
+                    // Log other errors but don't fail the order creation
+                    Log::error('Failed to generate payment link for order ' . $order->id . ': ' . $e->getMessage(), [
+                        'exception' => get_class($e),
+                        'trace' => $e->getTraceAsString()
+                    ]);
+                }
+            }
+
             DB::commit();
 
             // Reload order with relationships
             $order->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice', 'customerAddress']);
 
-            return [
+            $response = [
                 'success' => true,
                 'order' => $order
             ];
+
+            // Add payment link to response if available
+            if ($paymentLink) {
+                $response['payment_link'] = $paymentLink;
+            }
+
+            return $response;
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -515,6 +557,25 @@ class OrderService
             ];
         } catch (\Exception $e) {
             DB::rollBack();
+            throw $e;
+        }
+    }
+
+
+    protected function generatePaymentLink(Order $order, Invoice $invoice, float $amount): ?string
+    {
+        // Create UpaymentsService instance and create payment
+        $upaymentsService = new UpaymentsService();
+        
+        try {
+            // The UpaymentsService will handle customer loading and payload building
+            $paymentUrl = $upaymentsService->createPayment($order, $amount);
+            
+            Log::info('Payment link generated successfully for order ' . $order->id);
+            
+            return $paymentUrl;
+        } catch (\Exception $e) {
+            // Re-throw the exception so it can be caught and logged in createOrder
             throw $e;
         }
     }

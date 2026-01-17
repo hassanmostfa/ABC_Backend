@@ -143,6 +143,10 @@ class OrderResource extends JsonResource
                     'notes' => $this->delivery->notes,
                 ];
             }),
+            'payment_link' => $this->when(
+                !empty($this->payment_link ?? null),
+                $this->payment_link ?? null
+            ),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];

@@ -94,6 +94,14 @@ class OrderController extends BaseApiController
             // Log activity
             logAdminActivity('created', 'Order', $result['order']->id);
             
+            // Set payment_link as a temporary attribute on the order if available
+            if (isset($result['payment_link'])) {
+                \Log::info('Payment link found in result for order ' . $result['order']->id . ': ' . $result['payment_link']);
+                $result['order']->payment_link = $result['payment_link'];
+            } else {
+                \Log::info('Payment link NOT found in result for order ' . $result['order']->id . '. Result keys: ' . implode(', ', array_keys($result)));
+            }
+            
             return $this->createdResponse(new OrderResource($result['order']), 'Order created successfully');
         } catch (\Exception $e) {
             $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 500;

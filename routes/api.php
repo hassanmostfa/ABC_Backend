@@ -291,6 +291,12 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
 
 });
 
+// Payment Callback Routes (Public - called by Upayments)
+Route::controller(PaymentController::class)->prefix('payments/callback')->group(function () {
+   Route::get('/success', 'success')->name('payments.success');
+   Route::get('/cancel', 'cancel')->name('payments.cancel');
+   Route::post('/notification', 'notification')->name('payments.notification');
+});
 
 // Contact Us Routes (Public)
 Route::controller(ContactUsController::class)->prefix('contact-us')->group(function () {

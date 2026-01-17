@@ -133,6 +133,12 @@ return [
             'level' => env('LOG_LEVEL', 'info'),
             'replace_placeholders' => true,
         ],
+        'upayments' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/upayments.log'),
+            'level' => 'info',
+    ],
+
 
     ],
 

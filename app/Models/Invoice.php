@@ -19,6 +19,7 @@ class Invoice extends Model
         'used_points',
         'points_discount',
         'total_discount',
+        'payment_link',
         'status',
         'paid_at',
     ];

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "8f387a0734f3bf879214e4aa2fca6e2f",
+    "content-hash": "c9c7050a1179d78a5add1abd3b7c9f4c",
     "packages": [
         {
             "name": "brick/math",
@@ -2574,6 +2574,61 @@
                 }
             ],
             "time": "2025-05-08T08:14:37+00:00"
+        },
+        {
+            "name": "osa-eg/laravel-upayments",
+            "version": "v1.0.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/osa-eg/laravel-upayments-integration.git",
+                "reference": "74802783e75e31e443f930b76195a1c74e75cf37"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/osa-eg/laravel-upayments-integration/zipball/74802783e75e31e443f930b76195a1c74e75cf37",
+                "reference": "74802783e75e31e443f930b76195a1c74e75cf37",
+                "shasum": ""
+            },
+            "require": {
+                "guzzlehttp/guzzle": "^7.0",
+                "illuminate/support": "^8.0|^9.0|^10.0|^11|^12",
+                "php": "^7.4|^8.0|^8.1|^8.2|^8.3"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^11.4"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "aliases": {
+                        "Upayments": "Osama\\Upayments\\Facades\\Upayments"
+                    },
+                    "providers": [
+                        "Osama\\Upayments\\Providers\\UpaymentsServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Osama\\Upayments\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Osama Saad",
+                    "email": "osaad96eg@gmail.com"
+                }
+            ],
+            "description": "A Laravel package for integrating Upayments gateway.",
+            "support": {
+                "issues": "https://github.com/osa-eg/laravel-upayments-integration/issues",
+                "source": "https://github.com/osa-eg/laravel-upayments-integration/tree/v1.0.1"
+            },
+            "time": "2025-04-29T16:22:40+00:00"
         },
         {
             "name": "phpoption/phpoption",
