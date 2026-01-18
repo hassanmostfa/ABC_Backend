@@ -7,9 +7,12 @@ use App\Repositories\ProductRepositoryInterface;
 use App\Http\Resources\Admin\ProductResource;
 use App\Http\Resources\Web\WebProductResource;
 use App\Http\Resources\Web\WebProductDetailsResource;
+use App\Models\OrderItem;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class ProductController extends BaseApiController
 {
@@ -219,6 +222,40 @@ class ProductController extends BaseApiController
         $transformedProducts = WebProductResource::collection($activeProducts);
 
         return $this->successResponse($transformedProducts, 'Products by subcategory with variants retrieved successfully');
+    }
+
+    /**
+     * Get top 10 most selling products (public API)
+     */
+    public function getMostSellingProducts(Request $request): JsonResponse
+    {
+        // Get top 10 products by total quantity sold from completed orders
+        $topProducts = OrderItem::select('product_id', DB::raw('SUM(quantity) as total_sold'))
+            ->join('orders', 'order_items.order_id', '=', 'orders.id')
+            ->where('orders.status', 'completed')
+            ->groupBy('product_id')
+            ->orderBy('total_sold', 'desc')
+            ->limit(10)
+            ->pluck('product_id')
+            ->toArray();
+
+        // Get the products with their relationships
+        $products = Product::whereIn('id', $topProducts)
+            ->where('is_active', true)
+            ->with(['variants' => function ($query) {
+                $query->where('is_active', true);
+            }, 'category', 'subcategory'])
+            ->get();
+
+        // Sort products by the order they appear in topProducts array
+        $products = $products->sortBy(function ($product) use ($topProducts) {
+            return array_search($product->id, $topProducts);
+        })->values();
+
+        // Transform data using WebProductResource
+        $transformedProducts = WebProductResource::collection($products);
+
+        return $this->successResponse($transformedProducts, 'Top 10 most selling products retrieved successfully');
     }
 
     /**

@@ -160,9 +160,9 @@ class PaymentController extends BaseApiController
                 $paymentData['status'] = 'completed';
             }
 
-            // If status is 'completed', set paid_at timestamp
+            // If status is 'completed', set paid_at timestamp in Kuwait timezone
             if ($paymentData['status'] === 'completed') {
-                $paymentData['paid_at'] = now();
+                $paymentData['paid_at'] = now('Asia/Kuwait');
             }
 
             $payment = $this->paymentRepository->create($paymentData);
@@ -193,20 +193,13 @@ class PaymentController extends BaseApiController
                     ->where('status', 'completed')
                     ->sum('amount');
                 
-                // If total paid equals or exceeds amount_due, mark invoice as paid and update order
+                // If total paid equals or exceeds amount_due, mark invoice as paid
                 if ($totalPaid >= $invoice->amount_due) {
-                    // Update invoice status and paid_at
+                    // Update invoice status and paid_at in Kuwait timezone
                     $this->invoiceRepository->update($invoice->id, [
-                        'paid_at' => now(),
+                        'paid_at' => now('Asia/Kuwait'),
                         'status' => 'paid',
                     ]);
-
-                    // Update order status to 'completed' if invoice is fully paid
-                    if ($invoice->order_id) {
-                        $this->orderRepository->update($invoice->order_id, [
-                            'status' => 'completed',
-                        ]);
-                    }
                 }
             }
 
@@ -275,9 +268,9 @@ class PaymentController extends BaseApiController
             $oldStatus = $payment->status;
             $paymentMethod = $updateData['method'] ?? $payment->method;
             
-            // If status is being updated to 'completed', set paid_at timestamp
+            // If status is being updated to 'completed', set paid_at timestamp in Kuwait timezone
             if (isset($updateData['status']) && $updateData['status'] === 'completed' && $payment->status !== 'completed') {
-                $updateData['paid_at'] = now();
+                $updateData['paid_at'] = now('Asia/Kuwait');
             } elseif (isset($updateData['status']) && $updateData['status'] !== 'completed' && $payment->status === 'completed') {
                 // If status is changed from 'completed' to something else, clear paid_at
                 $updateData['paid_at'] = null;
@@ -325,20 +318,13 @@ class PaymentController extends BaseApiController
                         ->where('status', 'completed')
                         ->sum('amount');
                     
-                    // If total paid equals or exceeds amount_due, mark invoice as paid and update order
+                    // If total paid equals or exceeds amount_due, mark invoice as paid
                     if ($totalPaid >= $invoice->amount_due) {
-                        // Update invoice status and paid_at
+                        // Update invoice status and paid_at in Kuwait timezone
                         $this->invoiceRepository->update($invoice->id, [
-                            'paid_at' => now(),
+                            'paid_at' => now('Asia/Kuwait'),
                             'status' => 'paid',
                         ]);
-
-                        // Update order status to 'completed' if invoice is fully paid
-                        if ($invoice->order_id) {
-                            $this->orderRepository->update($invoice->order_id, [
-                                'status' => 'completed',
-                            ]);
-                        }
                     }
                 }
             }
@@ -540,7 +526,7 @@ class PaymentController extends BaseApiController
                     'amount' => (float) $amount,
                     'method' => 'online', // Valid enum values: cash, card, online, bank_transfer, wallet
                     'status' => 'completed', // Payment status is 'completed'
-                    'paid_at' => now(),
+                    'paid_at' => now('Asia/Kuwait'),
                     'receipt_id' => $receiptId,
                 ];
 
@@ -576,22 +562,15 @@ class PaymentController extends BaseApiController
                     'will_update_invoice' => ($totalPaid >= $invoice->amount_due)
                 ]);
                 
-                // If total paid equals or exceeds amount_due, mark invoice as paid and update order
+                // If total paid equals or exceeds amount_due, mark invoice as paid
                 if ($totalPaid >= $invoice->amount_due) {
-                    // Update invoice status to 'paid' and set paid_at to now
+                    // Update invoice status to 'paid' and set paid_at to now in Kuwait timezone
                     $updatedInvoice = $this->invoiceRepository->update($invoice->id, [
-                        'paid_at' => now(),
+                        'paid_at' => now('Asia/Kuwait'),
                         'status' => 'paid', // Invoice status is 'paid'
                     ]);
 
-                    // Update order status to 'completed' if invoice is fully paid
-                    if ($invoice->order_id) {
-                        $this->orderRepository->update($invoice->order_id, [
-                            'status' => 'completed',
-                        ]);
-                    }
-
-                    Log::info('Upayments success callback: Invoice and order marked as paid', [
+                    Log::info('Upayments success callback: Invoice marked as paid', [
                         'order_id' => $order->id,
                         'order_number' => $order->order_number,
                         'invoice_id' => $invoice->id,
@@ -833,7 +812,7 @@ class PaymentController extends BaseApiController
             ];
 
             if ($status === 'completed') {
-                $paymentData['paid_at'] = now();
+                $paymentData['paid_at'] = now('Asia/Kuwait');
             }
 
             // Create or update payment record
@@ -880,22 +859,15 @@ class PaymentController extends BaseApiController
                     'will_update_invoice' => ($totalPaid >= $invoice->amount_due)
                 ]);
                 
-                // If total paid equals or exceeds amount_due, mark invoice as paid and update order
+                // If total paid equals or exceeds amount_due, mark invoice as paid
                 if ($totalPaid >= $invoice->amount_due) {
-                    // Update invoice status and paid_at
+                    // Update invoice status and paid_at in Kuwait timezone
                     $updatedInvoice = $this->invoiceRepository->update($invoice->id, [
-                        'paid_at' => now(),
+                        'paid_at' => now('Asia/Kuwait'),
                         'status' => 'paid',
                     ]);
 
-                    // Update order status to 'completed' if invoice is fully paid
-                    if ($invoice->order_id) {
-                        $this->orderRepository->update($invoice->order_id, [
-                            'status' => 'completed',
-                        ]);
-                    }
-
-                    Log::info('Upayments webhook: Invoice and order marked as paid', [
+                    Log::info('Upayments webhook: Invoice marked as paid', [
                         'order_id' => $order->id,
                         'order_number' => $order->order_number,
                         'invoice_id' => $invoice->id,

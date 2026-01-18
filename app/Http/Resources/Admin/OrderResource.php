@@ -114,6 +114,9 @@ class OrderResource extends JsonResource
                 // Calculate total before discounts (sum of all order items)
                 $totalBeforeDiscounts = (float) $this->total_amount;
                 
+                // Get payment_link from invoice or from order's temporary attribute (for backward compatibility)
+                $paymentLink = $this->invoice->payment_link ?? ($this->payment_link ?? null);
+                
                 return [
                     'id' => $this->invoice->id,
                     'invoice_number' => $this->invoice->invoice_number,
@@ -127,6 +130,7 @@ class OrderResource extends JsonResource
                     'amount_due' => (float) $this->invoice->amount_due,
                     'status' => $this->invoice->status,
                     'paid_at' => $this->invoice->paid_at?->toISOString(),
+                    'payment_link' => $paymentLink,
                 ];
             }),
             'delivery' => $this->whenLoaded('delivery', function () {

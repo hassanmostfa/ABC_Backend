@@ -115,9 +115,9 @@ class InvoiceController extends BaseApiController
         try {
             $updateData = $request->validated();
             
-            // If status is being updated to 'paid', set paid_at timestamp
+            // If status is being updated to 'paid', set paid_at timestamp in Kuwait timezone
             if (isset($updateData['status']) && $updateData['status'] === 'paid' && $invoice->status !== 'paid') {
-                $updateData['paid_at'] = now();
+                $updateData['paid_at'] = now('Asia/Kuwait');
             } elseif (isset($updateData['status']) && $updateData['status'] !== 'paid' && $invoice->status === 'paid') {
                 // If status is changed from 'paid' to something else, clear paid_at
                 $updateData['paid_at'] = null;

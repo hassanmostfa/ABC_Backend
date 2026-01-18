@@ -96,7 +96,7 @@ class InvoiceService
             ];
 
             if ($isPaid) {
-                $invoiceData['paid_at'] = now();
+                $invoiceData['paid_at'] = now('Asia/Kuwait');
             }
 
             return $this->invoiceRepository->create($invoiceData);
@@ -141,7 +141,7 @@ class InvoiceService
 
         if ($isPaid) {
             $updateData['status'] = 'paid';
-            $updateData['paid_at'] = now();
+            $updateData['paid_at'] = now('Asia/Kuwait');
         } else {
             // Only set to pending if not already paid (preserve existing paid status if not changing)
             // We'll handle unpaid status explicitly when needed
@@ -159,7 +159,7 @@ class InvoiceService
     public function markAsPaid(int $invoiceId): void
     {
         $this->invoiceRepository->update($invoiceId, [
-            'paid_at' => now(),
+            'paid_at' => now('Asia/Kuwait'),
             'status' => 'paid',
         ]);
     }

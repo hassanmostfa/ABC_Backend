@@ -40,6 +40,11 @@ use App\Http\Controllers\Api\UtilsController;
 use App\Http\Controllers\Api\Mobile\auth\AuthController as MobileAuthController;
 use App\Http\Controllers\Api\Mobile\offers\OfferController as MobileOfferController;
 use App\Http\Controllers\Api\Mobile\categories\CategoryController as MobileCategoryController;
+use App\Http\Controllers\Api\Mobile\orders\OrderController as MobileOrderController;
+use App\Http\Controllers\Api\Mobile\addresses\CustomerAddressController as MobileCustomerAddressController;
+use App\Http\Controllers\Api\Mobile\locations\LocationController as MobileLocationController;
+use App\Http\Controllers\Api\Mobile\payments\PaymentController as MobilePaymentController;
+use App\Http\Controllers\Api\Mobile\profile\ProfileController as MobileProfileController;
 
 /*
 |--------------------------------------------------------------------------
@@ -327,6 +332,7 @@ Route::controller(CareerController::class)->prefix('careers')->group(function ()
 Route::controller(WebProductController::class)->prefix('products')->group(function () {
    Route::get('/', 'getAllProductsWithVariants');
    Route::get('/variants-as-products', 'getAllVariantsAsProducts');
+   Route::get('/most-selling', 'getMostSellingProducts');
    Route::get('/{id}', 'getProductWithVariants');
    Route::get('/category/{categoryId}', 'getProductsByCategoryWithVariants');
    Route::get('/subcategory/{subcategoryId}', 'getProductsBySubcategoryWithVariants');
@@ -403,6 +409,42 @@ Route::prefix('mobile/categories')->group(function () {
       Route::get('/subcategories', [MobileCategoryController::class, 'getAllSubcategories']);
       Route::get('/{categoryId}/subcategories', [MobileCategoryController::class, 'getSubcategoriesByCategory']);
    });
+
+// =====================================================================================================
+// ================== Mobile Order Routes (Protected) ======================================================
+// =====================================================================================================
+Route::middleware('api.auth')->prefix('mobile/orders')->group(function () {
+   Route::post('/', [MobileOrderController::class, 'store']);
+   Route::get('/', [MobileOrderController::class, 'index']);
+   Route::get('/{id}', [MobileOrderController::class, 'show']);
+});
+
+
+Route::middleware('api.auth')->prefix('mobile/customer-addresses')->group(function () {
+   Route::get('/', [MobileCustomerAddressController::class, 'index']);
+   Route::post('/', [MobileCustomerAddressController::class, 'store']);
+   Route::get('/{id}', [MobileCustomerAddressController::class, 'show']);
+   Route::put('/{id}', [MobileCustomerAddressController::class, 'update']);
+   Route::delete('/{id}', [MobileCustomerAddressController::class, 'destroy']);
+});
+
+Route::prefix('mobile/locations')->group(function () {
+   Route::get('/countries', [MobileLocationController::class, 'getCountries']);
+   Route::get('/countries/{countryId}/governorates', [MobileLocationController::class, 'getGovernoratesByCountry']);
+   Route::get('/governorates/{governorateId}/areas', [MobileLocationController::class, 'getAreasByGovernorate']);
+});
+
+Route::middleware('api.auth')->prefix('mobile/payments')->group(function () {
+   Route::get('/', [MobilePaymentController::class, 'index']);
+});
+
+// =====================================================================================================
+// ================== Mobile Profile Routes (Protected) ======================================================
+// =====================================================================================================
+Route::middleware('api.auth')->prefix('mobile/profile')->group(function () {
+   Route::get('/', [MobileProfileController::class, 'show']);
+   Route::put('/', [MobileProfileController::class, 'update']);
+});
    
 Route::middleware('api.auth')->group(function () {
 });
