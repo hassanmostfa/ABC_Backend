@@ -101,5 +101,57 @@ class OfferController extends BaseApiController
             return $this->serverErrorResponse('An error occurred while retrieving the offer: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Get offers related to a product variant (where variant appears in conditions or rewards).
+     */
+    public function getByProductVariant(Request $request, int $productVariantId): JsonResponse
+    {
+        try {
+            $request->validate([
+                'active_only' => 'nullable|boolean',
+                'debug' => 'nullable|boolean',
+            ]);
+
+            $activeOnly = $request->boolean('active_only', true);
+            $debug = $request->boolean('debug', false);
+
+            $offers = $this->offerRepository->getByProductVariantId($productVariantId, $activeOnly);
+
+            if ($debug) {
+                $variant = \App\Models\ProductVariant::with('product')->find($productVariantId);
+                $conditionsCount = \App\Models\OfferCondition::where('product_variant_id', $productVariantId)
+                    ->orWhere('product_id', $variant?->product_id)->count();
+                $rewardsCount = \App\Models\OfferReward::where('product_variant_id', $productVariantId)
+                    ->orWhere('product_id', $variant?->product_id)->count();
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Debug info',
+                    'data' => $offers->isEmpty() ? [] : OfferListResource::collection($offers),
+                    'debug' => [
+                        'product_variant_id' => $productVariantId,
+                        'variant_exists' => (bool) $variant,
+                        'variant_product_id' => $variant?->product_id,
+                        'active_only' => $activeOnly,
+                        'conditions_matching_count' => $conditionsCount,
+                        'rewards_matching_count' => $rewardsCount,
+                        'offers_found' => $offers->count(),
+                    ],
+                ]);
+            }
+
+            $transformedOffers = OfferListResource::collection($offers);
+
+            return $this->successResponse(
+                $transformedOffers,
+                'Offers retrieved successfully'
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e->errors());
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse('An error occurred while retrieving offers: ' . $e->getMessage());
+        }
+    }
 }
 

@@ -67,33 +67,34 @@ class InvoiceResource extends JsonResource
                         });
                     }),
                     'customer_address' => $this->when($this->order->relationLoaded('customerAddress') && $this->order->customerAddress, function () {
+                        $addr = $this->order->customerAddress;
                         return [
-                            'id' => $this->order->customerAddress->id,
-                            'street' => $this->order->customerAddress->street,
-                            'house' => $this->order->customerAddress->house,
-                            'block' => $this->order->customerAddress->block,
-                            'floor' => $this->order->customerAddress->floor,
-                            'country' => $this->when($this->order->customerAddress->relationLoaded('country'), function () {
-                                return [
-                                    'id' => $this->order->customerAddress->country->id,
-                                    'name_ar' => $this->order->customerAddress->country->name_ar,
-                                    'name_en' => $this->order->customerAddress->country->name_en,
-                                ];
-                            }),
-                            'governorate' => $this->when($this->order->customerAddress->relationLoaded('governorate'), function () {
-                                return [
-                                    'id' => $this->order->customerAddress->governorate->id,
-                                    'name_ar' => $this->order->customerAddress->governorate->name_ar,
-                                    'name_en' => $this->order->customerAddress->governorate->name_en,
-                                ];
-                            }),
-                            'area' => $this->when($this->order->customerAddress->relationLoaded('area'), function () {
-                                return [
-                                    'id' => $this->order->customerAddress->area->id,
-                                    'name_ar' => $this->order->customerAddress->area->name_ar,
-                                    'name_en' => $this->order->customerAddress->area->name_en,
-                                ];
-                            }),
+                            'id' => $addr->id,
+                            'type' => $addr->type ?? 'house',
+                            'formatted_address' => $addr->formatted_address ?? null,
+                            'phone_number' => $addr->phone_number,
+                            'street' => $addr->street,
+                            'house' => $addr->house,
+                            'block' => $addr->block,
+                            'floor' => $addr->floor,
+                            'building_name' => $addr->building_name,
+                            'apartment_number' => $addr->apartment_number,
+                            'company' => $addr->company,
+                            'country' => $this->when($addr->relationLoaded('country') && $addr->country, fn () => [
+                                'id' => $addr->country->id,
+                                'name_ar' => $addr->country->name_ar,
+                                'name_en' => $addr->country->name_en,
+                            ]),
+                            'governorate' => $this->when($addr->relationLoaded('governorate') && $addr->governorate, fn () => [
+                                'id' => $addr->governorate->id,
+                                'name_ar' => $addr->governorate->name_ar,
+                                'name_en' => $addr->governorate->name_en,
+                            ]),
+                            'area' => $this->when($addr->relationLoaded('area') && $addr->area, fn () => [
+                                'id' => $addr->area->id,
+                                'name_ar' => $addr->area->name_ar,
+                                'name_en' => $addr->area->name_en,
+                            ]),
                         ];
                     }),
                     'created_at' => $this->order->created_at?->toISOString(),

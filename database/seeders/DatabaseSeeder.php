@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             KuwaitGovernorateSeeder::class,
             KuwaitAreaSeeder::class,
             SettingSeeder::class,
+            FaqSeeder::class,
         ]);
 
         // Create a test admin with Super Admin role

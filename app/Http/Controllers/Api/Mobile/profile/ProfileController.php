@@ -3,15 +3,20 @@
 namespace App\Http\Controllers\Api\Mobile\profile;
 
 use App\Http\Controllers\Api\BaseApiController;
+use App\Http\Requests\Mobile\ChangePasswordRequest;
 use App\Http\Requests\Mobile\UpdateProfileRequest;
 use App\Http\Resources\Mobile\CustomerResource;
+use App\Models\Customer;
 use App\Repositories\CustomerRepositoryInterface;
+use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 
 class ProfileController extends BaseApiController
 {
+    use ManagesFileUploads;
     protected $customerRepository;
 
     public function __construct(CustomerRepositoryInterface $customerRepository)
@@ -59,24 +64,34 @@ class ProfileController extends BaseApiController
         try {
             // Get validated data - this includes only fields that were sent and passed validation
             $validatedData = $request->validated();
-            
-            // Filter out null values to only update provided fields
+
+            // Handle profile image upload
+            if ($request->hasFile('image')) {
+                $customerModel = $this->customerRepository->findById($customer->id);
+                if ($customerModel && $customerModel->image) {
+                    $this->deleteFile($customerModel->image, 'public');
+                }
+                $imagePath = $this->uploadFile($request->file('image'), Customer::$STORAGE_DIR, 'public');
+                $validatedData['image'] = $imagePath;
+            }
+
+            // Filter out null values to only update provided fields (except image which may be uploaded)
             $validatedData = array_filter($validatedData, function($value) {
                 return $value !== null;
             });
 
             if (empty($validatedData)) {
                 // Check what was actually sent in the request
-                $sentData = $request->only(['name', 'email', 'phone']);
+                $sentData = $request->only(['name', 'email', 'phone', 'image']);
                 $sentData = array_filter($sentData, function($value) {
                     return $value !== null;
                 });
-                
-                if (empty($sentData)) {
-                    return $this->errorResponse('No data provided to update. Please send at least one field: name, email, or phone.', 400);
-                } else {
-                    // Data was sent but validation failed or filtered out
-                    return $this->errorResponse('Validation failed. Please check that name, email, and phone are valid and unique.', 422);
+
+                if (empty($sentData) && !$request->hasFile('image')) {
+                    return $this->errorResponse('No data provided to update. Please send at least one field: name, email, phone, or image.', 400);
+                }
+                if (empty($validatedData)) {
+                    return $this->errorResponse('Validation failed. Please check that name, email, phone are valid and unique, and image is jpeg/png/jpg/gif/webp (max 2MB).', 422);
                 }
             }
 
@@ -122,5 +137,33 @@ class ProfileController extends BaseApiController
         } catch (\Exception $e) {
             return $this->errorResponse('Failed to update profile: ' . $e->getMessage(), 500);
         }
+    }
+
+    /**
+     * Change customer password (mobile API)
+     */
+    public function changePassword(ChangePasswordRequest $request): JsonResponse
+    {
+        $customer = Auth::guard('sanctum')->user();
+
+        if (!$customer) {
+            return $this->unauthorizedResponse('No authenticated customer found');
+        }
+
+        $customerModel = $this->customerRepository->findById($customer->id);
+
+        if (!$customerModel) {
+            return $this->notFoundResponse('Customer not found');
+        }
+
+        // Verify old password (OTP users may not have a password set)
+        if (!$customerModel->password || !Hash::check($request->old_password, $customerModel->password)) {
+            return $this->errorResponse('The current password is incorrect.', 422);
+        }
+
+        $customerModel->password = $request->new_password;
+        $customerModel->save();
+
+        return $this->successResponse(null, 'Password changed successfully');
     }
 }

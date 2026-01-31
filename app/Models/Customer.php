@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\ManagesFileUploads;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -9,12 +10,15 @@ use Laravel\Sanctum\HasApiTokens;
 
 class Customer extends Authenticatable
 {
-    use HasFactory, Notifiable, HasApiTokens;
+    use HasFactory, Notifiable, HasApiTokens, ManagesFileUploads;
+
+    static string $STORAGE_DIR = "images/customers/profile";
 
     protected $fillable = [
         'name',
         'phone',
         'email',
+        'image',
         'password',
         'is_active',
         'is_completed',
@@ -33,6 +37,14 @@ class Customer extends Authenticatable
         'is_completed' => 'boolean',
         'points' => 'integer',
     ];
+
+    /**
+     * Get the profile image URL
+     */
+    public function getProfileImageUrlAttribute(): string
+    {
+        return $this->getFileUrl($this->image, 'public', 'no-image.png');
+    }
 
     /**
      * Scope to get only active customers

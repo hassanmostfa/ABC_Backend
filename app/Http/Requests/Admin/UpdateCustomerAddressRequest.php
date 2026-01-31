@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateCustomerAddressRequest extends FormRequest
 {
@@ -35,66 +36,46 @@ class UpdateCustomerAddressRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+        $rules = [
             'customer_id' => 'sometimes|required|integer|exists:customers,id',
             'country_id' => 'sometimes|required|integer|exists:countries,id',
             'governorate_id' => 'sometimes|required|integer|exists:governorates,id',
             'area_id' => 'sometimes|required|integer|exists:areas,id',
-            'street' => 'sometimes|nullable|string|max:255',
-            'house' => 'sometimes|nullable|string|max:255',
-            'block' => 'sometimes|nullable|string|max:255',
-            'floor' => 'sometimes|nullable|string|max:255',
+            'lat' => 'nullable|numeric|between:-90,90',
+            'lng' => 'nullable|numeric|between:-180,180',
+            'type' => ['sometimes', 'required', 'string', Rule::in(['apartment', 'house', 'office'])],
+            'phone_number' => 'sometimes|required|string|max:50',
+            'additional_directions' => 'nullable|string|max:500',
+            'address_label' => 'nullable|string|max:100',
+            'building_name' => 'nullable|string|max:255',
+            'apartment_number' => 'nullable|string|max:50',
+            'company' => 'nullable|string|max:255',
+            'street' => 'nullable|string|max:255',
+            'house' => 'nullable|string|max:255',
+            'block' => 'nullable|string|max:255',
+            'floor' => 'nullable|string|max:50',
         ];
-    }
 
-    /**
-     * Get custom messages for validator errors.
-     *
-     * @return array<string, string>
-     */
-    public function messages(): array
-    {
-        return [
-            'customer_id.required' => 'The customer ID is required.',
-            'customer_id.integer' => 'The customer ID must be a valid integer.',
-            'customer_id.exists' => 'The selected customer does not exist.',
-            'country_id.required' => 'The country ID is required.',
-            'country_id.integer' => 'The country ID must be a valid integer.',
-            'country_id.exists' => 'The selected country does not exist.',
-            'governorate_id.required' => 'The governorate ID is required.',
-            'governorate_id.integer' => 'The governorate ID must be a valid integer.',
-            'governorate_id.exists' => 'The selected governorate does not exist.',
-            'area_id.required' => 'The area ID is required.',
-            'area_id.integer' => 'The area ID must be a valid integer.',
-            'area_id.exists' => 'The selected area does not exist.',
-            'street.string' => 'The street must be a string.',
-            'street.max' => 'The street may not be greater than 255 characters.',
-            'house.string' => 'The house must be a string.',
-            'house.max' => 'The house may not be greater than 255 characters.',
-            'block.string' => 'The block must be a string.',
-            'block.max' => 'The block may not be greater than 255 characters.',
-            'floor.string' => 'The floor must be a string.',
-            'floor.max' => 'The floor may not be greater than 255 characters.',
-        ];
-    }
+        $type = $this->input('type');
+        if ($type) {
+            if ($type === 'apartment') {
+                $rules['building_name'] = 'required|string|max:255';
+                $rules['apartment_number'] = 'required|string|max:50';
+                $rules['floor'] = 'required|string|max:50';
+                $rules['street'] = 'required|string|max:255';
+            } elseif ($type === 'house') {
+                $rules['house'] = 'required|string|max:255';
+                $rules['street'] = 'required|string|max:255';
+                $rules['block'] = 'required|string|max:255';
+            } elseif ($type === 'office') {
+                $rules['building_name'] = 'required|string|max:255';
+                $rules['company'] = 'required|string|max:255';
+                $rules['floor'] = 'required|string|max:50';
+                $rules['street'] = 'required|string|max:255';
+                $rules['block'] = 'required|string|max:255';
+            }
+        }
 
-    /**
-     * Get custom attributes for validator errors.
-     *
-     * @return array<string, string>
-     */
-    public function attributes(): array
-    {
-        return [
-            'customer_id' => 'customer',
-            'country_id' => 'country',
-            'governorate_id' => 'governorate',
-            'area_id' => 'area',
-            'street' => 'street',
-            'house' => 'house',
-            'block' => 'block',
-            'floor' => 'floor',
-        ];
+        return $rules;
     }
 }
-

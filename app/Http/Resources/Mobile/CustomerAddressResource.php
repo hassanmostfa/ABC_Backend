@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Resources\Admin;
+namespace App\Http\Resources\Mobile;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -16,14 +16,13 @@ class CustomerAddressResource extends JsonResource
     {
         $data = [
             'id' => $this->id,
-            'customer_id' => $this->customer_id,
-            'type' => $this->type ?? 'house',
+            'type' => $this->type,
             'lat' => $this->lat ? (float) $this->lat : null,
             'lng' => $this->lng ? (float) $this->lng : null,
             'phone_number' => $this->phone_number,
             'additional_directions' => $this->additional_directions,
             'address_label' => $this->address_label,
-            'formatted_address' => $this->formatted_address ?? null,
+            'formatted_address' => $this->formatted_address,
             'country' => $this->whenLoaded('country', fn () => [
                 'id' => $this->country->id,
                 'name_en' => $this->country->name_en,
@@ -39,18 +38,25 @@ class CustomerAddressResource extends JsonResource
                 'name_en' => $this->area->name_en,
                 'name_ar' => $this->area->name_ar,
             ]),
-            'street' => $this->street,
-            'house' => $this->house,
-            'block' => $this->block,
-            'floor' => $this->floor,
-            'building_name' => $this->building_name,
-            'apartment_number' => $this->apartment_number,
-            'company' => $this->company,
-            'created_at' => $this->created_at?->toISOString(),
-            'updated_at' => $this->updated_at?->toISOString(),
         ];
+
+        if ($this->type === 'apartment') {
+            $data['building_name'] = $this->building_name;
+            $data['apartment_number'] = $this->apartment_number;
+            $data['floor'] = $this->floor;
+            $data['street'] = $this->street;
+        } elseif ($this->type === 'house') {
+            $data['house'] = $this->house;
+            $data['street'] = $this->street;
+            $data['block'] = $this->block;
+        } elseif ($this->type === 'office') {
+            $data['building_name'] = $this->building_name;
+            $data['company'] = $this->company;
+            $data['floor'] = $this->floor;
+            $data['street'] = $this->street;
+            $data['block'] = $this->block;
+        }
 
         return $data;
     }
 }
-

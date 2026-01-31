@@ -45,6 +45,7 @@ use App\Http\Controllers\Api\Mobile\addresses\CustomerAddressController as Mobil
 use App\Http\Controllers\Api\Mobile\locations\LocationController as MobileLocationController;
 use App\Http\Controllers\Api\Mobile\payments\PaymentController as MobilePaymentController;
 use App\Http\Controllers\Api\Mobile\profile\ProfileController as MobileProfileController;
+use App\Http\Controllers\Api\Mobile\AppContentController as MobileAppContentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -401,7 +402,16 @@ Route::prefix('mobile/auth')->group(function () {
 // =====================================================================================================
 Route::prefix('mobile/offers')->group(function () {
       Route::get('/', [MobileOfferController::class, 'index']);
+      Route::get('/by-product-variant/{productVariantId}', [MobileOfferController::class, 'getByProductVariant']);
       Route::get('/{id}', [MobileOfferController::class, 'show']);
+   });
+
+Route::prefix('mobile/app-content')->group(function () {
+      Route::get('/about', [MobileAppContentController::class, 'getAbout']);
+      Route::get('/terms-and-conditions', [MobileAppContentController::class, 'getTermsAndConditions']);
+      Route::get('/social-media-links', [MobileAppContentController::class, 'getSocialMediaLinks']);
+      Route::get('/faqs', [MobileAppContentController::class, 'getFaqs']);
+      Route::get('/order-settings', [MobileAppContentController::class, 'getOrderSettings']);
    });
 
 Route::prefix('mobile/categories')->group(function () {
@@ -443,7 +453,8 @@ Route::middleware('api.auth')->prefix('mobile/payments')->group(function () {
 // =====================================================================================================
 Route::middleware('api.auth')->prefix('mobile/profile')->group(function () {
    Route::get('/', [MobileProfileController::class, 'show']);
-   Route::put('/', [MobileProfileController::class, 'update']);
+   Route::post('/', [MobileProfileController::class, 'update']);
+   Route::put('/change-password', [MobileProfileController::class, 'changePassword']);
 });
    
 Route::middleware('api.auth')->group(function () {

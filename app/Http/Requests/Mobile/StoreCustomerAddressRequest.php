@@ -4,6 +4,7 @@ namespace App\Http\Requests\Mobile;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class StoreCustomerAddressRequest extends FormRequest
 {
@@ -36,15 +37,38 @@ class StoreCustomerAddressRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+        $rules = [
             'country_id' => 'required|integer|exists:countries,id',
             'governorate_id' => 'required|integer|exists:governorates,id',
             'area_id' => 'required|integer|exists:areas,id',
-            'street' => 'nullable|string|max:255',
-            'house' => 'nullable|string|max:255',
-            'block' => 'nullable|string|max:255',
-            'floor' => 'nullable|string|max:255',
+            'lat' => 'required|numeric|between:-90,90',
+            'lng' => 'required|numeric|between:-180,180',
+            'type' => ['required', 'string', Rule::in(['apartment', 'house', 'office'])],
+            'phone_number' => 'required|string|max:50',
+            'additional_directions' => 'nullable|string|max:500',
+            'address_label' => 'nullable|string|max:100',
         ];
+
+        $type = $this->input('type');
+
+        if ($type === 'apartment') {
+            $rules['building_name'] = 'required|string|max:255';
+            $rules['apartment_number'] = 'required|string|max:50';
+            $rules['floor'] = 'required|string|max:50';
+            $rules['street'] = 'required|string|max:255';
+        } elseif ($type === 'house') {
+            $rules['house'] = 'required|string|max:255';
+            $rules['street'] = 'required|string|max:255';
+            $rules['block'] = 'required|string|max:255';
+        } elseif ($type === 'office') {
+            $rules['building_name'] = 'required|string|max:255';
+            $rules['company'] = 'required|string|max:255';
+            $rules['floor'] = 'required|string|max:50';
+            $rules['street'] = 'required|string|max:255';
+            $rules['block'] = 'required|string|max:255';
+        }
+
+        return $rules;
     }
 
     /**
@@ -55,41 +79,21 @@ class StoreCustomerAddressRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'country_id.required' => 'The country ID is required.',
-            'country_id.integer' => 'The country ID must be a valid integer.',
-            'country_id.exists' => 'The selected country does not exist.',
-            'governorate_id.required' => 'The governorate ID is required.',
-            'governorate_id.integer' => 'The governorate ID must be a valid integer.',
-            'governorate_id.exists' => 'The selected governorate does not exist.',
-            'area_id.required' => 'The area ID is required.',
-            'area_id.integer' => 'The area ID must be a valid integer.',
-            'area_id.exists' => 'The selected area does not exist.',
-            'street.string' => 'The street must be a string.',
-            'street.max' => 'The street may not be greater than 255 characters.',
-            'house.string' => 'The house must be a string.',
-            'house.max' => 'The house may not be greater than 255 characters.',
-            'block.string' => 'The block must be a string.',
-            'block.max' => 'The block may not be greater than 255 characters.',
-            'floor.string' => 'The floor must be a string.',
-            'floor.max' => 'The floor may not be greater than 255 characters.',
-        ];
-    }
-
-    /**
-     * Get custom attributes for validator errors.
-     *
-     * @return array<string, string>
-     */
-    public function attributes(): array
-    {
-        return [
-            'country_id' => 'country',
-            'governorate_id' => 'governorate',
-            'area_id' => 'area',
-            'street' => 'street',
-            'house' => 'house',
-            'block' => 'block',
-            'floor' => 'floor',
+            'country_id.required' => 'The country is required.',
+            'governorate_id.required' => 'The governorate is required.',
+            'area_id.required' => 'The area is required.',
+            'lat.required' => 'The latitude is required.',
+            'lng.required' => 'The longitude is required.',
+            'type.required' => 'The address type is required.',
+            'type.in' => 'The address type must be apartment, house, or office.',
+            'phone_number.required' => 'The phone number is required.',
+            'building_name.required' => 'The building name is required.',
+            'apartment_number.required' => 'The apartment number is required.',
+            'floor.required' => 'The floor is required.',
+            'street.required' => 'The street is required.',
+            'house.required' => 'The house is required.',
+            'block.required' => 'The block is required.',
+            'company.required' => 'The company name is required.',
         ];
     }
 }

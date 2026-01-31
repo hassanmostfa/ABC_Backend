@@ -54,34 +54,23 @@ class DeliveryService
                     ->find($customerAddressId);
                 
                 if ($customerAddress) {
-                    // Build delivery address string from customer address
-                    $addressParts = [];
-                    if ($customerAddress->country) {
-                        $addressParts[] = $customerAddress->country->name_en ?? $customerAddress->country->name_ar;
-                    }
-                    if ($customerAddress->governorate) {
-                        $addressParts[] = $customerAddress->governorate->name_en ?? $customerAddress->governorate->name_ar;
-                    }
-                    if ($customerAddress->area) {
-                        $addressParts[] = $customerAddress->area->name_en ?? $customerAddress->area->name_ar;
-                    }
-                    if ($customerAddress->street) {
-                        $addressParts[] = $customerAddress->street;
-                    }
-                    
-                    // Only use customer address if delivery_address is not already provided
                     if (empty($deliveryData['delivery_address'])) {
-                        $deliveryData['delivery_address'] = implode(', ', $addressParts);
+                        $addressParts = [];
+                        if ($customerAddress->country) {
+                            $addressParts[] = $customerAddress->country->name_en ?? $customerAddress->country->name_ar;
+                        }
+                        if ($customerAddress->governorate) {
+                            $addressParts[] = $customerAddress->governorate->name_en ?? $customerAddress->governorate->name_ar;
+                        }
+                        if ($customerAddress->area) {
+                            $addressParts[] = $customerAddress->area->name_en ?? $customerAddress->area->name_ar;
+                        }
+                        $addressParts[] = $customerAddress->formatted_address ?? $customerAddress->street ?? '';
+                        $deliveryData['delivery_address'] = implode(', ', array_filter($addressParts));
                     }
-                    if (empty($deliveryData['block'])) {
-                        $deliveryData['block'] = $customerAddress->block;
-                    }
-                    if (empty($deliveryData['street'])) {
-                        $deliveryData['street'] = $customerAddress->street;
-                    }
-                    if (empty($deliveryData['house_number'])) {
-                        $deliveryData['house_number'] = $customerAddress->house;
-                    }
+                    if (empty($deliveryData['block'])) $deliveryData['block'] = $customerAddress->block;
+                    if (empty($deliveryData['street'])) $deliveryData['street'] = $customerAddress->street;
+                    if (empty($deliveryData['house_number'])) $deliveryData['house_number'] = $customerAddress->house;
                 }
             }
             
@@ -129,7 +118,6 @@ class DeliveryService
                     $customerAddress = CustomerAddress::with(['country', 'governorate', 'area'])->find($customerAddressId);
                     
                     if ($customerAddress) {
-                        // Build delivery address string from customer address
                         $addressParts = [];
                         if ($customerAddress->country) {
                             $addressParts[] = $customerAddress->country->name_en ?? $customerAddress->country->name_ar;
@@ -140,11 +128,8 @@ class DeliveryService
                         if ($customerAddress->area) {
                             $addressParts[] = $customerAddress->area->name_en ?? $customerAddress->area->name_ar;
                         }
-                        if ($customerAddress->street) {
-                            $addressParts[] = $customerAddress->street;
-                        }
-                        
-                        $deliveryData['delivery_address'] = implode(', ', $addressParts);
+                        $addressParts[] = $customerAddress->formatted_address ?? $customerAddress->street ?? '';
+                        $deliveryData['delivery_address'] = implode(', ', array_filter($addressParts));
                         $deliveryData['block'] = $customerAddress->block;
                         $deliveryData['street'] = $customerAddress->street;
                         $deliveryData['house_number'] = $customerAddress->house;

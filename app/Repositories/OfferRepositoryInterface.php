@@ -37,4 +37,9 @@ interface OfferRepositoryInterface
      * Delete offer
      */
     public function delete(int $id): bool;
+
+    /**
+     * Get offers related to a product variant (where variant appears in conditions or rewards)
+     */
+    public function getByProductVariantId(int $productVariantId, bool $activeOnly = true): Collection;
 }

@@ -53,6 +53,7 @@ class UpdateProfileRequest extends FormRequest
                 'max:255',
                 $customerId ? 'unique:customers,phone,' . $customerId : 'unique:customers,phone',
             ],
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
         ];
     }
 
