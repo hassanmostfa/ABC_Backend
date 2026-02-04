@@ -13,10 +13,14 @@ class OfferService
     use ChecksOfferActive;
 
     protected $orderItemRepository;
+    protected $walletTransactionService;
 
-    public function __construct(OrderItemRepositoryInterface $orderItemRepository)
-    {
+    public function __construct(
+        OrderItemRepositoryInterface $orderItemRepository,
+        ?PointsTransactionService $pointsTransactionService = null
+    ) {
         $this->orderItemRepository = $orderItemRepository;
+        $this->pointsTransactionService = $pointsTransactionService ?? app(PointsTransactionService::class);
     }
 
     /**
@@ -173,6 +177,7 @@ class OfferService
         } elseif ($offer->reward_type === 'discount') {
             // Add condition products to order items (if not already present)
             // Discount offers also need their conditions fulfilled
+            $totalBeforeConditions = $totalAmount;
             $activeConditions = $offer->activeConditions()->with(['product', 'productVariant'])->get();
             foreach ($activeConditions as $condition) {
                 if ($condition->product_variant_id) {
@@ -234,20 +239,22 @@ class OfferService
                 }
             }
             
-            // Calculate discount from rewards (on the updated totalAmount)
+            // Calculate discount from rewards applied only to THIS offer's condition total
+            // (processOfferRewards is called once per offer quantity, so we must not use full totalAmount)
+            $conditionTotalThisOffer = $totalAmount - $totalBeforeConditions;
             $activeRewards = $offer->activeRewards()->get();
             foreach ($activeRewards as $reward) {
                 if ($reward->discount_amount && $reward->discount_type) {
                     if ($reward->discount_type === 'percentage') {
-                        $discount = ($totalAmount * $reward->discount_amount) / 100;
+                        $discount = ($conditionTotalThisOffer * $reward->discount_amount) / 100;
                     } else {
                         $discount = $reward->discount_amount;
                     }
                     $offerDiscount += $discount;
                 }
             }
-            // Don't allow discount to exceed total amount
-            $offerDiscount = min($offerDiscount, $totalAmount);
+            // Cap this offer's discount to this offer's condition total (safety)
+            $offerDiscount = min($offerDiscount, $conditionTotalThisOffer > 0 ? $conditionTotalThisOffer : $totalAmount);
         }
 
         return [
@@ -415,6 +422,14 @@ class OfferService
             $customerRepository->update($customer->id, [
                 'points' => $currentPoints + $totalPoints
             ]);
+
+            // Record points earned in points transaction history
+            $this->pointsTransactionService->recordPointsEarned(
+                $order->customer_id,
+                $totalPoints,
+                $order->id,
+                "Earned {$totalPoints} points from order #{$order->id}"
+            );
         }
     }
 }

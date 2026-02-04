@@ -177,5 +177,25 @@ class InvoiceService
             'status' => 'pending',
         ]);
     }
+
+    /**
+     * Mark invoice as cancelled (order cancelled)
+     */
+    public function markAsCancelled(int $invoiceId): void
+    {
+        $this->invoiceRepository->update($invoiceId, [
+            'status' => 'cancelled',
+        ]);
+    }
+
+    /**
+     * Mark invoice as refunded (money returned to customer)
+     */
+    public function markAsRefunded(int $invoiceId): void
+    {
+        $this->invoiceRepository->update($invoiceId, [
+            'status' => 'refunded',
+        ]);
+    }
 }
 

@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Order;
+use App\Models\Payment;
 
 class UpaymentsService
 {
@@ -95,6 +96,89 @@ class UpaymentsService
             return $data['data']['link'];
         }
 
+        if (isset($data['data']['url'])) {
+            return $data['data']['url'];
+        }
+
+        throw new \Exception('Payment link not found in Upayments response');
+    }
+
+    /**
+     * Create payment link for wallet charge (top-up)
+     */
+    public function createWalletChargePayment(Payment $payment, float $amount): string
+    {
+        $payment->load('customer');
+        $customer = $payment->customer;
+        if (!$customer) {
+            throw new \Exception('Customer is required for wallet charge payment');
+        }
+
+        $apiUrl = rtrim(config('services.upayments.url'), '/');
+        if (str_ends_with($apiUrl, '/api/v1')) {
+            $endpoint = $apiUrl . '/charge';
+        } else {
+            $endpoint = $apiUrl . '/api/v1/charge';
+        }
+
+        $products = [
+            [
+                'name' => 'Wallet Top-up',
+                'description' => 'Wallet balance charge - ' . number_format($amount, 2) . ' KWD (+ bonus)',
+                'price' => (float) $amount,
+                'quantity' => 1,
+            ],
+        ];
+
+        $payload = [
+            'products' => $products,
+            'order' => [
+                'id' => $payment->reference,
+                'reference' => (string) $payment->id,
+                'description' => 'Wallet charge - ' . $payment->reference,
+                'currency' => 'KWD',
+                'amount' => (float) $amount,
+            ],
+            'language' => 'en',
+            'reference' => [
+                'id' => (string) $payment->id,
+            ],
+            'customer' => [
+                'uniqueId' => (string) $customer->id,
+                'name' => $customer->name,
+                'email' => $customer->email ?? $customer->phone . '@example.com',
+                'mobile' => $customer->phone,
+            ],
+            'returnUrl' => route('payments.wallet-charge.success', ['reference' => $payment->reference]),
+            'cancelUrl' => route('payments.wallet-charge.cancel', ['reference' => $payment->reference]),
+            'notificationUrl' => route('payments.wallet-charge.notification', ['reference' => $payment->reference]),
+        ];
+
+        Log::info('Upayments wallet charge request', [
+            'endpoint' => $endpoint,
+            'wallet_charge_reference' => $payment->reference,
+        ]);
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . config('services.upayments.key'),
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+        ])->post($endpoint, $payload);
+
+        Log::info('Upayments wallet charge response', [
+            'status' => $response->status(),
+            'body' => $response->json(),
+        ]);
+
+        if (!$response->successful()) {
+            $message = $response->json()['message'] ?? 'Upayments request failed';
+            throw new \Exception($message);
+        }
+
+        $data = $response->json();
+        if (isset($data['data']['link'])) {
+            return $data['data']['link'];
+        }
         if (isset($data['data']['url'])) {
             return $data['data']['url'];
         }

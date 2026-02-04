@@ -37,11 +37,14 @@ class PaymentController extends BaseApiController
             return $this->unauthorizedResponse('No authenticated customer found');
         }
 
-        // Get all payments for this customer through their orders
-        $payments = Payment::whereHas('invoice.order', function ($query) use ($customer) {
-            $query->where('customer_id', $customer->id);
+        // Get all payments: order payments (via invoice) + wallet charge payments (direct customer_id)
+        $payments = Payment::where(function ($query) use ($customer) {
+            $query->whereHas('invoice.order', fn ($q) => $q->where('customer_id', $customer->id))
+                ->orWhere(function ($q) use ($customer) {
+                    $q->where('customer_id', $customer->id)->where('type', 'wallet_charge');
+                });
         })
-        ->with(['invoice', 'invoice.order', 'invoice.order.customer', 'invoice.order.charity', 'invoice.order.items'])
+        ->with(['invoice', 'invoice.order', 'invoice.order.customer', 'invoice.order.charity', 'invoice.order.items', 'customer'])
         ->orderBy('created_at', 'desc')
         ->get();
 

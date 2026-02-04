@@ -5,35 +5,35 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Payment extends Model
+class RefundRequest extends Model
 {
     use HasFactory;
 
-    const TYPE_ORDER = 'order';
-    const TYPE_WALLET_CHARGE = 'wallet_charge';
+    const STATUS_PENDING = 'pending';
+    const STATUS_APPROVED = 'approved';
+    const STATUS_REJECTED = 'rejected';
 
     protected $fillable = [
+        'order_id',
         'invoice_id',
         'customer_id',
-        'reference',
-        'type',
-        'payment_number',
-        'receipt_id',
         'amount',
-        'bonus_amount',
-        'total_amount',
-        'method',
         'status',
-        'payment_link',
-        'paid_at',
+        'reason',
+        'admin_notes',
+        'approved_by',
+        'approved_at',
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
-        'bonus_amount' => 'decimal:2',
-        'total_amount' => 'decimal:2',
-        'paid_at' => 'datetime',
+        'approved_at' => 'datetime',
     ];
+
+    public function order()
+    {
+        return $this->belongsTo(Order::class);
+    }
 
     public function invoice()
     {
@@ -45,8 +45,8 @@ class Payment extends Model
         return $this->belongsTo(Customer::class);
     }
 
-    public function scopeWalletCharge($query)
+    public function approvedBy()
     {
-        return $query->where('type', self::TYPE_WALLET_CHARGE);
+        return $this->belongsTo(Admin::class, 'approved_by');
     }
 }

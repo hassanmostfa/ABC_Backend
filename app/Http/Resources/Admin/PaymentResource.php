@@ -17,13 +17,23 @@ class PaymentResource extends JsonResource
         return [
             'id' => $this->id,
             'invoice_id' => $this->invoice_id,
+            'customer_id' => $this->customer_id,
+            'reference' => $this->reference,
+            'type' => $this->type ?? 'order',
             'payment_number' => $this->payment_number,
             'amount' => (float) $this->amount,
+            'bonus_amount' => (float) ($this->bonus_amount ?? 0),
+            'total_amount' => isset($this->total_amount) ? (float) $this->total_amount : null,
             'method' => $this->method,
             'status' => $this->status,
             'paid_at' => $this->paid_at?->toISOString(),
-            'invoice' => $this->whenLoaded('invoice', function () {
-                return [
+            'customer' => $this->whenLoaded('customer', fn () => $this->customer ? [
+                'id' => $this->customer->id,
+                'name' => $this->customer->name,
+                'phone' => $this->customer->phone,
+                'email' => $this->customer->email,
+            ] : null),
+            'invoice' => $this->whenLoaded('invoice', fn () => $this->invoice ? [
                     'id' => $this->invoice->id,
                     'invoice_number' => $this->invoice->invoice_number,
                     'amount_due' => (float) $this->invoice->amount_due,
@@ -75,8 +85,7 @@ class PaymentResource extends JsonResource
                             }),
                         ];
                     }),
-                ];
-            }),
+                ] : null),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];

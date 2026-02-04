@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\Admin\AreaController;
 use App\Http\Controllers\Api\Admin\SocialMediaLinkController;
 use App\Http\Controllers\Api\Admin\CareerController;
 use App\Http\Controllers\Api\Admin\OrderController;
+use App\Http\Controllers\Api\Admin\RefundRequestController;
 use App\Http\Controllers\Api\Admin\InvoiceController;
 use App\Http\Controllers\Api\Admin\PaymentController;
 use App\Http\Controllers\Api\Admin\DeliveryController;
@@ -46,6 +47,8 @@ use App\Http\Controllers\Api\Mobile\locations\LocationController as MobileLocati
 use App\Http\Controllers\Api\Mobile\payments\PaymentController as MobilePaymentController;
 use App\Http\Controllers\Api\Mobile\profile\ProfileController as MobileProfileController;
 use App\Http\Controllers\Api\Mobile\AppContentController as MobileAppContentController;
+use App\Http\Controllers\Api\Mobile\points_transactions\PointsTransactionController as MobilePointsTransactionController;
+use App\Http\Controllers\Api\Mobile\wallet\WalletController as MobileWalletController;
 
 /*
 |--------------------------------------------------------------------------
@@ -254,7 +257,16 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::post('/', 'store')->middleware('admin.permission:orders,add');
          Route::get('/{id}', 'show')->middleware('admin.permission:orders,view');
          Route::put('/{id}', 'update')->middleware(['admin.permission:orders,edit', 'prevent.update.completed.order']);
+         Route::patch('/{id}/cancel', 'cancel')->middleware('admin.permission:orders,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:orders,delete');
+      });
+
+      // Refund Requests Management
+      Route::controller(RefundRequestController::class)->prefix('refund-requests')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:refund_requests,view');
+         Route::get('/{id}', 'show')->middleware('admin.permission:refund_requests,view');
+         Route::patch('/{id}/approve', 'approve')->middleware('admin.permission:refund_requests,edit');
+         Route::patch('/{id}/reject', 'reject')->middleware('admin.permission:refund_requests,edit');
       });
 
       // Invoices Management
@@ -302,6 +314,10 @@ Route::controller(PaymentController::class)->prefix('payments/callback')->group(
    Route::get('/success', 'success')->name('payments.success');
    Route::get('/cancel', 'cancel')->name('payments.cancel');
    Route::post('/notification', 'notification')->name('payments.notification');
+   // Wallet charge callbacks
+   Route::get('/wallet-charge/success', 'walletChargeSuccess')->name('payments.wallet-charge.success');
+   Route::get('/wallet-charge/cancel', 'walletChargeCancel')->name('payments.wallet-charge.cancel');
+   Route::post('/wallet-charge/notification', 'walletChargeNotification')->name('payments.wallet-charge.notification');
 });
 
 // Contact Us Routes (Public)
@@ -427,6 +443,7 @@ Route::middleware('api.auth')->prefix('mobile/orders')->group(function () {
    Route::post('/', [MobileOrderController::class, 'store']);
    Route::get('/', [MobileOrderController::class, 'index']);
    Route::get('/{id}', [MobileOrderController::class, 'show']);
+   Route::patch('/{id}/cancel', [MobileOrderController::class, 'cancel']);
 });
 
 
@@ -455,6 +472,26 @@ Route::middleware('api.auth')->prefix('mobile/profile')->group(function () {
    Route::get('/', [MobileProfileController::class, 'show']);
    Route::post('/', [MobileProfileController::class, 'update']);
    Route::put('/change-password', [MobileProfileController::class, 'changePassword']);
+});
+
+// =====================================================================================================
+// ================== Mobile Points Transactions Routes (Protected) ======================================================
+// =====================================================================================================
+// Points convert settings (public – app can show rate and minimum before convert)
+
+Route::middleware('api.auth')->prefix('mobile/points-transactions')->group(function () {
+   Route::post('/convert-points', [MobilePointsTransactionController::class, 'convertPoints']);
+   Route::get('/', [MobilePointsTransactionController::class, 'transactions']);
+   Route::get('/convert-settings', [MobilePointsTransactionController::class, 'convertSettings']);
+});
+
+// =====================================================================================================
+// ================== Mobile Wallet Routes (Protected) ======================================================
+// =====================================================================================================
+// Wallet charge settings (public – app can show bonus and minimum before charge)
+Route::middleware('api.auth')->prefix('mobile/wallet')->group(function () {
+   Route::post('/charge', [MobileWalletController::class, 'charge']);
+   Route::get('/charge-settings', [MobileWalletController::class, 'chargeSettings']);
 });
    
 Route::middleware('api.auth')->group(function () {

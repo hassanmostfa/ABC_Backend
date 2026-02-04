@@ -16,8 +16,20 @@ class SettingSeeder extends Seeder
     {
         $settings = [
             [
-                'key' => 'one_point_dicount',
-                'value' => '0.1', // 1 point = 0.1 dinar (10 points = 1 dinar)
+                'key' => 'one_point_money_value',
+                'value' => '1', // Money value per 1 point (e.g. 0.1 = 1 point = 0.1 KWD)
+            ],
+            [
+                'key' => 'min_points_to_convert',
+                'value' => '10', // Minimum points required to convert to wallet money
+            ],
+            [
+                'key' => 'wallet_charge_gift',
+                'value' => '5', // Fixed bonus (KWD) when charging wallet (e.g. 5 = 5 KWD bonus, 50 KWD charge -> 55 KWD balance)
+            ],
+            [
+                'key' => 'minimum_wallet_charge',
+                'value' => '1', // Minimum amount (KWD) to charge wallet
             ],
             [
                 'key' => 'tax',

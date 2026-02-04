@@ -11,6 +11,7 @@ use App\Repositories\InvoiceRepositoryInterface;
 use App\Repositories\OrderRepositoryInterface;
 use App\Models\Payment;
 use App\Models\Wallet;
+use App\Services\WalletChargeService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -21,15 +22,18 @@ class PaymentController extends BaseApiController
     protected $paymentRepository;
     protected $invoiceRepository;
     protected $orderRepository;
+    protected $walletChargeService;
 
     public function __construct(
         PaymentRepositoryInterface $paymentRepository,
         InvoiceRepositoryInterface $invoiceRepository,
-        OrderRepositoryInterface $orderRepository
+        OrderRepositoryInterface $orderRepository,
+        WalletChargeService $walletChargeService
     ) {
         $this->paymentRepository = $paymentRepository;
         $this->invoiceRepository = $invoiceRepository;
         $this->orderRepository = $orderRepository;
+        $this->walletChargeService = $walletChargeService;
     }
 
     /**
@@ -908,6 +912,99 @@ class PaymentController extends BaseApiController
             
             return $this->errorResponse('Failed to process webhook: ' . $e->getMessage(), 500);
         }
+    }
+
+    /**
+     * Handle wallet charge payment success callback from Upayments
+     */
+    public function walletChargeSuccess(Request $request): JsonResponse
+    {
+        // Upayments may append params with ? instead of &, corrupting reference - use requested_order_id first (clean)
+        $reference = $request->query('requested_order_id')
+            ?? $this->extractWalletChargeReference($request->query('reference'));
+
+        Log::info('Wallet charge success callback received', ['reference' => $reference, 'all_params' => $request->query()]);
+
+        $payment = $this->walletChargeService->findByReference($reference ?? '');
+        if (!$payment) {
+            return $this->errorResponse('Wallet charge not found', 404);
+        }
+
+        $result = $request->query('result');
+        if (strtoupper($result ?? '') === 'CAPTURED') {
+            $this->walletChargeService->processSuccess($payment);
+        }
+
+        return $this->successResponse([
+            'reference' => $payment->reference,
+            'status' => $payment->fresh()->status,
+            'message' => 'Wallet charge processed successfully',
+        ], 'Payment processed successfully');
+    }
+
+    /**
+     * Handle wallet charge payment cancellation callback from Upayments
+     */
+    public function walletChargeCancel(Request $request): JsonResponse
+    {
+        $reference = $request->query('requested_order_id')
+            ?? $this->extractWalletChargeReference($request->query('reference'));
+
+        Log::info('Wallet charge cancel callback received', ['reference' => $reference]);
+
+        $payment = $this->walletChargeService->findByReference($reference ?? '');
+        if ($payment) {
+            $this->walletChargeService->processCancel($payment);
+        }
+
+        return $this->successResponse([
+            'reference' => $reference,
+            'message' => 'Wallet charge was cancelled',
+        ], 'Payment was cancelled');
+    }
+
+    /**
+     * Handle wallet charge payment notification/webhook from Upayments
+     */
+    public function walletChargeNotification(Request $request): JsonResponse
+    {
+        $reference = $request->query('requested_order_id')
+            ?? $request->input('requested_order_id')
+            ?? $this->extractWalletChargeReference($request->query('reference'))
+            ?? $this->extractWalletChargeReference($request->input('reference'))
+            ?? $request->input('order.reference')
+            ?? $request->input('order.id');
+
+        Log::info('Wallet charge webhook received', ['reference' => $reference, 'data' => $request->all()]);
+
+        $payment = $this->walletChargeService->findByReference($reference ?? '');
+        if (!$payment) {
+            return $this->errorResponse('Wallet charge not found', 404);
+        }
+
+        $paymentStatus = $request->input('result') ?? $request->input('status') ?? '';
+        $statusLower = strtolower($paymentStatus);
+        if (in_array($statusLower, ['captured', 'success', 'paid', 'completed', 'approved'])) {
+            $this->walletChargeService->processSuccess($payment);
+        }
+
+        return $this->successResponse([
+            'reference' => $payment->reference,
+            'status' => $payment->fresh()->status,
+            'message' => 'Webhook processed successfully',
+        ], 'Webhook processed successfully');
+    }
+
+    /**
+     * Extract clean wallet charge reference (WCH-YYYY-NNNNNN) from param that may have ? or & appended by gateway
+     */
+    protected function extractWalletChargeReference(?string $value): ?string
+    {
+        if (empty($value)) {
+            return null;
+        }
+        $cleaned = preg_split('/[?&]/', $value)[0] ?? $value;
+        return trim($cleaned) ?: null;
     }
 
     /**

@@ -6,7 +6,9 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Admin\StoreOrderRequest;
 use App\Http\Requests\Admin\UpdateOrderRequest;
 use App\Http\Resources\Admin\OrderResource;
+use App\Http\Resources\Admin\RefundRequestResource;
 use App\Repositories\OrderRepositoryInterface;
+use App\Services\OrderCancellationService;
 use App\Services\OrderService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -15,13 +17,16 @@ class OrderController extends BaseApiController
 {
     protected $orderRepository;
     protected $orderService;
+    protected $orderCancellationService;
 
     public function __construct(
         OrderRepositoryInterface $orderRepository,
-        OrderService $orderService
+        OrderService $orderService,
+        OrderCancellationService $orderCancellationService
     ) {
         $this->orderRepository = $orderRepository;
         $this->orderService = $orderService;
+        $this->orderCancellationService = $orderCancellationService;
     }
 
     /**
@@ -147,6 +152,40 @@ class OrderController extends BaseApiController
         } catch (\Exception $e) {
             $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 500;
             return $this->errorResponse($e->getMessage(), $code);
+        }
+    }
+
+    /**
+     * Cancel the specified order.
+     */
+    public function cancel(Request $request, int $id): JsonResponse
+    {
+        $order = $this->orderRepository->findById($id);
+
+        if (!$order) {
+            return $this->notFoundResponse('Order not found');
+        }
+
+        try {
+            $result = $this->orderCancellationService->cancelOrder($id, $request->input('reason'));
+
+            if (!$result['success']) {
+                return $this->errorResponse($result['message'], 400);
+            }
+
+            logAdminActivity('cancelled', 'Order', $id);
+
+            $response = [
+                'success' => true,
+                'message' => $result['message'],
+                'order' => new OrderResource($this->orderRepository->findById($id)),
+            ];
+            if (isset($result['refund_request'])) {
+                $response['refund_request'] = new RefundRequestResource($result['refund_request']);
+            }
+            return $this->successResponse($response, $result['message']);
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 500);
         }
     }
 

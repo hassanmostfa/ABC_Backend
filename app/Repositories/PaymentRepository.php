@@ -20,7 +20,7 @@ class PaymentRepository implements PaymentRepositoryInterface
      */
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
-        $query = $this->model->with(['invoice', 'invoice.order', 'invoice.order.customer', 'invoice.order.charity']);
+        $query = $this->model->with(['invoice', 'invoice.order', 'invoice.order.customer', 'invoice.order.charity', 'customer']);
 
         // Search functionality
         if (isset($filters['search']) && !empty($filters['search'])) {
@@ -107,7 +107,7 @@ class PaymentRepository implements PaymentRepositoryInterface
      */
     public function getAll(): Collection
     {
-        return $this->model->with(['invoice', 'invoice.order', 'invoice.order.customer', 'invoice.order.charity'])->get();
+        return $this->model->with(['invoice', 'invoice.order', 'invoice.order.customer', 'invoice.order.charity', 'customer'])->get();
     }
 
     /**
@@ -145,7 +145,7 @@ class PaymentRepository implements PaymentRepositoryInterface
         
         if ($payment) {
             $payment->update($data);
-            return $payment->fresh(['invoice', 'invoice.order', 'invoice.order.customer', 'invoice.order.charity']);
+            return $payment->fresh(['invoice', 'invoice.order', 'invoice.order.customer', 'invoice.order.charity', 'customer']);
         }
 
         return null;
