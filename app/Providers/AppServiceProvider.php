@@ -47,6 +47,8 @@ use App\Repositories\SliderRepositoryInterface;
 use App\Repositories\SliderRepository;
 use App\Repositories\NotificationRepositoryInterface;
 use App\Repositories\NotificationRepository;
+use App\Repositories\FaqRepositoryInterface;
+use App\Repositories\FaqRepository;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -77,6 +79,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(TeamMemberRepositoryInterface::class, TeamMemberRepository::class);
         $this->app->bind(SliderRepositoryInterface::class, SliderRepository::class);
         $this->app->bind(NotificationRepositoryInterface::class, NotificationRepository::class);
+        $this->app->bind(FaqRepositoryInterface::class, FaqRepository::class);
     }
 
     /**

@@ -83,6 +83,7 @@ class PermissionSeeder extends Seeder
                     ['name' => 'Activity Logs', 'slug' => 'activity_logs', 'sort_order' => 0],
                     ['name' => 'Notifications', 'slug' => 'notifications', 'sort_order' => 0],
                     ['name' => 'Sliders', 'slug' => 'sliders', 'sort_order' => 0],
+                    ['name' => 'FAQs', 'slug' => 'faqs', 'sort_order' => 0],
                 ],
             ],
             [
@@ -93,6 +94,7 @@ class PermissionSeeder extends Seeder
                 'items' => [
                     ['name' => 'Charities', 'slug' => 'charities', 'sort_order' => 0],
                     ['name' => 'Customers', 'slug' => 'customers', 'sort_order' => 1],
+                    ['name' => 'Points Transactions', 'slug' => 'points_transactions', 'sort_order' => 2],
                 ],
             ],
         ];

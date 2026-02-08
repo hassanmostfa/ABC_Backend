@@ -51,11 +51,13 @@ class AdminController extends Controller
             $token = $admin->createToken('admin-token', ['admin'])->plainTextToken;
             
             $admin->load('role');
+            $rolePermissions = $this->getRolePermissions($admin->role);
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'admin' => $admin,
+                    'role_permissions' => $rolePermissions,
                     'token' => $token,
                     'token_type' => 'Bearer'
                 ],
@@ -94,10 +96,14 @@ class AdminController extends Controller
     {
         $admin = $request->user();
         $admin->load('role');
+        $rolePermissions = $this->getRolePermissions($admin->role);
 
         return response()->json([
             'success' => true,
-            'data' => $admin,
+            'data' => [
+                'admin' => $admin,
+                'role_permissions' => $rolePermissions,
+            ],
             'message' => 'Profile retrieved successfully'
         ]);
     }
@@ -308,5 +314,33 @@ class AdminController extends Controller
             'success' => true,
             'message' => 'Admin deleted successfully'
         ]);
+    }
+
+    /**
+     * Build role permissions map keyed by permission slug.
+     *
+     * @return array<string, array<string, int>>
+     */
+    protected function getRolePermissions(?Role $role): array
+    {
+        if (!$role) {
+            return [];
+        }
+
+        return $role->permissions()
+            ->with('permissionItem.permissionCategory')
+            ->get()
+            ->mapWithKeys(function ($permission) {
+                $itemSlug = $permission->permissionItem->slug;
+                return [
+                    $itemSlug => [
+                        'view' => (int) $permission->can_view,
+                        'add' => (int) $permission->can_add,
+                        'edit' => (int) $permission->can_edit,
+                        'delete' => (int) $permission->can_delete,
+                    ]
+                ];
+            })
+            ->toArray();
     }
 }

@@ -27,6 +27,7 @@ class PaymentResource extends JsonResource
             'method' => $this->method,
             'status' => $this->status,
             'paid_at' => $this->paid_at?->toISOString(),
+            'receipt_id' => $this->receipt_id,
             'customer' => $this->whenLoaded('customer', fn () => $this->customer ? [
                 'id' => $this->customer->id,
                 'name' => $this->customer->name,

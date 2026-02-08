@@ -21,11 +21,13 @@ use App\Http\Controllers\Api\Admin\OrderController;
 use App\Http\Controllers\Api\Admin\RefundRequestController;
 use App\Http\Controllers\Api\Admin\InvoiceController;
 use App\Http\Controllers\Api\Admin\PaymentController;
+use App\Http\Controllers\Api\Admin\PointsTransactionController;
 use App\Http\Controllers\Api\Admin\DeliveryController;
 use App\Http\Controllers\Api\Admin\SettingsController;
 use App\Http\Controllers\Api\Admin\CustomerAddressController;
 use App\Http\Controllers\Api\Admin\TeamMemberController;
 use App\Http\Controllers\Api\Admin\SliderController;
+use App\Http\Controllers\Api\Admin\FaqController;
 use App\Http\Controllers\Api\Admin\ActivityLogController;
 use App\Http\Controllers\Api\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\Api\Shared\ImageController;
@@ -251,6 +253,15 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:sliders,delete');
       });
 
+            // FAQs Management
+      Route::controller(FaqController::class)->prefix('faqs')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:faqs,view');
+         Route::post('/', 'store')->middleware('admin.permission:faqs,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:faqs,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:faqs,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:faqs,delete');
+      });
+
             // Orders Management
       Route::controller(OrderController::class)->prefix('orders')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:orders,view');
@@ -274,6 +285,16 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:invoices,view');
          Route::get('/{id}', 'show')->middleware('admin.permission:invoices,view');
          Route::put('/{id}', 'update')->middleware('admin.permission:invoices,edit');
+      });
+
+      // Payments Management
+      Route::controller(PaymentController::class)->prefix('payments')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:transactions,view');
+      });
+
+      // Points Transactions Management
+      Route::controller(PointsTransactionController::class)->prefix('points-transactions')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:points_transactions,view');
       });
       
             // Contact Us Management (Admin)
