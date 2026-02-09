@@ -6,7 +6,7 @@ use App\Models\Otp;
 use App\Models\Customer;
 use App\Models\DeviceToken;
 use App\Models\Setting;
-use App\Http\Resources\Web\CustomerResource;
+use App\Http\Resources\Mobile\CustomerResource;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 
@@ -202,10 +202,11 @@ class OtpService
             'message' => $locale === 'ar' ? 'تم التحقق من رمز التحقق بنجاح.' : 'OTP verified successfully.'
         ];
 
-        // For login type, add customer resource
-        if ($otp->otp_type === 'login') {
-            // Load customer relationships for CustomerResource
-            $customer->load(['wallet', 'addresses']);
+        // Load customer with all relationships for full mobile customer data
+        $customer->load(['wallet', 'addresses']);
+
+        // For login and register, add full customer resource (all user data)
+        if ($otp->otp_type === 'login' || $otp->otp_type === 'register') {
             $response['customer'] = new CustomerResource($customer);
         }
 
@@ -216,8 +217,6 @@ class OtpService
         if ($otp->otp_type === 'register') {
             $response['status_code'] = 201;
             $response['message'] = $locale === 'ar' ? 'تم إنشاء الحساب بنجاح.' : 'Account created successfully.';
-            $customer->load(['wallet', 'addresses']);
-            $response['customer'] = new CustomerResource($customer);
         }
 
         return $response;

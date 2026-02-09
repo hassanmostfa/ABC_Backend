@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\Admin\SliderController;
 use App\Http\Controllers\Api\Admin\FaqController;
 use App\Http\Controllers\Api\Admin\ActivityLogController;
 use App\Http\Controllers\Api\Admin\NotificationController as AdminNotificationController;
+use App\Http\Controllers\Api\Admin\StatisticsController;
 use App\Http\Controllers\Api\Shared\ImageController;
 use App\Http\Controllers\Api\Web\ProductController as WebProductController;
 use App\Http\Controllers\Api\Web\CategoryController as WebCategoryController;
@@ -76,6 +77,9 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
       Route::post('/logout', 'logout');
       Route::get('/profile', 'profile');
    });
+
+   // Dashboard Statistics
+   Route::get('/statistics', [StatisticsController::class, 'index'])->middleware('admin.permission:orders,view');
 
    // Admin Users Management
    Route::controller(AdminController::class)->prefix('admins')->group(function () {

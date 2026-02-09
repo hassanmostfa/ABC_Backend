@@ -9,8 +9,11 @@ use App\Http\Resources\Admin\PaymentResource;
 use App\Repositories\PaymentRepositoryInterface;
 use App\Repositories\InvoiceRepositoryInterface;
 use App\Repositories\OrderRepositoryInterface;
+use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\PaymentGatewayEvent;
 use App\Models\Wallet;
+use App\Services\UpaymentsService;
 use App\Services\WalletChargeService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -23,17 +26,20 @@ class PaymentController extends BaseApiController
     protected $invoiceRepository;
     protected $orderRepository;
     protected $walletChargeService;
+    protected $upaymentsService;
 
     public function __construct(
         PaymentRepositoryInterface $paymentRepository,
         InvoiceRepositoryInterface $invoiceRepository,
         OrderRepositoryInterface $orderRepository,
-        WalletChargeService $walletChargeService
+        WalletChargeService $walletChargeService,
+        UpaymentsService $upaymentsService
     ) {
         $this->paymentRepository = $paymentRepository;
         $this->invoiceRepository = $invoiceRepository;
         $this->orderRepository = $orderRepository;
         $this->walletChargeService = $walletChargeService;
+        $this->upaymentsService = $upaymentsService;
     }
 
     /**
@@ -374,544 +380,295 @@ class PaymentController extends BaseApiController
     }
 
     /**
-     * Handle payment success callback from Upayments
+     * Handle payment success callback from Upayments.
+     * Does not trust redirect params to update DB. If result=CAPTURED and track_id are present,
+     * verifies via getPaymentStatus(track_id) and then updates Payment/Invoice (fallback when webhook is unreachable e.g. localhost).
      */
     public function success(Request $request): JsonResponse
     {
-        // Upayments sends 'requested_order_id' which is the order number (e.g., "CALS-2026-000032")
-        // They also send 'order_id' but it might be their transaction reference, not our database ID
-        $orderNumber = $request->query('requested_order_id');
-        $orderIdParam = $request->query('order_id');
-        
-        // Log all query parameters for debugging
-        Log::info('Upayments success callback received', [
-            'requested_order_id' => $orderNumber,
-            'order_id' => $orderIdParam,
-            'all_params' => $request->query()
-        ]);
+        $trackId = $request->query('track_id') ?? $request->input('track_id');
+        $result = $request->query('result') ?? $request->input('result');
 
-        $order = null;
+        if ($trackId && strtoupper((string) $result) === 'CAPTURED') {
+            $requestedOrderId = $request->query('requested_order_id') ?? $request->input('requested_order_id');
+            $receiptId = $request->query('receipt_id') ?? $request->input('receipt_id');
+            $verifyViaApi = config('services.upayments.verify_via_status_api', true);
 
-        // Try to find order by order number first (this is what Upayments sends in 'requested_order_id')
-        if ($orderNumber) {
-            $order = $this->orderRepository->findByOrderNumber($orderNumber);
-        }
+            $statusResult = null;
+            if ($verifyViaApi) {
+                try {
+                    $statusResult = $this->upaymentsService->getPaymentStatus($trackId);
+                } catch (\Exception $e) {
+                    Log::warning('Upayments success callback: getPaymentStatus failed', [
+                        'track_id' => $trackId,
+                        'requested_order_id' => $requestedOrderId,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            } else {
+                if ($requestedOrderId) {
+                    $orderForAmount = $this->orderRepository->findByOrderNumber($requestedOrderId);
+                    if ($orderForAmount && !$orderForAmount->relationLoaded('invoice')) {
+                        $orderForAmount->load('invoice');
+                    }
+                    $amount = $orderForAmount && $orderForAmount->invoice
+                        ? (float) $orderForAmount->invoice->amount_due
+                        : (float) $request->query('amount');
+                    $statusResult = [
+                        'gateway_status_raw' => 'CAPTURED',
+                        'is_success' => true,
+                        'is_failed' => false,
+                        'amount' => $amount,
+                        'currency' => 'KWD',
+                        'track_id' => $trackId,
+                        'receipt_id' => $receiptId ?: $request->query('receipt_id'),
+                        'payment_id' => $request->query('payment_id'),
+                        'tran_id' => $request->query('tran_id'),
+                        'requested_order_id' => $requestedOrderId,
+                    ];
+                }
+            }
 
-        // If not found by order number, try order_id as database ID
-        if (!$order && $orderIdParam) {
-            // Handle case where order_id might be an array (duplicate query params)
-            $orderId = is_array($orderIdParam) ? $orderIdParam[0] : $orderIdParam;
-            
-            // Only try as database ID if it's numeric and looks like a small integer
-            if (is_numeric($orderId) && (int) $orderId == $orderId && (int) $orderId > 0 && (int) $orderId < 100000) {
-                $order = $this->orderRepository->findById((int) $orderId);
+            if ($statusResult !== null) {
+                try {
+                    $this->processVerifiedPayment($trackId, $statusResult, $receiptId, $requestedOrderId);
+                } catch (\Exception $e) {
+                    Log::warning('Upayments success callback: processVerifiedPayment failed', [
+                        'track_id' => $trackId,
+                        'requested_order_id' => $requestedOrderId,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
             }
         }
 
+        $order = $this->resolveOrderFromCallback($request);
         if (!$order) {
-            Log::warning('Upayments success callback: Order not found', [
-                'requested_order_id' => $orderNumber,
-                'order_id' => $orderIdParam
-            ]);
             return $this->errorResponse('Order not found', 404);
         }
-
-        // Log successful order lookup
-        Log::info('Upayments success callback: Order found', [
-            'order_id' => $order->id,
-            'order_number' => $order->order_number
-        ]);
-
-        // Process payment if result is CAPTURED (since webhook may not be reachable on localhost)
-        $result = $request->query('result');
-        if (strtoupper($result) === 'CAPTURED') {
-            try {
-                DB::beginTransaction();
-
-                // Load invoice for this order
-                if (!$order->relationLoaded('invoice')) {
-                    $order->load('invoice');
-                }
-
-                $invoice = $order->invoice;
-                if (!$invoice) {
-                    DB::rollBack();
-                    Log::warning('Upayments success callback: Invoice not found for order', [
-                        'order_id' => $order->id,
-                        'order_number' => $order->order_number
-                    ]);
-                    return $this->errorResponse('Invoice not found for this order', 404);
-                }
-
-                // Extract payment amount
-                $amount = $request->query('amount')
-                    ?? $invoice->amount_due;
-
-                // Extract payment metadata from URL query parameters
-                // These values come from Upayments callback URL
-                // Handle malformed URLs (with double ?) by parsing raw query string manually
-                $allParams = $request->all();
-                $fullUrl = $request->fullUrl();
-                $rawQueryString = $request->getQueryString() ?? '';
-                
-                // Manually parse query string - handle malformed URLs with double ?
-                // First, try to fix malformed query string (replace ? with & after first ?)
-                $fixedQueryString = preg_replace('/\?/', '&', $rawQueryString, 1); // Replace only first ? after initial ?
-                parse_str($fixedQueryString, $parsedQuery);
-                
-                // Also try extracting directly from URL using regex as fallback
-                preg_match('/[?&]payment_id=([^&]*)/', $fullUrl, $paymentIdMatch);
-                preg_match('/[?&]tran_id=([^&]*)/', $fullUrl, $tranIdMatch);
-                
-                // Try multiple sources to extract payment_id (malformed URL may put it in different places)
-                $paymentId = $request->query('payment_id') 
-                    ?? $request->input('payment_id') 
-                    ?? ($parsedQuery['payment_id'] ?? null)
-                    ?? ($paymentIdMatch[1] ?? null)
-                    ?? ($allParams['payment_id'] ?? null);
-                
-                // Clean payment_id if it contains other parameters (due to malformed URL)
-                if ($paymentId && strpos($paymentId, '&') !== false) {
-                    $paymentId = explode('&', $paymentId)[0];
-                }
-                
-                // For transaction_id, try tran_id, track_id, or ref as fallbacks
-                $transactionId = $request->query('transaction_id') 
-                    ?? $request->input('transaction_id')
-                    ?? $request->query('tran_id')
-                    ?? $request->input('tran_id')
-                    ?? ($parsedQuery['tran_id'] ?? null)
-                    ?? (!empty($tranIdMatch[1]) ? $tranIdMatch[1] : null)
-                    ?? ($parsedQuery['track_id'] ?? null)  // track_id can be used as transaction_id
-                    ?? ($parsedQuery['ref'] ?? null);      // ref can be used as transaction_id
-                
-                // Clean transaction_id if needed
-                if ($transactionId && strpos($transactionId, '&') !== false) {
-                    $transactionId = explode('&', $transactionId)[0];
-                }
-                
-                $receiptId = $request->query('receipt_id') 
-                    ?? $request->input('receipt_id') 
-                    ?? ($parsedQuery['receipt_id'] ?? null)
-                    ?? ($allParams['receipt_id'] ?? null);
-                
-                // Log extracted values for debugging
-                Log::info('Upayments success callback: Extracted payment metadata', [
-                    'payment_id' => $paymentId,
-                    'transaction_id' => $transactionId,
-                    'receipt_id' => $receiptId,
-                    'raw_query_string' => $rawQueryString,
-                    'regex_payment_id' => $paymentIdMatch[1] ?? 'not_found',
-                    'parsed_query_payment_id' => $parsedQuery['payment_id'] ?? 'not_found',
-                ]);
-                
-                // Check if payment already exists for this invoice (by receipt_id)
-                $existingPayment = null;
-                if ($receiptId) {
-                    $existingPayment = Payment::where('invoice_id', $invoice->id)
-                        ->where('receipt_id', $receiptId)
-                        ->where('method', 'online')
-                        ->latest()
-                        ->first();
-                }
-                
-                // If not found by receipt_id, find by invoice and method
-                if (!$existingPayment) {
-                    $existingPayment = Payment::where('invoice_id', $invoice->id)
-                        ->where('method', 'online')
-                        ->latest()
-                        ->first();
-                }
-
-                // Prepare payment data (payment status is 'completed', invoice status is 'paid')
-                // Note: Payment method should be 'online' (not 'online_link') as per payments table enum
-                $paymentData = [
-                    'invoice_id' => $invoice->id,
-                    'amount' => (float) $amount,
-                    'method' => 'online', // Valid enum values: cash, card, online, bank_transfer, wallet
-                    'status' => 'completed', // Payment status is 'completed'
-                    'paid_at' => now('Asia/Kuwait'),
-                    'receipt_id' => $receiptId,
-                ];
-
-                // Create or update payment record
-                if ($existingPayment && $existingPayment->status !== 'completed') {
-                    // Update existing payment if it's now completed
-                    $existingPayment = $this->paymentRepository->update($existingPayment->id, $paymentData);
-                    Log::info('Upayments success callback: Payment updated', [
-                        'payment_id' => $existingPayment->id,
-                        'order_id' => $order->id,
-                        'order_number' => $order->order_number
-                    ]);
-                } else if (!$existingPayment) {
-                    // Create new payment record
-                    $paymentData['payment_number'] = $this->generatePaymentNumber();
-                    $existingPayment = $this->paymentRepository->create($paymentData);
-                    Log::info('Upayments success callback: Payment created', [
-                        'payment_id' => $existingPayment->id,
-                        'order_id' => $order->id,
-                        'order_number' => $order->order_number
-                    ]);
-                }
-
-                // Calculate total paid including this payment
-                $totalPaid = Payment::where('invoice_id', $invoice->id)
-                    ->where('status', 'completed')
-                    ->sum('amount');
-                
-                Log::info('Upayments success callback: Checking invoice payment status', [
-                    'invoice_id' => $invoice->id,
-                    'invoice_amount_due' => $invoice->amount_due,
-                    'total_paid' => $totalPaid,
-                    'will_update_invoice' => ($totalPaid >= $invoice->amount_due)
-                ]);
-                
-                // If total paid equals or exceeds amount_due, mark invoice as paid
-                if ($totalPaid >= $invoice->amount_due) {
-                    // Update invoice status to 'paid' and set paid_at to now in Kuwait timezone
-                    $updatedInvoice = $this->invoiceRepository->update($invoice->id, [
-                        'paid_at' => now('Asia/Kuwait'),
-                        'status' => 'paid', // Invoice status is 'paid'
-                    ]);
-
-                    Log::info('Upayments success callback: Invoice marked as paid', [
-                        'order_id' => $order->id,
-                        'order_number' => $order->order_number,
-                        'invoice_id' => $invoice->id,
-                        'total_paid' => $totalPaid,
-                        'invoice_updated' => $updatedInvoice ? 'yes' : 'no'
-                    ]);
-                } else {
-                    Log::warning('Upayments success callback: Invoice not fully paid yet', [
-                        'invoice_id' => $invoice->id,
-                        'invoice_amount_due' => $invoice->amount_due,
-                        'total_paid' => $totalPaid,
-                        'remaining' => $invoice->amount_due - $totalPaid
-                    ]);
-                }
-
-                DB::commit();
-            } catch (\Exception $e) {
-                DB::rollBack();
-                Log::error('Upayments success callback: Error processing payment', [
-                    'order_id' => $order->id,
-                    'order_number' => $order->order_number,
-                    'error' => $e->getMessage()
-                ]);
-                // Continue to return success response even if payment processing fails
-            }
-        }
-        
+        $order->load('invoice');
+        $invoice = $order->invoice;
+        $invoiceStatus = $invoice ? $invoice->status : 'pending';
+        $status = $invoiceStatus === 'paid' ? 'paid' : 'pending';
         return $this->successResponse([
-            'order_id' => $order->id,
+            'success' => true,
+            'status' => $status,
             'order_number' => $order->order_number,
-            'message' => 'Payment successful'
-        ], 'Payment processed successfully');
+            'invoice_status' => $invoiceStatus,
+        ]);
     }
 
     /**
-     * Handle payment cancellation callback from Upayments
+     * Handle payment cancellation callback from Upayments (UI-only: never create/update Payment or mark invoice paid).
      */
     public function cancel(Request $request): JsonResponse
     {
-        // Upayments sends 'requested_order_id' which is the order number (e.g., "CALS-2026-000032")
-        // They also send 'order_id' but it might be their transaction reference, not our database ID
-        $orderNumber = $request->query('requested_order_id');
-        $orderIdParam = $request->query('order_id');
-        
-        // Log all query parameters for debugging
-        Log::info('Upayments cancel callback received', [
-            'requested_order_id' => $orderNumber,
-            'order_id' => $orderIdParam,
-            'all_params' => $request->query()
-        ]);
-
-        $order = null;
-
-        // Try to find order by order number first (this is what Upayments sends in 'requested_order_id')
-        if ($orderNumber) {
-            $order = $this->orderRepository->findByOrderNumber($orderNumber);
-        }
-
-        // If not found by order number, try order_id as database ID
-        if (!$order && $orderIdParam) {
-            // Handle case where order_id might be an array (duplicate query params)
-            $orderId = is_array($orderIdParam) ? $orderIdParam[0] : $orderIdParam;
-            
-            // Only try as database ID if it's numeric and looks like a small integer
-            if (is_numeric($orderId) && (int) $orderId == $orderId && (int) $orderId > 0 && (int) $orderId < 100000) {
-                $order = $this->orderRepository->findById((int) $orderId);
-            }
-        }
-
+        $order = $this->resolveOrderFromCallback($request);
         if (!$order) {
-            Log::warning('Upayments cancel callback: Order not found', [
-                'requested_order_id' => $orderNumber,
-                'order_id' => $orderIdParam
-            ]);
             return $this->errorResponse('Order not found', 404);
         }
-
-        // Log successful order lookup
-        Log::info('Upayments cancel callback: Order found', [
-            'order_id' => $order->id,
-            'order_number' => $order->order_number
-        ]);
-
-        // Payment was cancelled - order status can remain as is
-        
+        $order->load('invoice');
+        $invoice = $order->invoice;
+        $invoiceStatus = $invoice ? $invoice->status : 'pending';
         return $this->successResponse([
-            'order_id' => $order->id,
+            'success' => true,
+            'status' => 'failed',
             'order_number' => $order->order_number,
-            'message' => 'Payment cancelled'
-        ], 'Payment was cancelled');
+            'invoice_status' => $invoiceStatus,
+        ]);
     }
 
     /**
-     * Handle payment notification/webhook from Upayments
+     * Handle payment notification/webhook from Upayments.
+     * Persists raw payload, verifies via getPaymentStatus(track_id), then updates Payment/Invoice only after verification.
      */
     public function notification(Request $request): JsonResponse
     {
+        $payload = $request->all();
+        $trackId = $request->input('track_id') ?? $request->input('data.track_id') ?? $payload['track_id'] ?? null;
+        $receiptId = $request->input('receipt_id') ?? $request->input('data.receipt_id') ?? $payload['receipt_id'] ?? null;
+        $requestedOrderId = $request->input('requested_order_id') ?? $request->input('data.requested_order_id') ?? $payload['requested_order_id'] ?? null;
+
+        if (!$trackId) {
+            Log::warning('Upayments webhook: missing track_id', ['requested_order_id' => $requestedOrderId]);
+            return $this->errorResponse('Missing track_id', 400);
+        }
+
+        PaymentGatewayEvent::create([
+            'provider' => 'upayments',
+            'event_type' => 'webhook',
+            'track_id' => $trackId,
+            'receipt_id' => $receiptId,
+            'payload' => $payload,
+            'received_at' => now(),
+        ]);
+
         try {
-            DB::beginTransaction();
+            $statusResult = $this->upaymentsService->getPaymentStatus($trackId);
+        } catch (\Exception $e) {
+            Log::warning('Upayments webhook: getPaymentStatus failed', [
+                'track_id' => $trackId,
+                'requested_order_id' => $requestedOrderId,
+                'outcome' => 'verification_failed',
+                'message' => $e->getMessage(),
+            ]);
+            return $this->errorResponse('Payment status verification failed', 502);
+        }
 
-            // Extract order number or ID from query param, request body, or webhook payload
-            // Upayments sends 'requested_order_id' which is the order number (e.g., "CALS-2026-000032")
-            $orderNumber = $request->query('requested_order_id')
-                ?? $request->input('requested_order_id')
-                ?? $request->input('order.reference')
-                ?? $request->input('order.id');
-            
-            $orderIdParam = $request->query('order_id') 
-                ?? $request->input('order_id')
-                ?? $request->input('reference.id');
-            
-            $webhookData = $request->all();
-
-            // Log the notification for debugging
-            Log::info('Upayments webhook received', [
+        $orderNumber = $statusResult['requested_order_id'] ?? $requestedOrderId;
+        $result = $this->processVerifiedPayment($trackId, $statusResult, $receiptId, $orderNumber);
+        if (!$result['processed']) {
+            Log::info('Upayments webhook: not processed', [
+                'track_id' => $trackId,
                 'requested_order_id' => $orderNumber,
-                'order_id' => $orderIdParam,
-                'data' => $webhookData,
-                'headers' => $request->headers->all()
+                'outcome' => $result['reason'] ?? 'order_or_invoice_not_found',
             ]);
+            return $this->successResponse(['message' => 'Webhook received'], 'Webhook received');
+        }
+        if ($result['idempotent'] ?? false) {
+            return $this->successResponse(['message' => 'Webhook processed'], 'Webhook processed');
+        }
+        Log::info('Upayments webhook: processed', [
+            'track_id' => $trackId,
+            'requested_order_id' => $orderNumber,
+            'outcome' => $result['payment_status'],
+        ]);
+        return $this->successResponse([
+            'order_number' => $result['order']->order_number,
+            'payment_status' => $result['payment_status'],
+            'message' => 'Webhook processed successfully',
+        ], 'Webhook processed successfully');
+    }
 
-            $order = null;
+    /**
+     * Verify and apply payment status: updateOrCreate Payment by (gateway, track_id), mark invoice paid if completed.
+     * Used by both webhook and success-callback fallback. Caller must have verified via getPaymentStatus first.
+     *
+     * @param string|null $fallbackOrderNumber Optional order number if status API does not return requested_order_id
+     * @return array{processed: bool, idempotent?: bool, order?: \App\Models\Order, payment_status?: string, reason?: string}
+     */
+    protected function processVerifiedPayment(string $trackId, array $statusResult, ?string $receiptId = null, ?string $fallbackOrderNumber = null): array
+    {
+        $orderNumber = $statusResult['requested_order_id'] ?? $fallbackOrderNumber;
+        $order = $orderNumber ? $this->orderRepository->findByOrderNumber($orderNumber) : null;
+        if (!$order) {
+            return ['processed' => false, 'reason' => 'order_not_found'];
+        }
+        $order->load('invoice');
+        $invoice = $order->invoice;
+        if (!$invoice) {
+            return ['processed' => false, 'reason' => 'invoice_not_found'];
+        }
 
-            // Try to find order by order number first (this is what Upayments sends in 'requested_order_id' or 'order.reference')
-            if ($orderNumber) {
-                $order = $this->orderRepository->findByOrderNumber($orderNumber);
-            }
+        $gateway = 'upayments';
+        $newStatus = $statusResult['is_success'] ? 'completed' : ($statusResult['is_failed'] ? 'failed' : 'pending');
+        $amount = $statusResult['amount'] ?? (float) $invoice->amount_due;
 
-            // If not found by order number, try order_id as database ID
-            if (!$order && $orderIdParam) {
-                // Handle case where order_id might be an array (duplicate query params)
-                $orderId = is_array($orderIdParam) ? $orderIdParam[0] : $orderIdParam;
-                
-                // Only try as database ID if it's numeric and looks like a small integer
-                if (is_numeric($orderId) && (int) $orderId == $orderId && (int) $orderId > 0 && (int) $orderId < 100000) {
-                    $order = $this->orderRepository->findById((int) $orderId);
+        DB::beginTransaction();
+        try {
+            $payment = Payment::where('gateway', $gateway)->where('track_id', $trackId)->first();
+            if ($payment) {
+                if ($payment->status === 'completed') {
+                    DB::commit();
+                    return [
+                        'processed' => true,
+                        'idempotent' => true,
+                        'order' => $order,
+                        'payment_status' => 'completed',
+                    ];
                 }
-            }
-
-            if (!$order) {
-                Log::warning('Upayments webhook: Order not found', [
-                    'requested_order_id' => $orderNumber,
-                    'order_id' => $orderIdParam,
-                    'data' => $webhookData
-                ]);
-                return $this->errorResponse('Order not found', 404);
-            }
-
-            // Load invoice for this order
-            if (!$order->relationLoaded('invoice')) {
-                $order->load('invoice');
-            }
-
-            $invoice = $order->invoice;
-            if (!$invoice) {
-                Log::warning('Upayments webhook: Invoice not found for order', [
-                    'order_id' => $order->id,
-                    'order_number' => $order->order_number
-                ]);
-                return $this->errorResponse('Invoice not found for this order', 404);
-            }
-
-            // Extract payment status from webhook payload
-            // Upayments sends 'result' field (e.g., 'CAPTURED') in callbacks
-            $paymentStatus = $request->input('result') // Upayments uses 'result' in callbacks
-                ?? $request->input('status')
-                ?? $request->input('payment_status')
-                ?? $request->input('transaction_status')
-                ?? $request->input('data.status');
-
-            // Extract payment amount
-            $amount = $request->input('amount')
-                ?? $request->input('order.amount')
-                ?? $request->input('data.amount')
-                ?? $invoice->amount_due;
-
-            // Extract payment metadata from webhook payload
-            $paymentId = $request->input('payment_id')
-                ?? $request->input('data.payment_id');
-            $transactionId = $request->input('transaction_id')
-                ?? $request->input('tran_id')
-                ?? $request->input('session_id')
-                ?? $request->input('data.transaction_id')
-                ?? $request->input('data.id');
-            $receiptId = $request->input('receipt_id')
-                ?? $request->input('data.receipt_id');
-
-            // Map Upayments status to our payment status
-            // Upayments typically uses: 'CAPTURED', 'SUCCESS', 'failed', 'pending', 'cancelled'
-            $status = 'pending';
-            $statusLower = strtolower($paymentStatus ?? '');
-            if (in_array($statusLower, ['captured', 'success', 'paid', 'completed', 'approved'])) {
-                $status = 'completed';
-            } elseif (in_array($statusLower, ['failed', 'rejected', 'declined'])) {
-                $status = 'failed';
-            } elseif (in_array($statusLower, ['cancelled', 'canceled'])) {
-                $status = 'failed'; // Treat cancelled as failed
-            }
-
-            // Log extracted values for debugging
-            Log::info('Upayments webhook: Payment status extracted', [
-                'payment_status_raw' => $paymentStatus,
-                'payment_status_mapped' => $status,
-                'amount' => $amount,
-                'payment_id' => $paymentId,
-                'transaction_id' => $transactionId,
-                'receipt_id' => $receiptId,
-                'invoice_id' => $invoice->id,
-                'invoice_amount_due' => $invoice->amount_due
-            ]);
-
-            // Check if payment already exists for this invoice (by receipt_id)
-            $existingPayment = null;
-            if ($receiptId) {
-                // Try to find payment by receipt ID
-                $existingPayment = Payment::where('invoice_id', $invoice->id)
-                    ->where('receipt_id', $receiptId)
-                    ->where('method', 'online')
-                    ->latest()
-                    ->first();
-            }
-            
-            // If not found by receipt_id, find by invoice and method
-            if (!$existingPayment) {
-                $existingPayment = Payment::where('invoice_id', $invoice->id)
-                    ->where('method', 'online')
-                    ->latest()
-                    ->first();
-            }
-
-            // Prepare payment data
-            // Note: Payment method should be 'online' (not 'online_link') as per payments table enum
-            $paymentData = [
-                'invoice_id' => $invoice->id,
-                'amount' => (float) $amount,
-                'method' => 'online', // Valid enum values: cash, card, online, bank_transfer, wallet
-                'status' => $status,
-                'receipt_id' => $receiptId,
-            ];
-
-            if ($status === 'completed') {
-                $paymentData['paid_at'] = now('Asia/Kuwait');
-            }
-
-            // Create or update payment record
-            if ($existingPayment && $status === 'completed' && $existingPayment->status !== 'completed') {
-                // Update existing payment if it's now completed
-                $existingPayment = $this->paymentRepository->update($existingPayment->id, $paymentData);
-                Log::info('Upayments webhook: Payment updated', [
-                    'payment_id' => $existingPayment->id,
-                    'order_id' => $order->id,
-                    'order_number' => $order->order_number,
-                    'status' => $status
-                ]);
-            } else if (!$existingPayment) {
-                // Create new payment record
-                $paymentData['payment_number'] = $this->generatePaymentNumber();
-                $existingPayment = $this->paymentRepository->create($paymentData);
-                Log::info('Upayments webhook: Payment created', [
-                    'payment_id' => $existingPayment->id,
-                    'order_id' => $order->id,
-                    'order_number' => $order->order_number,
-                    'status' => $status
+                $payment->update([
+                    'status' => $newStatus,
+                    'amount' => $amount,
+                    'tran_id' => $statusResult['tran_id'] ?? $payment->tran_id,
+                    'payment_id' => $statusResult['payment_id'] ?? $payment->payment_id,
+                    'receipt_id' => $statusResult['receipt_id'] ?? $payment->receipt_id ?? $receiptId,
+                    'paid_at' => $newStatus === 'completed' ? now('Asia/Kuwait') : null,
                 ]);
             } else {
-                Log::info('Upayments webhook: Payment already processed', [
-                    'payment_id' => $existingPayment->id,
-                    'order_id' => $order->id,
-                    'order_number' => $order->order_number,
-                    'status' => $status
-                ]);
-            }
-
-            // Update invoice and order if payment is completed and invoice is fully paid
-            if ($status === 'completed') {
-                // Calculate total paid including this payment
-                $totalPaid = Payment::where('invoice_id', $invoice->id)
-                    ->where('status', 'completed')
-                    ->sum('amount');
-                
-                Log::info('Upayments webhook: Checking invoice payment status', [
+                $payment = Payment::create([
                     'invoice_id' => $invoice->id,
-                    'invoice_amount_due' => $invoice->amount_due,
-                    'total_paid' => $totalPaid,
-                    'payment_status' => $status,
-                    'will_update_invoice' => ($totalPaid >= $invoice->amount_due)
+                    'payment_number' => $this->generatePaymentNumber(),
+                    'gateway' => $gateway,
+                    'track_id' => $trackId,
+                    'tran_id' => $statusResult['tran_id'] ?? null,
+                    'payment_id' => $statusResult['payment_id'] ?? null,
+                    'receipt_id' => $statusResult['receipt_id'] ?? $receiptId,
+                    'amount' => $amount,
+                    'method' => 'online',
+                    'status' => $newStatus,
+                    'paid_at' => $newStatus === 'completed' ? now('Asia/Kuwait') : null,
                 ]);
-                
-                // If total paid equals or exceeds amount_due, mark invoice as paid
-                if ($totalPaid >= $invoice->amount_due) {
-                    // Update invoice status and paid_at in Kuwait timezone
-                    $updatedInvoice = $this->invoiceRepository->update($invoice->id, [
-                        'paid_at' => now('Asia/Kuwait'),
-                        'status' => 'paid',
-                    ]);
+            }
 
-                    Log::info('Upayments webhook: Invoice marked as paid', [
-                        'order_id' => $order->id,
-                        'order_number' => $order->order_number,
-                        'invoice_id' => $invoice->id,
-                        'total_paid' => $totalPaid,
-                        'invoice_updated' => $updatedInvoice ? 'yes' : 'no'
-                    ]);
-                } else {
-                    Log::warning('Upayments webhook: Invoice not fully paid yet', [
-                        'invoice_id' => $invoice->id,
-                        'invoice_amount_due' => $invoice->amount_due,
-                        'total_paid' => $totalPaid,
-                        'remaining' => $invoice->amount_due - $totalPaid
-                    ]);
+            if ($newStatus === 'completed') {
+                $invoiceLocked = Invoice::where('id', $invoice->id)->lockForUpdate()->first();
+                if ($invoiceLocked && $invoiceLocked->status !== 'paid') {
+                    $totalPaid = (float) Payment::where('invoice_id', $invoice->id)->where('status', 'completed')->sum('amount');
+                    if ($totalPaid >= (float) $invoiceLocked->amount_due) {
+                        $invoiceLocked->update([
+                            'paid_at' => now('Asia/Kuwait'),
+                            'status' => 'paid',
+                        ]);
+                    }
                 }
-            } else {
-                Log::info('Upayments webhook: Payment status is not completed', [
-                    'payment_status' => $status,
-                    'invoice_id' => $invoice->id
-                ]);
             }
 
             DB::commit();
-
-            return $this->successResponse([
-                'order_id' => $order->id,
-                'order_number' => $order->order_number,
-                'payment_status' => $status,
-                'message' => 'Webhook processed successfully'
-            ], 'Webhook processed successfully');
-
+            return [
+                'processed' => true,
+                'order' => $order->fresh(),
+                'payment_status' => $newStatus,
+            ];
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Upayments webhook error', [
+            Log::error('Upayments processVerifiedPayment: exception', [
+                'track_id' => $trackId,
+                'requested_order_id' => $orderNumber,
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'data' => $request->all()
             ]);
-            
-            return $this->errorResponse('Failed to process webhook: ' . $e->getMessage(), 500);
+            throw $e;
         }
+    }
+
+    /**
+     * Resolve order from callback params (success/cancel). Used only to read status; never trust to update DB.
+     */
+    protected function resolveOrderFromCallback(Request $request): ?\App\Models\Order
+    {
+        $orderNumber = $request->query('requested_order_id') ?? $request->input('requested_order_id');
+        $orderIdParam = $request->query('order_id') ?? $request->input('order_id');
+        $ref = $request->query('ref') ?? $request->input('ref');
+        $trackId = $request->query('track_id') ?? $request->input('track_id');
+
+        if ($orderNumber) {
+            $order = $this->orderRepository->findByOrderNumber($orderNumber);
+            if ($order) {
+                return $order;
+            }
+        }
+        if ($orderIdParam && is_numeric($orderIdParam) && (int) $orderIdParam > 0 && (int) $orderIdParam < 100000) {
+            $order = $this->orderRepository->findById((int) $orderIdParam);
+            if ($order) {
+                return $order;
+            }
+        }
+        if ($ref && is_numeric($ref) && (int) $ref > 0 && (int) $ref < 100000) {
+            $order = $this->orderRepository->findById((int) $ref);
+            if ($order) {
+                return $order;
+            }
+        }
+        if ($trackId) {
+            $payment = Payment::where('gateway', 'upayments')->where('track_id', $trackId)->first();
+            if ($payment && $payment->invoice_id) {
+                $invoice = $this->invoiceRepository->findById($payment->invoice_id);
+                if ($invoice && $invoice->order_id) {
+                    return $this->orderRepository->findById($invoice->order_id);
+                }
+            }
+        }
+        return null;
     }
 
     /**
