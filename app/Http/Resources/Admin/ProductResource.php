@@ -55,12 +55,12 @@ class ProductResource extends JsonResource
                     'price' => (float) $variant->price,
                     'image' => $this->getFileUrl($variant->image, 'public', 'no-image.png'),
                     'is_active' => (bool) $variant->is_active,
-                    'created_at' => $variant->created_at?->toISOString(),
-                    'updated_at' => $variant->updated_at?->toISOString(),
+                    'created_at' => \format_datetime_app_tz($variant->created_at),
+                    'updated_at' => \format_datetime_app_tz($variant->updated_at),
                 ];
             }),
-            'created_at' => $this->created_at?->toISOString(),
-            'updated_at' => $this->updated_at?->toISOString(),
+            'created_at' => \format_datetime_app_tz($this->created_at),
+            'updated_at' => \format_datetime_app_tz($this->updated_at),
         ];
     }
 

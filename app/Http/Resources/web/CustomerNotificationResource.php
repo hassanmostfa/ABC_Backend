@@ -20,9 +20,9 @@ class CustomerNotificationResource extends JsonResource
             'message' => $this->message,
             'type' => $this->type,
             'is_read' => (bool) $this->is_read,
-            'read_at' => $this->read_at?->toISOString(),
+            'read_at' => \format_datetime_app_tz($this->read_at),
             'data' => $this->data,
-            'created_at' => $this->created_at?->toISOString(),
+            'created_at' => \format_datetime_app_tz($this->created_at),
         ];
     }
 }

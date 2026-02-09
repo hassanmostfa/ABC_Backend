@@ -24,8 +24,8 @@ class WebSocialMediaLinkResource extends JsonResource
             'title'=>$this->getLanguageFromHeader($request) === 'ar' ? $this->title_ar : $this->title_en,
             'url' => $this->url,
             'is_active' => (bool) $this->is_active,
-            'created_at' => $this->created_at?->toISOString(),
-            'updated_at' => $this->updated_at?->toISOString(),
+            'created_at' => \format_datetime_app_tz($this->created_at),
+            'updated_at' => \format_datetime_app_tz($this->updated_at),
         ];
     }
 

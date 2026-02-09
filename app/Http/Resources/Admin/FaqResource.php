@@ -22,8 +22,8 @@ class FaqResource extends JsonResource
             'answer_ar' => $this->answer_ar,
             'sort_order' => $this->sort_order,
             'is_active' => (bool) $this->is_active,
-            'created_at' => $this->created_at?->toISOString(),
-            'updated_at' => $this->updated_at?->toISOString(),
+            'created_at' => \format_datetime_app_tz($this->created_at),
+            'updated_at' => \format_datetime_app_tz($this->updated_at),
         ];
     }
 }

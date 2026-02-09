@@ -27,8 +27,8 @@ class OfferListResource extends JsonResource
             'image' => $this->getFileUrl($this->image, 'public', 'no-image.png'),
             'type' => $this->type,
             'points' => (int) $this->points,
-            'offer_start_date' => $this->offer_start_date?->format('Y-m-d'),
-            'offer_end_date' => $this->offer_end_date?->format('Y-m-d'),
+            'offer_start_date' => \format_date_app_tz($this->offer_start_date),
+            'offer_end_date' => \format_date_app_tz($this->offer_end_date),
             'status' => $this->getOfferStatus(),
             'charity' => $this->whenLoaded('charity', function () use ($lang) {
                 return [

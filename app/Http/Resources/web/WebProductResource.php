@@ -72,8 +72,8 @@ class WebProductResource extends JsonResource
                     'name' => $lang === 'ar' ? $this->product->subcategory->name_ar : $this->product->subcategory->name_en,
                 ];
             }),
-            'created_at' => $variant->created_at?->toISOString(),
-            'updated_at' => $variant->updated_at?->toISOString(),
+            'created_at' => \format_datetime_app_tz($variant->created_at),
+            'updated_at' => \format_datetime_app_tz($variant->updated_at),
         ];
     }
     
@@ -113,8 +113,8 @@ class WebProductResource extends JsonResource
                         'name' => $lang === 'ar' ? $this->subcategory->name_ar : $this->subcategory->name_en,
                     ];
                 }),
-                'created_at' => $variant->created_at?->toISOString(),
-                'updated_at' => $variant->updated_at?->toISOString(),
+                'created_at' => \format_datetime_app_tz($variant->created_at),
+                'updated_at' => \format_datetime_app_tz($variant->updated_at),
             ];
         })->toArray();
     }
@@ -148,8 +148,8 @@ class WebProductResource extends JsonResource
                 'id' => $variant->subcategory->id,
                 'name' => $lang === 'ar' ? $variant->subcategory->name_ar : $variant->subcategory->name_en,
             ] : null,
-            'created_at' => $variant->created_at?->toISOString(),
-            'updated_at' => $variant->updated_at?->toISOString(),
+            'created_at' => \format_datetime_app_tz($variant->created_at),
+            'updated_at' => \format_datetime_app_tz($variant->updated_at),
         ];
     }
 

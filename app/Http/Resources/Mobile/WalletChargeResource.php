@@ -20,7 +20,7 @@ class WalletChargeResource extends JsonResource
             'bonus_amount' => (float) ($this->bonus_amount ?? 0),
             'total_amount' => (float) ($this->total_amount ?? $this->amount),
             'status' => $this->status,
-            'created_at' => $this->created_at?->toISOString(),
+            'created_at' => \format_datetime_app_tz($this->created_at),
         ];
     }
 }

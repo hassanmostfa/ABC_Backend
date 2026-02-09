@@ -21,8 +21,8 @@ class SliderResource extends JsonResource
             'id' => $this->id,
             'image' => $this->getFileUrl($this->image, 'public', 'no-image.png'),
             'is_published' => (bool) $this->is_published,
-            'created_at' => $this->created_at?->toISOString(),
-            'updated_at' => $this->updated_at?->toISOString(),
+            'created_at' => \format_datetime_app_tz($this->created_at),
+            'updated_at' => \format_datetime_app_tz($this->updated_at),
         ];
     }
 }

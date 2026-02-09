@@ -19,8 +19,8 @@ class RefundRequestResource extends JsonResource
             'reason' => $this->reason,
             'admin_notes' => $this->admin_notes,
             'approved_by' => $this->approved_by,
-            'approved_at' => $this->approved_at?->toISOString(),
-            'created_at' => $this->created_at?->toISOString(),
+            'approved_at' => \format_datetime_app_tz($this->approved_at),
+            'created_at' => \format_datetime_app_tz($this->created_at),
             'order' => $this->whenLoaded('order', fn () => $this->order ? [
                 'id' => $this->order->id,
                 'order_number' => $this->order->order_number,

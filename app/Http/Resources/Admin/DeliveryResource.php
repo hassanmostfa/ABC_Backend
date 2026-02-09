@@ -22,8 +22,8 @@ class DeliveryResource extends JsonResource
             'block' => $this->block,
             'street' => $this->street,
             'house_number' => $this->house_number,
-            'delivery_datetime' => $this->delivery_datetime?->toISOString(),
-            'received_datetime' => $this->received_datetime?->toISOString(),
+            'delivery_datetime' => \format_datetime_app_tz($this->delivery_datetime),
+            'received_datetime' => \format_datetime_app_tz($this->received_datetime),
             'delivery_status' => $this->delivery_status,
             'notes' => $this->notes,
             'order' => $this->whenLoaded('order', function () {
@@ -71,11 +71,11 @@ class DeliveryResource extends JsonResource
                             'status' => $this->order->invoice->status,
                         ];
                     }),
-                    'created_at' => $this->order->created_at?->toISOString(),
+                    'created_at' => \format_datetime_app_tz($this->order->created_at),
                 ];
             }),
-            'created_at' => $this->created_at?->toISOString(),
-            'updated_at' => $this->updated_at?->toISOString(),
+            'created_at' => \format_datetime_app_tz($this->created_at),
+            'updated_at' => \format_datetime_app_tz($this->updated_at),
         ];
     }
 }

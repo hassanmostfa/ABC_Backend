@@ -24,8 +24,8 @@ class WebCategoryResource extends JsonResource
             'name' => $lang === 'ar' ? $this->name_ar : $this->name_en,
             'image_url' => $this->getFileUrl($this->image_path, 'public', 'no-image.png'),
             'is_active' => (bool) $this->is_active,
-            'created_at' => $this->created_at?->toISOString(),
-            'updated_at' => $this->updated_at?->toISOString(),
+            'created_at' => \format_datetime_app_tz($this->created_at),
+            'updated_at' => \format_datetime_app_tz($this->updated_at),
         ];
     }
 

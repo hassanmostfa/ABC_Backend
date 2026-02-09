@@ -145,8 +145,8 @@ class OfferResource extends JsonResource
                     'is_active' => (bool) $reward->is_active,
                 ];
             }),
-            'offer_start_date' => $this->offer_start_date?->format('Y-m-d'),
-            'offer_end_date' => $this->offer_end_date?->format('Y-m-d'),
+            'offer_start_date' => \format_date_app_tz($this->offer_start_date),
+            'offer_end_date' => \format_date_app_tz($this->offer_end_date),
             'is_active' => (bool) $this->is_active,
             'image' => $this->getFileUrl($this->image, 'public', 'no-image.png'),
             'type' => $this->type,
@@ -161,8 +161,8 @@ class OfferResource extends JsonResource
             }),
             'reward_type' => $this->reward_type,
             'status' => $this->getOfferStatus(),
-            'created_at' => $this->created_at?->format('Y-m-d'),
-            'updated_at' => $this->updated_at?->format('Y-m-d'),
+            'created_at' => \format_date_app_tz($this->created_at),
+            'updated_at' => \format_date_app_tz($this->updated_at),
         ];
     }
 

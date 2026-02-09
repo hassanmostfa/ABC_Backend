@@ -30,6 +30,7 @@
         },
         "files": [
             "app/Helpers/ActivityLogHelper.php",
+            "app/Helpers/DateTimeHelper.php",
             "app/Helpers/NotificationHelper.php",
             "app/Helpers/SettingHelper.php"
         ]

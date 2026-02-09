@@ -30,7 +30,7 @@ class PointsTransactionResource extends JsonResource
                 'phone' => $this->customer->phone,
                 'email' => $this->customer->email,
             ] : null),
-            'created_at' => $this->created_at?->toISOString(),
+            'created_at' => \format_datetime_app_tz($this->created_at),
         ];
     }
 

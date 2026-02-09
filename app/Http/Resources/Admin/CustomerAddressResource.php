@@ -46,8 +46,8 @@ class CustomerAddressResource extends JsonResource
             'building_name' => $this->building_name,
             'apartment_number' => $this->apartment_number,
             'company' => $this->company,
-            'created_at' => $this->created_at?->toISOString(),
-            'updated_at' => $this->updated_at?->toISOString(),
+            'created_at' => \format_datetime_app_tz($this->created_at),
+            'updated_at' => \format_datetime_app_tz($this->updated_at),
         ];
 
         return $data;

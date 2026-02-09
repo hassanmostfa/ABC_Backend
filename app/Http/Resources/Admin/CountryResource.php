@@ -19,8 +19,8 @@ class CountryResource extends JsonResource
             'name_en' => $this->name_en,
             'name_ar' => $this->name_ar,
             'is_active' => $this->is_active,
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            'created_at' => \format_datetime_app_tz($this->created_at),
+            'updated_at' => \format_datetime_app_tz($this->updated_at),
         ];
     }
 }

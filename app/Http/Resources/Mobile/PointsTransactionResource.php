@@ -24,7 +24,7 @@ class PointsTransactionResource extends JsonResource
             'reference_id' => $this->reference_id,
             'reference_type' => $this->reference_type,
             'metadata' => $this->metadata,
-            'created_at' => $this->created_at?->toISOString(),
+            'created_at' => \format_datetime_app_tz($this->created_at),
         ];
     }
 

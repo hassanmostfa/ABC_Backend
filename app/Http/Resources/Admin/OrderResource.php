@@ -72,8 +72,8 @@ class OrderResource extends JsonResource
                         'quantity' => (int) ($offer->pivot->quantity ?? 1),
                         'reward_type' => $offer->reward_type,
                         'points' => (int) ($offer->points ?? 0),
-                        'offer_start_date' => $offer->offer_start_date?->toISOString(),
-                        'offer_end_date' => $offer->offer_end_date?->toISOString(),
+                        'offer_start_date' => \format_date_app_tz($offer->offer_start_date),
+                        'offer_end_date' => \format_date_app_tz($offer->offer_end_date),
                         'is_active' => (bool) $offer->is_active,
                     ];
                 });
@@ -139,7 +139,7 @@ class OrderResource extends JsonResource
                     'total_discount' => (float) $this->invoice->total_discount,
                     'amount_due' => (float) $this->invoice->amount_due,
                     'status' => $this->invoice->status,
-                    'paid_at' => $this->invoice->paid_at?->setTimezone(config('app.timezone', 'Asia/Kuwait'))->format('Y-m-d\TH:i:s.vP'),
+                    'paid_at' => \format_datetime_app_tz($this->invoice->paid_at),
                     'payment_link' => $paymentLink,
                 ];
             }),
@@ -151,8 +151,8 @@ class OrderResource extends JsonResource
                     'block' => $this->delivery->block,
                     'street' => $this->delivery->street,
                     'house_number' => $this->delivery->house_number,
-                    'delivery_datetime' => $this->delivery->delivery_datetime?->toISOString(),
-                    'received_datetime' => $this->delivery->received_datetime?->toISOString(),
+                    'delivery_datetime' => \format_datetime_app_tz($this->delivery->delivery_datetime),
+                    'received_datetime' => \format_datetime_app_tz($this->delivery->received_datetime),
                     'delivery_status' => $this->delivery->delivery_status,
                     'notes' => $this->delivery->notes,
                 ];
@@ -161,8 +161,8 @@ class OrderResource extends JsonResource
                 !empty($this->payment_link ?? null),
                 $this->payment_link ?? null
             ),
-            'created_at' => $this->created_at?->toISOString(),
-            'updated_at' => $this->updated_at?->toISOString(),
+            'created_at' => \format_datetime_app_tz($this->created_at),
+            'updated_at' => \format_datetime_app_tz($this->updated_at),
         ];
     }
 }

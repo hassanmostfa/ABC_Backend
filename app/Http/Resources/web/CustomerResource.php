@@ -22,9 +22,9 @@ class CustomerResource extends JsonResource
             'points' => $this->points,
             'is_active' => $this->is_active,
             'is_completed' => $this->is_completed,
-            'email_verified_at' => $this->email_verified_at,
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            'email_verified_at' => \format_datetime_app_tz($this->email_verified_at),
+            'created_at' => \format_datetime_app_tz($this->created_at),
+            'updated_at' => \format_datetime_app_tz($this->updated_at),
         ];
     }
 }
