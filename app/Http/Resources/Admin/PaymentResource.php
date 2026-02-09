@@ -26,7 +26,7 @@ class PaymentResource extends JsonResource
             'total_amount' => isset($this->total_amount) ? (float) $this->total_amount : null,
             'method' => $this->method,
             'status' => $this->status,
-            'paid_at' => $this->paid_at?->toISOString(),
+            'paid_at' => $this->paid_at?->setTimezone(config('app.timezone', 'Asia/Kuwait'))->format('Y-m-d\TH:i:s.vP'),
             'receipt_id' => $this->receipt_id,
             'customer' => $this->whenLoaded('customer', fn () => $this->customer ? [
                 'id' => $this->customer->id,

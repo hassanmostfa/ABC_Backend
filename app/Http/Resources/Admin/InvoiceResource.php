@@ -27,7 +27,7 @@ class InvoiceResource extends JsonResource
             'points_discount' => (float) $this->points_discount,
             'total_discount' => (float) $this->total_discount,
             'status' => $this->status,
-            'paid_at' => $this->paid_at?->toISOString(),
+            'paid_at' => $this->paid_at?->setTimezone(config('app.timezone', 'Asia/Kuwait'))->format('Y-m-d\TH:i:s.vP'),
             'order' => $this->whenLoaded('order', function () {
                 return [
                     'id' => $this->order->id,
@@ -108,7 +108,7 @@ class InvoiceResource extends JsonResource
                         'amount' => (float) $payment->amount,
                         'method' => $payment->method,
                         'status' => $payment->status,
-                        'paid_at' => $payment->paid_at?->toISOString(),
+                        'paid_at' => $payment->paid_at?->setTimezone(config('app.timezone', 'Asia/Kuwait'))->format('Y-m-d\TH:i:s.vP'),
                         'created_at' => $payment->created_at?->toISOString(),
                     ];
                 });

@@ -139,7 +139,7 @@ class OrderResource extends JsonResource
                     'total_discount' => (float) $this->invoice->total_discount,
                     'amount_due' => (float) $this->invoice->amount_due,
                     'status' => $this->invoice->status,
-                    'paid_at' => $this->invoice->paid_at?->toISOString(),
+                    'paid_at' => $this->invoice->paid_at?->setTimezone(config('app.timezone', 'Asia/Kuwait'))->format('Y-m-d\TH:i:s.vP'),
                     'payment_link' => $paymentLink,
                 ];
             }),
