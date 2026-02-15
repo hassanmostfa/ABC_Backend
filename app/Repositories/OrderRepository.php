@@ -20,7 +20,7 @@ class OrderRepository implements OrderRepositoryInterface
      */
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
-        $query = $this->model->with(['customer', 'charity', 'offers']);
+        $query = $this->model->with(['customer', 'charity', 'offers', 'invoice']);
 
         // Search functionality
         if (isset($filters['search']) && !empty($filters['search'])) {

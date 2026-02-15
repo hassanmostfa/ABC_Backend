@@ -17,6 +17,7 @@ use App\Services\UpaymentsService;
 use App\Services\WalletChargeService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -384,7 +385,7 @@ class PaymentController extends BaseApiController
      * Does not trust redirect params to update DB. If result=CAPTURED and track_id are present,
      * verifies via getPaymentStatus(track_id) and then updates Payment/Invoice (fallback when webhook is unreachable e.g. localhost).
      */
-    public function success(Request $request): JsonResponse
+    public function success(Request $request): JsonResponse|View
     {
         $trackId = $request->query('track_id') ?? $request->input('track_id');
         $result = $request->query('result') ?? $request->input('result');
@@ -444,12 +445,19 @@ class PaymentController extends BaseApiController
 
         $order = $this->resolveOrderFromCallback($request);
         if (!$order) {
+            if (!$request->expectsJson()) {
+                return view('payment-failed', ['order_number' => null]);
+            }
             return $this->errorResponse('Order not found', 404);
         }
         $order->load('invoice');
         $invoice = $order->invoice;
         $invoiceStatus = $invoice ? $invoice->status : 'pending';
         $status = $invoiceStatus === 'paid' ? 'paid' : 'pending';
+
+        if (!$request->expectsJson()) {
+            return view('payment-success', ['order_number' => $order->order_number]);
+        }
         return $this->successResponse([
             'success' => true,
             'status' => $status,
@@ -460,16 +468,24 @@ class PaymentController extends BaseApiController
 
     /**
      * Handle payment cancellation callback from Upayments (UI-only: never create/update Payment or mark invoice paid).
+     * When opened in browser (no JSON Accept), returns HTML failed page; otherwise JSON.
      */
-    public function cancel(Request $request): JsonResponse
+    public function cancel(Request $request): JsonResponse|View
     {
         $order = $this->resolveOrderFromCallback($request);
         if (!$order) {
+            if (!$request->expectsJson()) {
+                return view('payment-failed', ['order_number' => null]);
+            }
             return $this->errorResponse('Order not found', 404);
         }
         $order->load('invoice');
         $invoice = $order->invoice;
         $invoiceStatus = $invoice ? $invoice->status : 'pending';
+
+        if (!$request->expectsJson()) {
+            return view('payment-failed', ['order_number' => $order->order_number]);
+        }
         return $this->successResponse([
             'success' => true,
             'status' => 'failed',
@@ -672,9 +688,10 @@ class PaymentController extends BaseApiController
     }
 
     /**
-     * Handle wallet charge payment success callback from Upayments
+     * Handle wallet charge payment success callback from Upayments.
+     * When opened in browser, returns HTML success page; otherwise JSON.
      */
-    public function walletChargeSuccess(Request $request): JsonResponse
+    public function walletChargeSuccess(Request $request): JsonResponse|View
     {
         // Upayments may append params with ? instead of &, corrupting reference - use requested_order_id first (clean)
         $reference = $request->query('requested_order_id')
@@ -684,6 +701,9 @@ class PaymentController extends BaseApiController
 
         $payment = $this->walletChargeService->findByReference($reference ?? '');
         if (!$payment) {
+            if (!$request->expectsJson()) {
+                return view('payment-failed', ['order_number' => null]);
+            }
             return $this->errorResponse('Wallet charge not found', 404);
         }
 
@@ -692,6 +712,9 @@ class PaymentController extends BaseApiController
             $this->walletChargeService->processSuccess($payment);
         }
 
+        if (!$request->expectsJson()) {
+            return view('payment-success', ['order_number' => $payment->reference]);
+        }
         return $this->successResponse([
             'reference' => $payment->reference,
             'status' => $payment->fresh()->status,
@@ -700,9 +723,10 @@ class PaymentController extends BaseApiController
     }
 
     /**
-     * Handle wallet charge payment cancellation callback from Upayments
+     * Handle wallet charge payment cancellation callback from Upayments.
+     * When opened in browser, returns HTML failed page; otherwise JSON.
      */
-    public function walletChargeCancel(Request $request): JsonResponse
+    public function walletChargeCancel(Request $request): JsonResponse|View
     {
         $reference = $request->query('requested_order_id')
             ?? $this->extractWalletChargeReference($request->query('reference'));
@@ -714,6 +738,9 @@ class PaymentController extends BaseApiController
             $this->walletChargeService->processCancel($payment);
         }
 
+        if (!$request->expectsJson()) {
+            return view('payment-failed', ['order_number' => $reference]);
+        }
         return $this->successResponse([
             'reference' => $reference,
             'message' => 'Wallet charge was cancelled',

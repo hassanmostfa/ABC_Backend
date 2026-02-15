@@ -7,6 +7,7 @@ use App\Http\Resources\Admin\OrderResource;
 use App\Models\Category;
 use App\Models\Charity;
 use App\Models\Customer;
+use App\Models\Invoice;
 use App\Models\Offer;
 use App\Models\Order;
 use App\Models\Product;
@@ -40,11 +41,16 @@ class StatisticsController extends BaseApiController
             ->limit(5)
             ->get();
 
+        $totalRevenue = (float) Invoice::query()
+            ->where('status', 'paid')
+            ->sum('amount_due');
+
         $data = [
             'orders' => [
                 'total' => $totalOrders,
                 'by_status' => $ordersByStatus,
             ],
+            'total_revenue' => $totalRevenue,
             'customers_count' => Customer::query()->count(),
             'charities_count' => Charity::query()->count(),
             'products_count' => Product::query()->count(),

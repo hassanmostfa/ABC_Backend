@@ -96,7 +96,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
       Route::get('/', 'index')->middleware('admin.permission:roles,view');
       Route::post('/', 'store')->middleware('admin.permission:roles,add');
       Route::get('/permissions-structure', 'getPermissionsStructure')->middleware('admin.permission:roles,view');
-      Route::get('/{id}', 'show')->middleware('admin.permission:roles,view');
+      Route::get('/{id}', 'show');
       Route::put('/{id}', 'update')->middleware('admin.permission:roles,edit');
       Route::delete('/{id}', 'destroy')->middleware('admin.permission:roles,delete');
    });
