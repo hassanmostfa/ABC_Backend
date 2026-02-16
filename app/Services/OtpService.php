@@ -12,6 +12,10 @@ use Carbon\Carbon;
 
 class OtpService
 {
+    public function __construct(
+        protected SmsBoxService $smsBoxService
+    ) {}
+
     protected function getLocale(): string
     {
         $locale = strtolower(request()->header('LANG', request()->input('locale', 'ar')));
@@ -109,8 +113,21 @@ class OtpService
             // $response['otp_code'] = $otpCode; // Only in test mode
             $response['message'] = $locale === 'ar' ? 'تم إرسال رمز التحقق بنجاح (وضع الاختبار).' : 'OTP sent successfully (test mode).';
         } else {
-            // TODO: Integrate with SMS service for production
-            // $this->sendSms($phone, $phoneCode, $otpCode);
+            $fullPhoneForSms = str_replace('+', '', $phoneCode) . $phone;
+            $messageBody = $locale === 'ar'
+                ? 'رمز التحقق الخاص بك: ' . $otpCode
+                : 'Your verification code is: ' . $otpCode;
+
+            $sendResult = $this->smsBoxService->send($fullPhoneForSms, $messageBody);
+
+            if (!$sendResult['success']) {
+                $otp->delete();
+                return [
+                    'success' => false,
+                    'message' => $locale === 'ar' ? 'فشل إرسال رمز التحقق. يرجى المحاولة لاحقاً.' : 'Failed to send verification code. Please try again later.',
+                    'status_code' => 502,
+                ];
+            }
         }
 
         return $response;
