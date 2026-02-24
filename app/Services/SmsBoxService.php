@@ -37,10 +37,13 @@ class SmsBoxService
             'isFlash' => 'false',
         ];
 
+        $userAgent = config('smsbox.user_agent');
         try {
-            $response = Http::asForm()
-                ->timeout(15)
-                ->post($baseUrl, $payload);
+            $request = Http::asForm()->timeout(15);
+            if (!empty($userAgent)) {
+                $request = $request->withHeaders(['User-Agent' => $userAgent]);
+            }
+            $response = $request->post($baseUrl, $payload);
 
             $body = $response->body();
             $normalized = $this->parseResponse($body, $response->successful());

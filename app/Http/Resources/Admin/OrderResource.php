@@ -143,6 +143,28 @@ class OrderResource extends JsonResource
                     'payment_link' => $paymentLink,
                 ];
             }),
+            'payments' => $this->when(
+                $this->relationLoaded('invoice') && $this->invoice && $this->invoice->status === 'paid',
+                function () {
+                    $payments = $this->invoice->relationLoaded('payments') ? $this->invoice->payments : $this->invoice->payments()->get();
+                    return $payments->map(function ($payment) {
+                        return [
+                            'id' => $payment->id,
+                            'payment_number' => $payment->payment_number,
+                            'gateway' => $payment->gateway,
+                            'method' => $payment->method,
+                            'amount' => (float) $payment->amount,
+                            'bonus_amount' => (float) ($payment->bonus_amount ?? 0),
+                            'total_amount' => isset($payment->total_amount) ? (float) $payment->total_amount : null,
+                            'status' => $payment->status,
+                            'paid_at' => \format_datetime_app_tz($payment->paid_at),
+                            'track_id' => $payment->track_id,
+                            'tran_id' => $payment->tran_id,
+                            'receipt_id' => $payment->receipt_id,
+                        ];
+                    })->values()->all();
+                }
+            ),
             'delivery' => $this->whenLoaded('delivery', function () {
                 return [
                     'id' => $this->delivery->id,
