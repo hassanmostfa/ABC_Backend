@@ -120,10 +120,8 @@ class OfferController extends BaseApiController
 
             if ($debug) {
                 $variant = \App\Models\ProductVariant::with('product')->find($productVariantId);
-                $conditionsCount = \App\Models\OfferCondition::where('product_variant_id', $productVariantId)
-                    ->orWhere('product_id', $variant?->product_id)->count();
-                $rewardsCount = \App\Models\OfferReward::where('product_variant_id', $productVariantId)
-                    ->orWhere('product_id', $variant?->product_id)->count();
+                $conditionsCount = \App\Models\OfferCondition::where('product_variant_id', $productVariantId)->count();
+                $rewardsCount = \App\Models\OfferReward::where('product_variant_id', $productVariantId)->count();
 
                 return response()->json([
                     'success' => true,

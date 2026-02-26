@@ -52,6 +52,7 @@ use App\Http\Controllers\Api\Mobile\profile\ProfileController as MobileProfileCo
 use App\Http\Controllers\Api\Mobile\AppContentController as MobileAppContentController;
 use App\Http\Controllers\Api\Mobile\points_transactions\PointsTransactionController as MobilePointsTransactionController;
 use App\Http\Controllers\Api\Mobile\wallet\WalletController as MobileWalletController;
+use App\Http\Controllers\Api\Mobile\products\ProductController as MobileProductController;
 
 /*
 |--------------------------------------------------------------------------
@@ -453,6 +454,15 @@ Route::prefix('mobile/app-content')->group(function () {
       Route::get('/social-media-links', [MobileAppContentController::class, 'getSocialMediaLinks']);
       Route::get('/faqs', [MobileAppContentController::class, 'getFaqs']);
       Route::get('/order-settings', [MobileAppContentController::class, 'getOrderSettings']);
+   });
+
+Route::prefix('mobile/products')->group(function () {
+      Route::get('/', [MobileProductController::class, 'getAllProducts']);
+      Route::get('/variants-as-products', [MobileProductController::class, 'getVariantsAsProducts']);
+      Route::get('/most-selling', [MobileProductController::class, 'getMostSelling']);
+      Route::get('/category/{categoryId}', [MobileProductController::class, 'getByCategory']);
+      Route::get('/subcategory/{subcategoryId}', [MobileProductController::class, 'getBySubcategory']);
+      Route::get('/{id}', [MobileProductController::class, 'show']);
    });
 
 Route::prefix('mobile/categories')->group(function () {

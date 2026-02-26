@@ -3,7 +3,6 @@
 namespace App\Repositories;
 
 use App\Models\Offer;
-use App\Models\ProductVariant;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Carbon\Carbon;
@@ -146,25 +145,23 @@ class OfferRepository implements OfferRepositoryInterface
 
     /**
      * Get offers related to a product variant (where variant appears in conditions or rewards).
-     * Matches: (1) specific variant, (2) product with null variant, or (3) any variant of same product.
+     * Matches only the specific variant ID.
      */
     public function getByProductVariantId(int $productVariantId, bool $activeOnly = true): Collection
     {
-        $variant = ProductVariant::find($productVariantId);
-        $productId = $variant?->product_id;
-
         $query = $this->model->with([
-            'conditions.product',
-            'conditions.productVariant',
-            'rewards.product',
-            'rewards.productVariant',
+            'conditions' => function ($q) use ($productVariantId) {
+                $q->where('product_variant_id', $productVariantId)
+                    ->with(['product', 'productVariant']);
+            },
+            'rewards' => function ($q) use ($productVariantId) {
+                $q->where('product_variant_id', $productVariantId)
+                    ->with(['product', 'productVariant']);
+            },
             'charity'
-        ])->where(function ($q) use ($productVariantId, $productId) {
-            $conditionMatch = function ($subQuery) use ($productVariantId, $productId) {
+        ])->where(function ($q) use ($productVariantId) {
+            $conditionMatch = function ($subQuery) use ($productVariantId) {
                 $subQuery->where('product_variant_id', $productVariantId);
-                if ($productId) {
-                    $subQuery->orWhere('product_id', $productId);
-                }
             };
 
             $q->whereHas('conditions', $conditionMatch)
