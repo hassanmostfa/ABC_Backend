@@ -33,7 +33,7 @@ class ProductVariant extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'price' => 'decimal:2',
+        'price' => 'decimal:3',
         'quantity' => 'integer',
         'is_active' => 'boolean',
     ];

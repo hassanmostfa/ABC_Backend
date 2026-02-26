@@ -96,8 +96,8 @@ class OfferResource extends JsonResource
             'title_ar' => $this->title_ar,
             'description_en' => $this->description_en,
             'description_ar' => $this->description_ar,
-            'price_before_discount' => round($priceBeforeDiscount, 2),
-            'price_after_discount' => round($priceAfterDiscount, 2),
+            'price_before_discount' => round($priceBeforeDiscount, 3),
+            'price_after_discount' => round($priceAfterDiscount, 3),
             'conditions' => $this->conditions->map(function ($condition) use ($lang) {
                 $product = $condition->product;
                 $variant = $condition->productVariant;

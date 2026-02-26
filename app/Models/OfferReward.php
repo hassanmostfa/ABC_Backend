@@ -31,7 +31,7 @@ class OfferReward extends Model
      */
     protected $casts = [
         'quantity' => 'integer',
-        'discount_amount' => 'decimal:2',
+        'discount_amount' => 'decimal:3',
         'is_active' => 'boolean',
     ];
 
