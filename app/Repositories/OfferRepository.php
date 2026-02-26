@@ -150,14 +150,10 @@ class OfferRepository implements OfferRepositoryInterface
     public function getByProductVariantId(int $productVariantId, bool $activeOnly = true): Collection
     {
         $query = $this->model->with([
-            'conditions' => function ($q) use ($productVariantId) {
-                $q->where('product_variant_id', $productVariantId)
-                    ->with(['product', 'productVariant']);
-            },
-            'rewards' => function ($q) use ($productVariantId) {
-                $q->where('product_variant_id', $productVariantId)
-                    ->with(['product', 'productVariant']);
-            },
+            'conditions.product',
+            'conditions.productVariant',
+            'rewards.product',
+            'rewards.productVariant',
             'charity'
         ])->where(function ($q) use ($productVariantId) {
             $conditionMatch = function ($subQuery) use ($productVariantId) {
