@@ -2,11 +2,14 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Traits\CustomerUnreadNotificationsCountTrait;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class PointsTransactionResource extends JsonResource
 {
+    use CustomerUnreadNotificationsCountTrait;
+
     /**
      * Transform the resource into an array.
      *
@@ -29,6 +32,7 @@ class PointsTransactionResource extends JsonResource
                 'name' => $this->customer->name,
                 'phone' => $this->customer->phone,
                 'email' => $this->customer->email,
+                'unread_notifications_count' => $this->getUnreadNotificationsCount($this->customer->id),
             ] : null),
             'created_at' => \format_datetime_app_tz($this->created_at),
         ];

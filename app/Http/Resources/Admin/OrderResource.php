@@ -2,11 +2,14 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Traits\CustomerUnreadNotificationsCountTrait;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class OrderResource extends JsonResource
 {
+    use CustomerUnreadNotificationsCountTrait;
+
     /**
      * Transform the resource into an array.
      *
@@ -54,6 +57,7 @@ class OrderResource extends JsonResource
                     'phone' => $this->customer->phone,
                     'email' => $this->customer->email,
                     'points' => (int) ($this->customer->points ?? 0),
+                    'unread_notifications_count' => $this->getUnreadNotificationsCount($this->customer->id),
                     'is_active' => (bool) $this->customer->is_active,
                 ];
             }),

@@ -2,11 +2,14 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Traits\CustomerUnreadNotificationsCountTrait;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class DeliveryResource extends JsonResource
 {
+    use CustomerUnreadNotificationsCountTrait;
+
     /**
      * Transform the resource into an array.
      *
@@ -39,6 +42,7 @@ class DeliveryResource extends JsonResource
                             'name' => $this->order->customer->name,
                             'phone' => $this->order->customer->phone,
                             'email' => $this->order->customer->email,
+                            'unread_notifications_count' => $this->getUnreadNotificationsCount($this->order->customer->id),
                         ];
                     }),
                     'charity' => $this->when($this->order->relationLoaded('charity') && $this->order->charity, function () {

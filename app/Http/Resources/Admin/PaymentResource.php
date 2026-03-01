@@ -2,11 +2,14 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Traits\CustomerUnreadNotificationsCountTrait;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class PaymentResource extends JsonResource
 {
+    use CustomerUnreadNotificationsCountTrait;
+
     /**
      * Transform the resource into an array.
      *
@@ -33,6 +36,7 @@ class PaymentResource extends JsonResource
                 'name' => $this->customer->name,
                 'phone' => $this->customer->phone,
                 'email' => $this->customer->email,
+                'unread_notifications_count' => $this->getUnreadNotificationsCount($this->customer->id),
             ] : null),
             'invoice' => $this->whenLoaded('invoice', fn () => $this->invoice ? [
                     'id' => $this->invoice->id,
@@ -52,6 +56,7 @@ class PaymentResource extends JsonResource
                                     'name' => $this->invoice->order->customer->name,
                                     'phone' => $this->invoice->order->customer->phone,
                                     'email' => $this->invoice->order->customer->email,
+                                    'unread_notifications_count' => $this->getUnreadNotificationsCount($this->invoice->order->customer->id),
                                 ];
                             }),
                             'charity' => $this->when($this->invoice->order->relationLoaded('charity') && $this->invoice->order->charity, function () {

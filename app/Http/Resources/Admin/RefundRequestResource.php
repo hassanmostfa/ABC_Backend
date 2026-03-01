@@ -2,11 +2,14 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Traits\CustomerUnreadNotificationsCountTrait;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class RefundRequestResource extends JsonResource
 {
+    use CustomerUnreadNotificationsCountTrait;
+
     public function toArray(Request $request): array
     {
         return [
@@ -30,6 +33,7 @@ class RefundRequestResource extends JsonResource
                 'id' => $this->customer->id,
                 'name' => $this->customer->name,
                 'phone' => $this->customer->phone,
+                'unread_notifications_count' => $this->getUnreadNotificationsCount($this->customer->id),
             ] : null),
         ];
     }

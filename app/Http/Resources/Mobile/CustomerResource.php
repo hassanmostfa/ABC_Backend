@@ -2,12 +2,15 @@
 
 namespace App\Http\Resources\Mobile;
 
+use App\Traits\CustomerUnreadNotificationsCountTrait;
 use Illuminate\Http\Request;
 use App\Http\Resources\Mobile\CustomerAddressResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class CustomerResource extends JsonResource
 {
+    use CustomerUnreadNotificationsCountTrait;
+
     /**
      * Transform the resource into an array.
      *
@@ -23,6 +26,7 @@ class CustomerResource extends JsonResource
             'profile_image' => $this->profile_image_url,
             'points' => (int) ($this->points ?? 0),
             'current_language' => $this->current_language ?? 'en',
+            'unread_notifications_count' => $this->getUnreadNotificationsCount($this->id),
             'balance' => $this->whenLoaded('wallet', function () {
                 return (float) ($this->wallet->balance ?? 0.00);
             }, function () {
