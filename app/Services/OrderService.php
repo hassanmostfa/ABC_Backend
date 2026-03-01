@@ -129,6 +129,7 @@ class OrderService
             $pointsResult = $this->pointsService->calculateDiscount($requestedPoints, $totalAmount, $offerDiscount);
             $usedPoints = $pointsResult['usedPoints'];
             $pointsDiscount = $pointsResult['pointsDiscount'];
+            $couponsDiscount = (float) ($data['coupons_discount'] ?? 0);
 
             // Calculate final amount after all discounts for minimum validation
             $finalAmountAfterAllDiscounts = $totalAmount - $offerDiscount - $pointsDiscount;
@@ -163,7 +164,13 @@ class OrderService
             }
 
             // Calculate invoice amounts (before creating order) - includes delivery fee if delivery
-            $invoiceAmounts = $this->invoiceService->calculateAmounts($totalAmount, $offerDiscount, $pointsDiscount, $deliveryType);
+            $invoiceAmounts = $this->invoiceService->calculateAmounts(
+                $totalAmount,
+                $offerDiscount,
+                $couponsDiscount,
+                $pointsDiscount,
+                $deliveryType
+            );
             $amountDue = $invoiceAmounts['amountDue'];
 
             // Get payment method from root level
@@ -233,6 +240,7 @@ class OrderService
                 $invoiceAmounts['taxAmount'],
                 $invoiceAmounts['deliveryFee'],
                 $offerDiscount,
+                $couponsDiscount,
                 $usedPoints,
                 $pointsDiscount,
                 $invoiceAmounts['totalDiscount'],
@@ -445,6 +453,9 @@ class OrderService
             $usedPoints = $pointsResult['usedPoints'];
             $pointsDiscount = $pointsResult['pointsDiscount'];
             $offerDiscount = $calculatedOfferDiscount ?? ($currentInvoice ? ($currentInvoice->offer_discount ?? 0.00) : 0.00);
+            $couponsDiscount = isset($data['coupons_discount'])
+                ? (float) $data['coupons_discount']
+                : (float) ($currentInvoice ? ($currentInvoice->coupons_discount ?? 0.00) : 0.00);
             $currentTotalAmount = $recalculatedTotalAmount ?? ($order->total_amount ?? 0);
 
             // Validate minimum order amount based on order type (charity vs customer)
@@ -476,7 +487,13 @@ class OrderService
             }
 
             // Calculate invoice amounts (includes delivery fee if delivery)
-            $invoiceAmounts = $this->invoiceService->calculateAmounts($currentTotalAmount, $offerDiscount, $pointsDiscount, $deliveryType);
+            $invoiceAmounts = $this->invoiceService->calculateAmounts(
+                $currentTotalAmount,
+                $offerDiscount,
+                $couponsDiscount,
+                $pointsDiscount,
+                $deliveryType
+            );
             $newAmountDue = $invoiceAmounts['amountDue'];
 
             // Get payment method from root level or existing order payment method
@@ -530,6 +547,7 @@ class OrderService
                     $invoiceAmounts['taxAmount'],
                     $invoiceAmounts['deliveryFee'],
                     $offerDiscount,
+                    $couponsDiscount,
                     $usedPoints,
                     $pointsDiscount,
                     $invoiceAmounts['totalDiscount'],

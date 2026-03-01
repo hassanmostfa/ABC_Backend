@@ -19,15 +19,22 @@ class InvoiceService
      *
      * @param float $totalAmount
      * @param float $offerDiscount
+     * @param float $couponsDiscount
      * @param float $pointsDiscount
      * @param string|null $deliveryType Optional: 'delivery' or 'pickup' to calculate delivery fee
      * @return array
      */
-    public function calculateAmounts(float $totalAmount, float $offerDiscount, float $pointsDiscount, ?string $deliveryType = null): array
+    public function calculateAmounts(
+        float $totalAmount,
+        float $offerDiscount,
+        float $couponsDiscount,
+        float $pointsDiscount,
+        ?string $deliveryType = null
+    ): array
     {
         // Calculate final amount after all discounts
-        $finalAmount = $totalAmount - $offerDiscount - $pointsDiscount;
-        $totalDiscount = $offerDiscount + $pointsDiscount;
+        $finalAmount = $totalAmount - $offerDiscount - $couponsDiscount - $pointsDiscount;
+        $totalDiscount = $offerDiscount + $couponsDiscount + $pointsDiscount;
 
         // Calculate delivery fee if delivery type is 'delivery'
         $deliveryFee = 0.00;
@@ -60,6 +67,7 @@ class InvoiceService
      * @param float $taxAmount
      * @param float $deliveryFee
      * @param float $offerDiscount
+     * @param float $couponsDiscount
      * @param int $usedPoints
      * @param float $pointsDiscount
      * @param float $totalDiscount
@@ -73,6 +81,7 @@ class InvoiceService
         float $taxAmount,
         float $deliveryFee,
         float $offerDiscount,
+        float $couponsDiscount,
         int $usedPoints,
         float $pointsDiscount,
         float $totalDiscount,
@@ -89,6 +98,7 @@ class InvoiceService
                 'tax_amount' => $taxAmount,
                 'delivery_fee' => $deliveryFee,
                 'offer_discount' => $offerDiscount,
+                'coupons_discount' => $couponsDiscount,
                 'used_points' => $usedPoints,
                 'points_discount' => $pointsDiscount,
                 'total_discount' => $totalDiscount,
@@ -113,6 +123,7 @@ class InvoiceService
      * @param float $taxAmount
      * @param float $deliveryFee
      * @param float $offerDiscount
+     * @param float $couponsDiscount
      * @param int $usedPoints
      * @param float $pointsDiscount
      * @param float $totalDiscount
@@ -124,6 +135,7 @@ class InvoiceService
         float $taxAmount,
         float $deliveryFee,
         float $offerDiscount,
+        float $couponsDiscount,
         int $usedPoints,
         float $pointsDiscount,
         float $totalDiscount,
@@ -134,6 +146,7 @@ class InvoiceService
             'tax_amount' => $taxAmount,
             'delivery_fee' => $deliveryFee,
             'offer_discount' => $offerDiscount,
+            'coupons_discount' => $couponsDiscount,
             'used_points' => $usedPoints,
             'points_discount' => $pointsDiscount,
             'total_discount' => $totalDiscount,

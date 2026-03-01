@@ -54,6 +54,7 @@ class StoreOrderRequest extends FormRequest
             'offers.*.offer_id' => 'required_with:offers|integer|exists:offers,id',
             'offers.*.quantity' => 'required_with:offers.*.offer_id|integer|min:1',
             'offer_snapshot' => 'nullable|array',
+            'coupons_discount' => 'nullable|numeric|min:0',
             'used_points' => [
                 'nullable',
                 'integer',
@@ -135,6 +136,8 @@ class StoreOrderRequest extends FormRequest
             'offers.*.quantity.integer' => 'The quantity must be a valid integer.',
             'offers.*.quantity.min' => 'The quantity must be at least 1.',
             'offer_snapshot.array' => 'The offer snapshot must be an array.',
+            'coupons_discount.numeric' => 'Coupons discount must be a valid number.',
+            'coupons_discount.min' => 'Coupons discount cannot be negative.',
             'items.required' => 'At least one order item is required.',
             'items.array' => 'The items must be an array.',
             'items.min' => 'At least one order item is required.',

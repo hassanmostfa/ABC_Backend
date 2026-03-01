@@ -433,10 +433,21 @@ Route::middleware('api.auth')->controller(CustomerNotificationController::class)
    Route::get('/', 'index');
    Route::get('/unread', 'unread');
    Route::get('/unread-count', 'unreadCount');
-   Route::get('/{id}', 'show');
-   Route::patch('/{id}/mark-read', 'markAsRead');
    Route::patch('/mark-all-read', 'markAllAsRead');
-   Route::delete('/{id}', 'destroy');
+   Route::get('/{id}', 'show')->whereNumber('id');
+   Route::patch('/{id}/mark-read', 'markAsRead')->whereNumber('id');
+   Route::delete('/{id}', 'destroy')->whereNumber('id');
+});
+
+// Mobile Customer Notifications Routes (Protected)
+Route::middleware('api.auth')->controller(CustomerNotificationController::class)->prefix('mobile/notifications')->group(function () {
+   Route::get('/', 'index');
+   Route::get('/unread', 'unread');
+   Route::get('/unread-count', 'unreadCount');
+   Route::patch('/mark-all-read', 'markAllAsRead');
+   Route::get('/{id}', 'show')->whereNumber('id');
+   Route::patch('/{id}/mark-read', 'markAsRead')->whereNumber('id');
+   Route::delete('/{id}', 'destroy')->whereNumber('id');
 });
 
 
