@@ -7,6 +7,7 @@ use App\Models\RefundRequest;
 use App\Repositories\OrderRepositoryInterface;
 use App\Repositories\InvoiceRepositoryInterface;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class OrderCancellationService
 {
@@ -92,6 +93,58 @@ class OrderCancellationService
             $this->orderRepository->update($orderId, ['status' => 'cancelled']);
 
             DB::commit();
+
+            $order = $this->orderRepository->findById($orderId);
+            try {
+                if ($order && $order->customer_id) {
+                    sendNotification(
+                        null,
+                        $order->customer_id,
+                        'Order Cancelled',
+                        "Your order {$order->order_number} has been cancelled.",
+                        'order',
+                        ['order_id' => $order->id, 'order_number' => $order->order_number, 'status' => 'cancelled'],
+                        'تم إلغاء الطلب',
+                        "تم إلغاء طلبك رقم {$order->order_number}."
+                    );
+                }
+
+                if ($order) {
+                    sendNotification(
+                        null,
+                        null,
+                        'Order Cancelled',
+                        "Order {$order->order_number} was cancelled.",
+                        'order',
+                        ['order_id' => $order->id, 'order_number' => $order->order_number, 'status' => 'cancelled'],
+                        'تم إلغاء الطلب',
+                        "تم إلغاء الطلب رقم {$order->order_number}."
+                    );
+                }
+
+                if ($refundRequest) {
+                    sendNotification(
+                        null,
+                        null,
+                        'Refund Request Created',
+                        "Refund request #{$refundRequest->id} was created for order {$refundRequest->order?->order_number}.",
+                        'payment',
+                        [
+                            'refund_request_id' => $refundRequest->id,
+                            'order_id' => $refundRequest->order_id,
+                            'invoice_id' => $refundRequest->invoice_id,
+                        ],
+                        'تم إنشاء طلب استرجاع',
+                        "تم إنشاء طلب استرجاع رقم {$refundRequest->id} للطلب {$refundRequest->order?->order_number}."
+                    );
+                }
+            } catch (\Exception $e) {
+                Log::warning('Failed to dispatch cancellation notifications', [
+                    'order_id' => $orderId,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+
             return [
                 'success' => true,
                 'message' => $paymentMethod === 'online_link' && $isPaid

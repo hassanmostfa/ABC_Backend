@@ -113,6 +113,31 @@ class WalletChargeService
             ]);
 
             DB::commit();
+
+            try {
+                sendNotification(
+                    null,
+                    $payment->customer_id,
+                    'Wallet Charged',
+                    "Your wallet was charged successfully with {$payment->amount}. Bonus added: {$payment->bonus_amount}.",
+                    'payment',
+                    [
+                        'payment_id' => $payment->id,
+                        'reference' => $payment->reference,
+                        'amount' => $payment->amount,
+                        'bonus_amount' => $payment->bonus_amount,
+                        'total_amount' => $payment->total_amount,
+                    ],
+                    'تم شحن المحفظة',
+                    "تم شحن محفظتك بنجاح بمبلغ {$payment->amount} مع إضافة بونص {$payment->bonus_amount}."
+                );
+            } catch (\Exception $e) {
+                Log::warning('Failed to dispatch wallet charge notification', [
+                    'payment_id' => $payment->id,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+
             return true;
         } catch (\Exception $e) {
             DB::rollBack();

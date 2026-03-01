@@ -25,6 +25,8 @@ class CompleteRegistrationRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255', 'unique:customers,email'],
+            'current_language' => ['required', 'in:en,ar'],
+            'device_token' => ['required', 'string', 'max:1000'],
         ];
     }
 
@@ -42,6 +44,11 @@ class CompleteRegistrationRequest extends FormRequest
             'email.email' => 'The email must be a valid email address.',
             'email.max' => 'The email may not be greater than 255 characters.',
             'email.unique' => 'The email has already been taken.',
+            'current_language.required' => 'The current language field is required.',
+            'current_language.in' => 'The current language must be either en or ar.',
+            'device_token.required' => 'The device token field is required.',
+            'device_token.string' => 'The device token must be a string.',
+            'device_token.max' => 'The device token may not be greater than 1000 characters.',
         ];
     }
 }

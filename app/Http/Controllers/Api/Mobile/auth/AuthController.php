@@ -8,6 +8,7 @@ use App\Http\Requests\Mobile\VerifyOtpRequest;
 use App\Http\Requests\Mobile\ResendOtpRequest;
 use App\Http\Requests\Mobile\CompleteRegistrationRequest;
 use App\Http\Resources\Web\CustomerResource;
+use App\Models\DeviceToken;
 use App\Services\OtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -132,8 +133,20 @@ class AuthController extends BaseApiController
             $customer->update([
                 'name' => $request->input('name'),
                 'email' => $request->input('email'),
+                'current_language' => $request->input('current_language'),
                 'is_completed' => true,
             ]);
+
+            // Store or refresh device token for this customer
+            DeviceToken::updateOrCreate(
+                [
+                    'customer_id' => $customer->id,
+                    'token' => $request->input('device_token'),
+                ],
+                [
+                    'updated_at' => now(),
+                ]
+            );
 
             // Load relationships
             $customer->load(['wallet', 'addresses']);

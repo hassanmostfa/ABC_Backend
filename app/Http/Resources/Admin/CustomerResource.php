@@ -20,6 +20,7 @@ class CustomerResource extends JsonResource
             'phone' => $this->phone,
             'email' => $this->email,
             'points' => (int) ($this->points ?? 0),
+            'current_language' => $this->current_language ?? 'en',
             'is_active' => (bool) $this->is_active,
             'wallet' => $this->whenLoaded('wallet', function () {
                 return [

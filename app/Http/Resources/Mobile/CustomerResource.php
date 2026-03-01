@@ -22,6 +22,7 @@ class CustomerResource extends JsonResource
             'phone' => $this->phone,
             'profile_image' => $this->profile_image_url,
             'points' => (int) ($this->points ?? 0),
+            'current_language' => $this->current_language ?? 'en',
             'balance' => $this->whenLoaded('wallet', function () {
                 return (float) ($this->wallet->balance ?? 0.00);
             }, function () {

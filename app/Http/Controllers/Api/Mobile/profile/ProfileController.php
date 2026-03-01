@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Mobile\profile;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Mobile\ChangePasswordRequest;
+use App\Http\Requests\Mobile\UpdateCurrentLanguageRequest;
 use App\Http\Requests\Mobile\UpdateProfileRequest;
 use App\Http\Resources\Mobile\CustomerResource;
 use App\Models\Customer;
@@ -165,5 +166,31 @@ class ProfileController extends BaseApiController
         $customerModel->save();
 
         return $this->successResponse(null, 'Password changed successfully');
+    }
+
+    /**
+     * Update customer current language (mobile API).
+     */
+    public function updateCurrentLanguage(UpdateCurrentLanguageRequest $request): JsonResponse
+    {
+        $customer = Auth::guard('sanctum')->user();
+
+        if (!$customer) {
+            return $this->unauthorizedResponse('No authenticated customer found');
+        }
+
+        $customerModel = $this->customerRepository->findById($customer->id);
+        if (!$customerModel) {
+            return $this->notFoundResponse('Customer not found');
+        }
+
+        $customerModel->update([
+            'current_language' => $request->validated('current_language'),
+        ]);
+
+        return $this->updatedResponse(
+            new CustomerResource($customerModel->fresh()),
+            'Current language updated successfully'
+        );
     }
 }

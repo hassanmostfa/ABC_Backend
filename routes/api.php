@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\Admin\CustomerAddressController;
 use App\Http\Controllers\Api\Admin\TeamMemberController;
 use App\Http\Controllers\Api\Admin\SliderController;
 use App\Http\Controllers\Api\Admin\FaqController;
+use App\Http\Controllers\Api\Admin\CouponController as AdminCouponController;
 use App\Http\Controllers\Api\Admin\ActivityLogController;
 use App\Http\Controllers\Api\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\Api\Admin\StatisticsController;
@@ -53,6 +54,7 @@ use App\Http\Controllers\Api\Mobile\AppContentController as MobileAppContentCont
 use App\Http\Controllers\Api\Mobile\points_transactions\PointsTransactionController as MobilePointsTransactionController;
 use App\Http\Controllers\Api\Mobile\wallet\WalletController as MobileWalletController;
 use App\Http\Controllers\Api\Mobile\products\ProductController as MobileProductController;
+use App\Http\Controllers\Api\Mobile\coupons\CouponController as MobileCouponController;
 
 /*
 |--------------------------------------------------------------------------
@@ -332,6 +334,16 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:notifications,delete');
       });
 
+      // Coupons Management (Admin)
+      Route::controller(AdminCouponController::class)->prefix('coupons')->group(function () {
+         Route::get('/', 'index');
+         Route::post('/', 'store');
+         Route::get('/{id}', 'show');
+         Route::put('/{id}', 'update');
+         Route::patch('/{id}/toggle-active', 'toggleActive');
+         Route::delete('/{id}', 'destroy');
+      });
+
 
 });
 
@@ -506,6 +518,7 @@ Route::middleware('api.auth')->prefix('mobile/payments')->group(function () {
 Route::middleware('api.auth')->prefix('mobile/profile')->group(function () {
    Route::get('/', [MobileProfileController::class, 'show']);
    Route::post('/', [MobileProfileController::class, 'update']);
+   Route::patch('/language', [MobileProfileController::class, 'updateCurrentLanguage']);
    Route::put('/change-password', [MobileProfileController::class, 'changePassword']);
 });
 
@@ -527,6 +540,10 @@ Route::middleware('api.auth')->prefix('mobile/points-transactions')->group(funct
 Route::middleware('api.auth')->prefix('mobile/wallet')->group(function () {
    Route::post('/charge', [MobileWalletController::class, 'charge']);
    Route::get('/charge-settings', [MobileWalletController::class, 'chargeSettings']);
+});
+
+Route::middleware('api.auth')->prefix('mobile/coupons')->group(function () {
+   Route::post('/apply', [MobileCouponController::class, 'apply']);
 });
    
 Route::middleware('api.auth')->group(function () {

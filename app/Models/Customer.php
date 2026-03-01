@@ -23,6 +23,7 @@ class Customer extends Authenticatable
         'is_active',
         'is_completed',
         'points',
+        'current_language',
     ];
 
     protected $hidden = [

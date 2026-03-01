@@ -288,6 +288,37 @@ class OrderService
                 $response['payment_link'] = $paymentLink;
             }
 
+            try {
+                if ($order->customer_id) {
+                    sendNotification(
+                        null,
+                        $order->customer_id,
+                        'Order Created',
+                        "Your order {$order->order_number} has been created successfully.",
+                        'order',
+                        ['order_id' => $order->id, 'order_number' => $order->order_number, 'status' => $order->status],
+                        'تم إنشاء الطلب',
+                        "تم إنشاء طلبك رقم {$order->order_number} بنجاح."
+                    );
+                }
+
+                sendNotification(
+                    null,
+                    null,
+                    'New Order',
+                    "A new order {$order->order_number} has been created.",
+                    'order',
+                    ['order_id' => $order->id, 'order_number' => $order->order_number, 'status' => $order->status],
+                    'طلب جديد',
+                    "تم إنشاء طلب جديد برقم {$order->order_number}."
+                );
+            } catch (\Exception $e) {
+                Log::warning('Failed to dispatch order creation notifications', [
+                    'order_id' => $order->id,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+
             return $response;
         } catch (\Exception $e) {
             DB::rollBack();
@@ -550,6 +581,50 @@ class OrderService
             // Reload order with relationships
             $order = $this->orderRepository->findById($id);
             $order->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice', 'customerAddress']);
+
+            $newStatus = $order->status;
+            if ($oldStatus !== $newStatus) {
+                try {
+                    if ($order->customer_id) {
+                        sendNotification(
+                            null,
+                            $order->customer_id,
+                            'Order Status Updated',
+                            "Your order {$order->order_number} status changed from {$oldStatus} to {$newStatus}.",
+                            'order',
+                            [
+                                'order_id' => $order->id,
+                                'order_number' => $order->order_number,
+                                'old_status' => $oldStatus,
+                                'new_status' => $newStatus,
+                            ],
+                            'تم تحديث حالة الطلب',
+                            "تم تغيير حالة طلبك رقم {$order->order_number} من {$oldStatus} إلى {$newStatus}."
+                        );
+                    }
+
+                    sendNotification(
+                        null,
+                        null,
+                        'Order Updated',
+                        "Order {$order->order_number} status changed from {$oldStatus} to {$newStatus}.",
+                        'order',
+                        [
+                            'order_id' => $order->id,
+                            'order_number' => $order->order_number,
+                            'old_status' => $oldStatus,
+                            'new_status' => $newStatus,
+                        ],
+                        'تم تحديث الطلب',
+                        "تم تغيير حالة الطلب رقم {$order->order_number} من {$oldStatus} إلى {$newStatus}."
+                    );
+                } catch (\Exception $e) {
+                    Log::warning('Failed to dispatch order status notifications', [
+                        'order_id' => $order->id,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
 
             return [
                 'success' => true,

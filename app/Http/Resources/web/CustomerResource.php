@@ -20,6 +20,7 @@ class CustomerResource extends JsonResource
             'email' => $this->email,
             'phone' => $this->phone,
             'points' => $this->points,
+            'current_language' => $this->current_language ?? 'en',
             'is_active' => $this->is_active,
             'is_completed' => $this->is_completed,
             'email_verified_at' => \format_datetime_app_tz($this->email_verified_at),

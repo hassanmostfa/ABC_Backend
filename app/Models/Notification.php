@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class Notification extends Model
@@ -18,8 +19,6 @@ class Notification extends Model
     protected $fillable = [
         'notifiable_id',
         'notifiable_type',
-        'title',
-        'message',
         'type',
         'is_read',
         'read_at',
@@ -43,6 +42,14 @@ class Notification extends Model
     public function notifiable(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /**
+     * Get all translations for the notification.
+     */
+    public function translations(): HasMany
+    {
+        return $this->hasMany(NotificationTranslation::class);
     }
 
     /**

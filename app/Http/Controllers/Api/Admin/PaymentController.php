@@ -631,6 +631,51 @@ class PaymentController extends BaseApiController
             }
 
             DB::commit();
+
+            try {
+                if ($newStatus === 'completed' && $order->customer_id) {
+                    sendNotification(
+                        null,
+                        $order->customer_id,
+                        'Payment Successful',
+                        "Payment for order {$order->order_number} was completed successfully.",
+                        'payment',
+                        [
+                            'order_id' => $order->id,
+                            'order_number' => $order->order_number,
+                            'invoice_id' => $invoice->id,
+                            'payment_id' => $payment->id,
+                            'status' => $newStatus,
+                        ],
+                        'تم الدفع بنجاح',
+                        "تمت عملية الدفع للطلب {$order->order_number} بنجاح."
+                    );
+                } elseif ($newStatus === 'failed' && $order->customer_id) {
+                    sendNotification(
+                        null,
+                        $order->customer_id,
+                        'Payment Failed',
+                        "Payment for order {$order->order_number} failed. Please try again.",
+                        'payment',
+                        [
+                            'order_id' => $order->id,
+                            'order_number' => $order->order_number,
+                            'invoice_id' => $invoice->id,
+                            'payment_id' => $payment->id,
+                            'status' => $newStatus,
+                        ],
+                        'فشل الدفع',
+                        "فشلت عملية الدفع للطلب {$order->order_number}. يرجى المحاولة مرة أخرى."
+                    );
+                }
+            } catch (\Exception $e) {
+                Log::warning('Failed to dispatch verified payment notification', [
+                    'track_id' => $trackId,
+                    'order_number' => $orderNumber,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+
             return [
                 'processed' => true,
                 'order' => $order->fresh(),

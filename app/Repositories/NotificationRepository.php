@@ -22,7 +22,7 @@ class NotificationRepository implements NotificationRepositoryInterface
      */
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
-        $query = $this->model->query();
+        $query = $this->model->query()->with('translations');
 
         // Filter by notifiable type and id (polymorphic)
         if (isset($filters['notifiable_type']) && $filters['notifiable_type'] !== '') {
@@ -47,8 +47,11 @@ class NotificationRepository implements NotificationRepositoryInterface
         if (isset($filters['search']) && !empty($filters['search'])) {
             $search = $filters['search'];
             $query->where(function ($q) use ($search) {
-                $q->where('title', 'LIKE', "%{$search}%")
-                  ->orWhere('message', 'LIKE', "%{$search}%");
+                $q->whereHas('translations', function ($translationQuery) use ($search) {
+                    $translationQuery
+                        ->where('title', 'LIKE', "%{$search}%")
+                        ->orWhere('message', 'LIKE', "%{$search}%");
+                });
             });
         }
 
@@ -87,6 +90,7 @@ class NotificationRepository implements NotificationRepositoryInterface
             ->where('notifiable_id', $adminId)
             ->where('is_read', false)
             ->orderBy('created_at', 'desc')
+            ->with('translations')
             ->get();
     }
 
@@ -99,6 +103,7 @@ class NotificationRepository implements NotificationRepositoryInterface
             ->where('notifiable_id', $customerId)
             ->where('is_read', false)
             ->orderBy('created_at', 'desc')
+            ->with('translations')
             ->get();
     }
 
@@ -129,7 +134,7 @@ class NotificationRepository implements NotificationRepositoryInterface
      */
     public function getAll(): Collection
     {
-        return $this->model->orderBy('created_at', 'desc')->get();
+        return $this->model->with('translations')->orderBy('created_at', 'desc')->get();
     }
 
     /**
@@ -137,7 +142,7 @@ class NotificationRepository implements NotificationRepositoryInterface
      */
     public function findById(int $id): ?Notification
     {
-        return $this->model->find($id);
+        return $this->model->with('translations')->find($id);
     }
 
     /**

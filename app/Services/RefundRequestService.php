@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\RefundRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class RefundRequestService
 {
@@ -42,6 +43,30 @@ class RefundRequestService
 
             DB::commit();
 
+            try {
+                sendNotification(
+                    null,
+                    $refundRequest->customer_id,
+                    'Refund Approved',
+                    "Your refund request for order {$refundRequest->order?->order_number} has been approved and added to your wallet.",
+                    'payment',
+                    [
+                        'refund_request_id' => $refundRequest->id,
+                        'order_id' => $refundRequest->order_id,
+                        'invoice_id' => $refundRequest->invoice_id,
+                        'amount' => $refundRequest->amount,
+                        'status' => RefundRequest::STATUS_APPROVED,
+                    ],
+                    'تمت الموافقة على الاسترجاع',
+                    "تمت الموافقة على طلب الاسترجاع الخاص بالطلب {$refundRequest->order?->order_number} وتم إضافة المبلغ إلى محفظتك."
+                );
+            } catch (\Exception $e) {
+                Log::warning('Failed to dispatch refund approval notification', [
+                    'refund_request_id' => $refundRequest->id,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+
             return [
                 'success' => true,
                 'message' => 'Refund approved. Money has been added to customer wallet.',
@@ -73,6 +98,31 @@ class RefundRequestService
             'approved_by' => Auth::id(),
             'approved_at' => now(),
         ]);
+
+        try {
+            $refundRequest->loadMissing('order');
+            sendNotification(
+                null,
+                $refundRequest->customer_id,
+                'Refund Rejected',
+                "Your refund request for order {$refundRequest->order?->order_number} has been rejected.",
+                'payment',
+                [
+                    'refund_request_id' => $refundRequest->id,
+                    'order_id' => $refundRequest->order_id,
+                    'invoice_id' => $refundRequest->invoice_id,
+                    'amount' => $refundRequest->amount,
+                    'status' => RefundRequest::STATUS_REJECTED,
+                ],
+                'تم رفض طلب الاسترجاع',
+                "تم رفض طلب الاسترجاع الخاص بالطلب {$refundRequest->order?->order_number}."
+            );
+        } catch (\Exception $e) {
+            Log::warning('Failed to dispatch refund rejection notification', [
+                'refund_request_id' => $refundRequest->id,
+                'message' => $e->getMessage(),
+            ]);
+        }
 
         return [
             'success' => true,
