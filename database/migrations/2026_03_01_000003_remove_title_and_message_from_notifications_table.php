@@ -11,9 +11,24 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('notifications', function (Blueprint $table) {
-            $table->dropColumn(['title', 'message', 'title_en', 'title_ar', 'message_en', 'message_ar']);
+        $columnsToDrop = [
+            'title',
+            'message',
+            'title_en',
+            'title_ar',
+            'message_en',
+            'message_ar',
+        ];
+
+        $existingColumns = array_filter($columnsToDrop, function (string $column): bool {
+            return Schema::hasColumn('notifications', $column);
         });
+
+        if (!empty($existingColumns)) {
+            Schema::table('notifications', function (Blueprint $table) use ($existingColumns) {
+                $table->dropColumn($existingColumns);
+            });
+        }
     }
 
     /**
@@ -22,12 +37,24 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('notifications', function (Blueprint $table) {
-            $table->string('title')->nullable();
-            $table->text('message')->nullable();
-            $table->string('title_en')->nullable();
-            $table->string('title_ar')->nullable();
-            $table->text('message_en')->nullable();
-            $table->text('message_ar')->nullable();
+            if (!Schema::hasColumn('notifications', 'title')) {
+                $table->string('title')->nullable();
+            }
+            if (!Schema::hasColumn('notifications', 'message')) {
+                $table->text('message')->nullable();
+            }
+            if (!Schema::hasColumn('notifications', 'title_en')) {
+                $table->string('title_en')->nullable();
+            }
+            if (!Schema::hasColumn('notifications', 'title_ar')) {
+                $table->string('title_ar')->nullable();
+            }
+            if (!Schema::hasColumn('notifications', 'message_en')) {
+                $table->text('message_en')->nullable();
+            }
+            if (!Schema::hasColumn('notifications', 'message_ar')) {
+                $table->text('message_ar')->nullable();
+            }
         });
     }
 };
