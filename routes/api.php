@@ -336,12 +336,12 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
 
       // Coupons Management (Admin)
       Route::controller(AdminCouponController::class)->prefix('coupons')->group(function () {
-         Route::get('/', 'index');
-         Route::post('/', 'store');
-         Route::get('/{id}', 'show');
-         Route::put('/{id}', 'update');
-         Route::patch('/{id}/toggle-active', 'toggleActive');
-         Route::delete('/{id}', 'destroy');
+         Route::get('/', 'index')->middleware('admin.permission:coupons,view');
+         Route::post('/', 'store')->middleware('admin.permission:coupons,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:coupons,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:coupons,edit');
+         Route::patch('/{id}/toggle-active', 'toggleActive')->middleware('admin.permission:coupons,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:coupons,delete');
       });
 
 
