@@ -2,24 +2,13 @@
 
 namespace App\Http\Requests\Mobile;
 
-use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rules\Password;
-
-class CompleteRegistrationRequest extends FormRequest
+class CompleteRegistrationRequest extends MobileFormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
         return true;
     }
 
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
-     */
     public function rules(): array
     {
         return [
@@ -30,25 +19,20 @@ class CompleteRegistrationRequest extends FormRequest
         ];
     }
 
-    /**
-     * Get custom messages for validator errors.
-     *
-     * @return array<string, string>
-     */
     public function messages(): array
     {
         return [
-            'name.required' => 'The name field is required.',
-            'name.string' => 'The name must be a string.',
-            'name.max' => 'The name may not be greater than 255 characters.',
-            'email.email' => 'The email must be a valid email address.',
-            'email.max' => 'The email may not be greater than 255 characters.',
-            'email.unique' => 'The email has already been taken.',
-            'current_language.required' => 'The current language field is required.',
-            'current_language.in' => 'The current language must be either en or ar.',
-            'device_token.required' => 'The device token field is required.',
-            'device_token.string' => 'The device token must be a string.',
-            'device_token.max' => 'The device token may not be greater than 1000 characters.',
+            'name.required' => $this->msg('The name field is required.', 'حقل الاسم مطلوب.'),
+            'name.string' => $this->msg('The name must be a string.', 'يجب أن يكون الاسم نصاً.'),
+            'name.max' => $this->msg('The name may not be greater than 255 characters.', 'الاسم لا يجوز أن يتجاوز 255 حرفاً.'),
+            'email.email' => $this->msg('The email must be a valid email address.', 'يجب أن يكون البريد الإلكتروني صالحاً.'),
+            'email.max' => $this->msg('The email may not be greater than 255 characters.', 'البريد الإلكتروني لا يجوز أن يتجاوز 255 حرفاً.'),
+            'email.unique' => $this->msg('The email has already been taken.', 'البريد الإلكتروني مستخدم مسبقاً.'),
+            'current_language.required' => $this->msg('The current language field is required.', 'حقل اللغة مطلوب.'),
+            'current_language.in' => $this->msg('The current language must be either en or ar.', 'اللغة يجب أن تكون en أو ar.'),
+            'device_token.required' => $this->msg('The device token field is required.', 'رمز الجهاز مطلوب.'),
+            'device_token.string' => $this->msg('The device token must be a string.', 'يجب أن يكون رمز الجهاز نصاً.'),
+            'device_token.max' => $this->msg('The device token may not be greater than 1000 characters.', 'رمز الجهاز لا يجوز أن يتجاوز 1000 حرف.'),
         ];
     }
 }

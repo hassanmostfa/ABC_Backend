@@ -2,23 +2,13 @@
 
 namespace App\Http\Requests\Mobile;
 
-use Illuminate\Foundation\Http\FormRequest;
-
-class ResendOtpRequest extends FormRequest
+class ResendOtpRequest extends MobileFormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
         return true;
     }
 
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
-     */
     public function rules(): array
     {
         return [
@@ -28,20 +18,15 @@ class ResendOtpRequest extends FormRequest
         ];
     }
 
-    /**
-     * Get custom messages for validator errors.
-     *
-     * @return array<string, string>
-     */
     public function messages(): array
     {
         return [
-            'phone.required' => 'The phone field is required.',
-            'phone.string' => 'The phone must be a string.',
-            'phone.max' => 'The phone may not be greater than 20 characters.',
-            'phone_code.string' => 'The phone code must be a string.',
-            'phone_code.max' => 'The phone code may not be greater than 10 characters.',
-            'otp_type.in' => 'The otp type must be either login or register.',
+            'phone.required' => $this->msg('The phone field is required.', 'رقم الهاتف مطلوب.'),
+            'phone.string' => $this->msg('The phone must be a string.', 'يجب أن يكون رقم الهاتف نصاً.'),
+            'phone.max' => $this->msg('The phone may not be greater than 20 characters.', 'رقم الهاتف لا يجوز أن يتجاوز 20 حرفاً.'),
+            'phone_code.string' => $this->msg('The phone code must be a string.', 'يجب أن يكون رمز الهاتف نصاً.'),
+            'phone_code.max' => $this->msg('The phone code may not be greater than 10 characters.', 'رمز الهاتف لا يجوز أن يتجاوز 10 أحرف.'),
+            'otp_type.in' => $this->msg('The otp type must be either login or register.', 'نوع التحقق يجب أن يكون تسجيل دخول أو تسجيل جديد.'),
         ];
     }
 }

@@ -206,5 +206,23 @@ class OrderController extends BaseApiController
         return $this->deletedResponse('Order deleted successfully');
     }
 
+    /**
+     * Regenerate payment link for an order (online_link payment method only).
+     */
+    public function regeneratePaymentLink(int $id): JsonResponse
+    {
+        $result = $this->orderService->regeneratePaymentLink($id);
+
+        if (!$result['success']) {
+            $code = in_array($result['message'], ['Order not found.'], true) ? 404 : 400;
+            return $this->errorResponse($result['message'], $code);
+        }
+
+        logAdminActivity('regenerated payment link', 'Order', $id);
+
+        return $this->successResponse([
+            'payment_link' => $result['payment_link'],
+        ], $result['message']);
+    }
 }
 

@@ -2,23 +2,13 @@
 
 namespace App\Http\Requests\Mobile;
 
-use Illuminate\Foundation\Http\FormRequest;
-
-class VerifyOtpRequest extends FormRequest
+class VerifyOtpRequest extends MobileFormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
         return true;
     }
 
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
-     */
     public function rules(): array
     {
         return [
@@ -28,20 +18,15 @@ class VerifyOtpRequest extends FormRequest
         ];
     }
 
-    /**
-     * Get custom messages for validator errors.
-     *
-     * @return array<string, string>
-     */
     public function messages(): array
     {
         return [
-            'verification_token.required' => 'The verification token is required.',
-            'verification_token.uuid' => 'The verification token must be a valid UUID.',
-            'otp_code.required' => 'The OTP code is required.',
-            'otp_code.string' => 'The OTP code must be a string.',
-            'otp_code.size' => 'The OTP code must be 4 characters.',
-            'device_token.string' => 'The device token must be a string.',
+            'verification_token.required' => $this->msg('The verification token is required.', 'رمز التحقق مطلوب.'),
+            'verification_token.uuid' => $this->msg('The verification token must be a valid UUID.', 'رمز التحقق يجب أن يكون UUID صالحاً.'),
+            'otp_code.required' => $this->msg('The OTP code is required.', 'رمز OTP مطلوب.'),
+            'otp_code.string' => $this->msg('The OTP code must be a string.', 'يجب أن يكون رمز OTP نصاً.'),
+            'otp_code.size' => $this->msg('The OTP code must be 4 characters.', 'يجب أن يكون رمز OTP 4 أحرف.'),
+            'device_token.string' => $this->msg('The device token must be a string.', 'يجب أن يكون رمز الجهاز نصاً.'),
         ];
     }
 }

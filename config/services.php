@@ -46,6 +46,10 @@ return [
         'verify_via_status_api' => env('UPAYMENTS_VERIFY_VIA_STATUS_API', true),
         'logging_channel' => env('UPAYMENTS_LOGGING_CHANNEL'),
         'logging_enabled' => env('UPAYMENTS_LOGGING_ENABLED'),
+        /** Request timeout in seconds (default 60). Increase if sandbox is slow; if timeouts persist, check network/firewall. */
+        'timeout' => (int) env('UPAYMENTS_TIMEOUT', 60),
+        /** Connection timeout in seconds (default 15). */
+        'connect_timeout' => (int) env('UPAYMENTS_CONNECT_TIMEOUT', 15),
     ],
 
 

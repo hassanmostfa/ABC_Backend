@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Mobile\StoreOrderRequest;
 use App\Http\Resources\Admin\OrderResource;
 use App\Http\Resources\Admin\RefundRequestResource;
+use App\Models\Setting;
 use App\Repositories\OrderRepositoryInterface;
 use App\Services\OrderCancellationService;
 use App\Services\OrderService;
@@ -35,6 +36,18 @@ class OrderController extends BaseApiController
     public function store(StoreOrderRequest $request): JsonResponse
     {
         try {
+            $orderingEnabled = (bool) (Setting::getValue('app_ordering_enabled', '1') === '1' || Setting::getValue('app_ordering_enabled', '1') === 1);
+            if (!$orderingEnabled) {
+                $locale = $this->getLocaleFromRequest($request);
+                $message = (string) Setting::getTranslatedValue('app_ordering_disabled_message', $locale, '');
+                if ($message === '') {
+                    $message = $locale === 'ar'
+                        ? 'الطلب من التطبيق غير متاح حالياً. يرجى زيارة فروعنا لتقديم طلبك.'
+                        : 'Ordering from the app is currently unavailable. Please visit our stores to place your order.';
+                }
+                return $this->errorResponse($message, 503);
+            }
+
             // Get authenticated customer
             $customer = Auth::guard('sanctum')->user();
 
@@ -202,5 +215,52 @@ class OrderController extends BaseApiController
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 500);
         }
+    }
+
+    /**
+     * Regenerate payment link for customer's own order (online_link only).
+     */
+    public function regeneratePaymentLink(int $id): JsonResponse
+    {
+        $customer = Auth::guard('sanctum')->user();
+
+        if (!$customer) {
+            return $this->unauthorizedResponse('No authenticated customer found');
+        }
+
+        $order = $this->orderRepository->findById($id);
+
+        if (!$order) {
+            return $this->notFoundResponse('Order not found');
+        }
+
+        if ((int) $order->customer_id !== (int) $customer->id) {
+            return $this->unauthorizedResponse('You do not have permission to regenerate link for this order');
+        }
+
+        $result = $this->orderService->regeneratePaymentLink($id);
+
+        if (!$result['success']) {
+            $code = $result['message'] === 'Order not found.' ? 404 : 400;
+            return $this->errorResponse($result['message'], $code);
+        }
+
+        return $this->successResponse([
+            'payment_link' => $result['payment_link'],
+        ], $result['message']);
+    }
+
+    private function getLocaleFromRequest(Request $request): string
+    {
+        $raw = strtolower((string) ($request->header('LANG') ?? $request->header('Accept-Language') ?? $request->input('locale', 'ar')));
+        $primary = trim(explode(',', $raw)[0]);
+        $primary = trim(explode(';', $primary)[0]);
+        if (str_starts_with($primary, 'ar')) {
+            return 'ar';
+        }
+        if (str_starts_with($primary, 'en')) {
+            return 'en';
+        }
+        return in_array($primary, ['ar', 'en']) ? $primary : 'ar';
     }
 }

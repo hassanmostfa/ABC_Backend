@@ -2,37 +2,13 @@
 
 namespace App\Http\Requests\Mobile;
 
-use Illuminate\Foundation\Http\FormRequest;
-
-class ChangePasswordRequest extends FormRequest
+class ChangePasswordRequest extends MobileFormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
         return true;
     }
 
-    /**
-     * Get the response that should be returned if validation fails.
-     */
-    public function failedValidation(\Illuminate\Contracts\Validation\Validator $validator)
-    {
-        throw new \Illuminate\Http\Exceptions\HttpResponseException(
-            response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422)
-        );
-    }
-
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
-     */
     public function rules(): array
     {
         return [
@@ -41,31 +17,21 @@ class ChangePasswordRequest extends FormRequest
         ];
     }
 
-    /**
-     * Get custom messages for validator errors.
-     *
-     * @return array<string, string>
-     */
     public function messages(): array
     {
         return [
-            'old_password.required' => 'The current password is required.',
-            'new_password.required' => 'The new password is required.',
-            'new_password.min' => 'The new password must be at least 8 characters.',
-            'new_password.confirmed' => 'The new password confirmation does not match.',
+            'old_password.required' => $this->msg('The current password is required.', 'كلمة المرور الحالية مطلوبة.'),
+            'new_password.required' => $this->msg('The new password is required.', 'كلمة المرور الجديدة مطلوبة.'),
+            'new_password.min' => $this->msg('The new password must be at least 8 characters.', 'كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل.'),
+            'new_password.confirmed' => $this->msg('The new password confirmation does not match.', 'تأكيد كلمة المرور الجديدة غير متطابق.'),
         ];
     }
 
-    /**
-     * Get custom attributes for validator errors.
-     *
-     * @return array<string, string>
-     */
     public function attributes(): array
     {
         return [
-            'old_password' => 'current password',
-            'new_password' => 'new password',
+            'old_password' => $this->msg('current password', 'كلمة المرور الحالية'),
+            'new_password' => $this->msg('new password', 'كلمة المرور الجديدة'),
         ];
     }
 }

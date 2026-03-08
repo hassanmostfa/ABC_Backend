@@ -2,38 +2,15 @@
 
 namespace App\Http\Requests\Mobile;
 
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
 
-class UpdateProfileRequest extends FormRequest
+class UpdateProfileRequest extends MobileFormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
         return true;
     }
 
-    /**
-     * Get the response that should be returned if validation fails.
-     */
-    public function failedValidation(\Illuminate\Contracts\Validation\Validator $validator)
-    {
-        throw new \Illuminate\Http\Exceptions\HttpResponseException(
-            response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422)
-        );
-    }
-
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
-     */
     public function rules(): array
     {
         $customer = Auth::guard('sanctum')->user();
@@ -65,17 +42,17 @@ class UpdateProfileRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'name.required' => 'The name field is required.',
-            'name.string' => 'The name must be a string.',
-            'name.max' => 'The name may not be greater than 255 characters.',
-            'email.required' => 'The email field is required.',
-            'email.email' => 'The email must be a valid email address.',
-            'email.max' => 'The email may not be greater than 255 characters.',
-            'email.unique' => 'The email has already been taken.',
-            'phone.required' => 'The phone field is required.',
-            'phone.string' => 'The phone must be a string.',
-            'phone.max' => 'The phone may not be greater than 255 characters.',
-            'phone.unique' => 'The phone has already been taken.',
+            'name.required' => $this->msg('The name field is required.', 'حقل الاسم مطلوب.'),
+            'name.string' => $this->msg('The name must be a string.', 'يجب أن يكون الاسم نصاً.'),
+            'name.max' => $this->msg('The name may not be greater than 255 characters.', 'الاسم لا يجوز أن يتجاوز 255 حرفاً.'),
+            'email.required' => $this->msg('The email field is required.', 'حقل البريد الإلكتروني مطلوب.'),
+            'email.email' => $this->msg('The email must be a valid email address.', 'يجب أن يكون البريد الإلكتروني صالحاً.'),
+            'email.max' => $this->msg('The email may not be greater than 255 characters.', 'البريد الإلكتروني لا يجوز أن يتجاوز 255 حرفاً.'),
+            'email.unique' => $this->msg('The email has already been taken.', 'البريد الإلكتروني مستخدم مسبقاً.'),
+            'phone.required' => $this->msg('The phone field is required.', 'رقم الهاتف مطلوب.'),
+            'phone.string' => $this->msg('The phone must be a string.', 'يجب أن يكون رقم الهاتف نصاً.'),
+            'phone.max' => $this->msg('The phone may not be greater than 255 characters.', 'رقم الهاتف لا يجوز أن يتجاوز 255 حرفاً.'),
+            'phone.unique' => $this->msg('The phone has already been taken.', 'رقم الهاتف مستخدم مسبقاً.'),
         ];
     }
 
@@ -87,9 +64,9 @@ class UpdateProfileRequest extends FormRequest
     public function attributes(): array
     {
         return [
-            'name' => 'name',
-            'email' => 'email',
-            'phone' => 'phone',
+            'name' => $this->msg('name', 'الاسم'),
+            'email' => $this->msg('email', 'البريد الإلكتروني'),
+            'phone' => $this->msg('phone', 'رقم الهاتف'),
         ];
     }
 }

@@ -81,11 +81,14 @@ class UpaymentsService
             'payload'  => $payload,
         ]);
 
+        $timeout = config('services.upayments.timeout', 60);
+        $connectTimeout = config('services.upayments.connect_timeout', 15);
+
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . config('services.upayments.key'), // Bearer token as per documentation
             'Accept'        => 'application/json',
             'Content-Type'  => 'application/json',
-        ])->post($endpoint, $payload);
+        ])->connectTimeout($connectTimeout)->timeout($timeout)->post($endpoint, $payload);
 
         Log::info('Upayments response', [
             'status' => $response->status(),
@@ -203,11 +206,14 @@ class UpaymentsService
             'wallet_charge_reference' => $payment->reference,
         ]);
 
+        $timeout = config('services.upayments.timeout', 60);
+        $connectTimeout = config('services.upayments.connect_timeout', 15);
+
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . config('services.upayments.key'),
             'Accept' => 'application/json',
             'Content-Type' => 'application/json',
-        ])->post($endpoint, $payload);
+        ])->connectTimeout($connectTimeout)->timeout($timeout)->post($endpoint, $payload);
 
         Log::info('Upayments wallet charge response', [
             'status' => $response->status(),

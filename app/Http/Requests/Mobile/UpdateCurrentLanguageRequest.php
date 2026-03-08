@@ -2,9 +2,7 @@
 
 namespace App\Http\Requests\Mobile;
 
-use Illuminate\Foundation\Http\FormRequest;
-
-class UpdateCurrentLanguageRequest extends FormRequest
+class UpdateCurrentLanguageRequest extends MobileFormRequest
 {
     /**
      * Determine if the user is authorized to make this request.

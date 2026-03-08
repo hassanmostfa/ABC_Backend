@@ -2,43 +2,20 @@
 
 namespace App\Http\Requests\Mobile;
 
-use Illuminate\Foundation\Http\FormRequest;
-use App\Models\Customer;
 use Illuminate\Support\Facades\Auth;
 
-class StoreOrderRequest extends FormRequest
+class StoreOrderRequest extends MobileFormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
         return true;
     }
 
-    /**
-     * Get the response that should be returned if validation fails.
-     */
-    public function failedValidation(\Illuminate\Contracts\Validation\Validator $validator)
-    {
-        throw new \Illuminate\Http\Exceptions\HttpResponseException(
-            response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422)
-        );
-    }
-
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
-     */
     public function rules(): array
     {
         $customer = Auth::guard('sanctum')->user();
-        
+        $request = $this;
+
         $rules = [
             'charity_id' => 'nullable|integer|exists:charities,id',
             'customer_address_id' => [
@@ -59,21 +36,20 @@ class StoreOrderRequest extends FormRequest
                 'nullable',
                 'integer',
                 'min:10',
-                function ($attribute, $value, $fail) use ($customer) {
+                function ($attribute, $value, $fail) use ($customer, $request) {
                     if (!$value) {
                         return;
                     }
-                    if($value && $value % 10 !== 0 && $value > 0) {
-                        $fail('Points must be a multiple of 10.');
+                    if ($value && $value % 10 !== 0 && $value > 0) {
+                        $fail($request->msg('Points must be a multiple of 10.', 'النقاط يجب أن تكون من مضاعفات 10.'));
                     }
-                    // Check customer has enough points
                     if ($value && $customer) {
                         $customerPoints = $customer->points ?? 0;
                         if ($customerPoints < $value) {
-                            $fail('You do not have enough points. Available: ' . $customerPoints);
+                            $fail($request->msg('You do not have enough points. Available: ' . $customerPoints, 'النقاط غير كافية. المتاح: ' . $customerPoints));
                         }
                     } elseif ($value && !$customer) {
-                        $fail('Customer ID is required when using points.');
+                        $fail($request->msg('Customer ID is required when using points.', 'معرف العميل مطلوب عند استخدام النقاط.'));
                     }
                 },
             ],
@@ -81,14 +57,14 @@ class StoreOrderRequest extends FormRequest
                 'required_without_all:offer_ids,offers',
                 'nullable',
                 'array',
-                function ($attribute, $value, $fail) {
-                    $offerIds = $this->input('offer_ids');
-                    $offers = $this->input('offers');
-                    $hasOffers = (!empty($offerIds) && is_array($offerIds) && count($offerIds) > 0) 
+                function ($attribute, $value, $fail) use ($request) {
+                    $offerIds = $request->input('offer_ids');
+                    $offers = $request->input('offers');
+                    $hasOffers = (!empty($offerIds) && is_array($offerIds) && count($offerIds) > 0)
                                || (!empty($offers) && is_array($offers) && count($offers) > 0);
                     if (!$hasOffers) {
                         if (empty($value) || !is_array($value) || count($value) === 0) {
-                            $fail('Items are required when no offers are provided.');
+                            $fail($request->msg('Items are required when no offers are provided.', 'المنتجات مطلوبة عند عدم وجود عروض.'));
                         }
                     }
                 },
@@ -99,10 +75,10 @@ class StoreOrderRequest extends FormRequest
 
         // Validate customer_address_id belongs to authenticated customer
         if ($customer) {
-            $rules['customer_address_id'][] = function ($attribute, $value, $fail) use ($customer) {
+            $rules['customer_address_id'][] = function ($attribute, $value, $fail) use ($customer, $request) {
                 $address = \App\Models\CustomerAddress::find($value);
                 if ($address && $address->customer_id !== $customer->id) {
-                    $fail('The selected customer address does not belong to you.');
+                    $fail($request->msg('The selected customer address does not belong to you.', 'العنوان المحدد لا ينتمي إليك.'));
                 }
             };
         }
@@ -118,37 +94,37 @@ class StoreOrderRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'charity_id.integer' => 'The charity ID must be a valid integer.',
-            'charity_id.exists' => 'The selected charity does not exist.',
-            'customer_address_id.required' => 'The customer address ID is required.',
-            'customer_address_id.integer' => 'The customer address ID must be a valid integer.',
-            'customer_address_id.exists' => 'The selected customer address does not exist.',
-            'delivery_type.in' => 'The delivery type must be either pickup or delivery.',
-            'payment_method.in' => 'The payment method is invalid.',
-            'offer_ids.array' => 'The offer IDs must be an array.',
-            'offer_ids.*.integer' => 'Each offer ID must be a valid integer.',
-            'offer_ids.*.exists' => 'One or more selected offers do not exist.',
-            'offers.array' => 'The offers must be an array.',
-            'offers.*.offer_id.required' => 'The offer ID is required for each offer.',
-            'offers.*.offer_id.integer' => 'Each offer ID must be a valid integer.',
-            'offers.*.offer_id.exists' => 'One or more selected offers do not exist.',
-            'offers.*.quantity.required' => 'The quantity is required for each offer.',
-            'offers.*.quantity.integer' => 'The quantity must be a valid integer.',
-            'offers.*.quantity.min' => 'The quantity must be at least 1.',
-            'offer_snapshot.array' => 'The offer snapshot must be an array.',
-            'coupons_discount.numeric' => 'Coupons discount must be a valid number.',
-            'coupons_discount.min' => 'Coupons discount cannot be negative.',
-            'items.required' => 'At least one order item is required.',
-            'items.array' => 'The items must be an array.',
-            'items.min' => 'At least one order item is required.',
-            'items.*.variant_id.required' => 'The variant ID is required for each item.',
-            'items.*.variant_id.integer' => 'The variant ID must be a valid integer.',
-            'items.*.variant_id.exists' => 'The selected variant does not exist.',
-            'items.*.quantity.required' => 'The quantity is required for each item.',
-            'items.*.quantity.integer' => 'The quantity must be a valid integer.',
-            'items.*.quantity.min' => 'The quantity must be at least 1.',
-            'used_points.integer' => 'The used points must be a valid integer.',
-            'used_points.min' => 'The minimum points to use is 10.',
+            'charity_id.integer' => $this->msg('The charity ID must be a valid integer.', 'معرف الجمعية يجب أن يكون رقماً صحيحاً.'),
+            'charity_id.exists' => $this->msg('The selected charity does not exist.', 'الجمعية المحددة غير موجودة.'),
+            'customer_address_id.required' => $this->msg('The customer address ID is required.', 'عنوان التوصيل مطلوب.'),
+            'customer_address_id.integer' => $this->msg('The customer address ID must be a valid integer.', 'معرف العنوان يجب أن يكون رقماً صحيحاً.'),
+            'customer_address_id.exists' => $this->msg('The selected customer address does not exist.', 'العنوان المحدد غير موجود.'),
+            'delivery_type.in' => $this->msg('The delivery type must be either pickup or delivery.', 'نوع التوصيل يجب أن يكون استلام أو توصيل.'),
+            'payment_method.in' => $this->msg('The payment method is invalid.', 'طريقة الدفع غير صالحة.'),
+            'offer_ids.array' => $this->msg('The offer IDs must be an array.', 'معرفات العروض يجب أن تكون مصفوفة.'),
+            'offer_ids.*.integer' => $this->msg('Each offer ID must be a valid integer.', 'كل معرف عرض يجب أن يكون رقماً صحيحاً.'),
+            'offer_ids.*.exists' => $this->msg('One or more selected offers do not exist.', 'واحد أو أكثر من العروض المحددة غير موجود.'),
+            'offers.array' => $this->msg('The offers must be an array.', 'العروض يجب أن تكون مصفوفة.'),
+            'offers.*.offer_id.required' => $this->msg('The offer ID is required for each offer.', 'معرف العرض مطلوب لكل عرض.'),
+            'offers.*.offer_id.integer' => $this->msg('Each offer ID must be a valid integer.', 'معرف العرض يجب أن يكون رقماً صحيحاً.'),
+            'offers.*.offer_id.exists' => $this->msg('One or more selected offers do not exist.', 'واحد أو أكثر من العروض المحددة غير موجود.'),
+            'offers.*.quantity.required' => $this->msg('The quantity is required for each offer.', 'الكمية مطلوبة لكل عرض.'),
+            'offers.*.quantity.integer' => $this->msg('The quantity must be a valid integer.', 'الكمية يجب أن تكون رقماً صحيحاً.'),
+            'offers.*.quantity.min' => $this->msg('The quantity must be at least 1.', 'الكمية يجب أن تكون 1 على الأقل.'),
+            'offer_snapshot.array' => $this->msg('The offer snapshot must be an array.', 'لقطة العرض يجب أن تكون مصفوفة.'),
+            'coupons_discount.numeric' => $this->msg('Coupons discount must be a valid number.', 'خصم الكوبونات يجب أن يكون رقماً.'),
+            'coupons_discount.min' => $this->msg('Coupons discount cannot be negative.', 'خصم الكوبونات لا يمكن أن يكون سلبياً.'),
+            'items.required' => $this->msg('At least one order item is required.', 'مطلوب منتج واحد على الأقل.'),
+            'items.array' => $this->msg('The items must be an array.', 'المنتجات يجب أن تكون مصفوفة.'),
+            'items.min' => $this->msg('At least one order item is required.', 'مطلوب منتج واحد على الأقل.'),
+            'items.*.variant_id.required' => $this->msg('The variant ID is required for each item.', 'معرف المتغير مطلوب لكل منتج.'),
+            'items.*.variant_id.integer' => $this->msg('The variant ID must be a valid integer.', 'معرف المتغير يجب أن يكون رقماً صحيحاً.'),
+            'items.*.variant_id.exists' => $this->msg('The selected variant does not exist.', 'المتغير المحدد غير موجود.'),
+            'items.*.quantity.required' => $this->msg('The quantity is required for each item.', 'الكمية مطلوبة لكل منتج.'),
+            'items.*.quantity.integer' => $this->msg('The quantity must be a valid integer.', 'الكمية يجب أن تكون رقماً صحيحاً.'),
+            'items.*.quantity.min' => $this->msg('The quantity must be at least 1.', 'الكمية يجب أن تكون 1 على الأقل.'),
+            'used_points.integer' => $this->msg('The used points must be a valid integer.', 'النقاط المستخدمة يجب أن تكون رقماً صحيحاً.'),
+            'used_points.min' => $this->msg('The minimum points to use is 10.', 'الحد الأدنى للنقاط المستخدمة هو 10.'),
         ];
     }
 

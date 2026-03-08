@@ -13,8 +13,9 @@ class StoreCouponRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
+        $rules = [
             'code' => 'required|string|max:255|unique:coupons,code',
+            'type' => 'required|in:general,product_variant,welcome',
             'name' => 'nullable|string|max:255',
             'discount_type' => 'required|in:percentage,fixed',
             'discount_value' => 'required|numeric|min:0.001',
@@ -24,6 +25,10 @@ class StoreCouponRequest extends FormRequest
             'starts_at' => 'nullable|date',
             'expires_at' => 'nullable|date|after_or_equal:starts_at',
             'is_active' => 'nullable|boolean',
+            'product_variant_ids' => 'required_if:type,product_variant|array',
+            'product_variant_ids.*' => 'integer|exists:product_variants,id',
         ];
+
+        return $rules;
     }
 }

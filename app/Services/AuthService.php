@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Customer;
 use Illuminate\Support\Facades\Auth;
+use App\Services\CouponService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
@@ -41,6 +42,9 @@ class AuthService
             'is_active' => true,
             'points' => 0,
         ]);
+
+        // Assign welcome coupon (valid for one month) for first registration
+        app(CouponService::class)->createWelcomeCouponForCustomer($customer);
 
         // Generate token
         $token = $customer->createToken('auth_token')->plainTextToken;

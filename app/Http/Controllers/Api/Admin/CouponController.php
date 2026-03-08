@@ -63,11 +63,20 @@ class CouponController extends BaseApiController
         $data = $request->validated();
         $data['is_active'] = $data['is_active'] ?? true;
         $data['minimum_order_amount'] = $data['minimum_order_amount'] ?? 0;
+        $data['type'] = $data['type'] ?? 'general';
+
+        $productVariantIds = $data['product_variant_ids'] ?? null;
+        unset($data['product_variant_ids']);
 
         $coupon = $this->couponRepository->create($data);
+
+        if ($data['type'] === 'product_variant' && !empty($productVariantIds)) {
+            $coupon->productVariants()->sync($productVariantIds);
+        }
+
         logAdminActivity('created', 'Coupon', $coupon->id);
 
-        return $this->createdResponse(new CouponResource($coupon), 'Coupon created successfully');
+        return $this->createdResponse(new CouponResource($coupon->load('productVariants')), 'Coupon created successfully');
     }
 
     /**
@@ -79,6 +88,7 @@ class CouponController extends BaseApiController
         if (!$coupon) {
             return $this->notFoundResponse('Coupon not found');
         }
+        $coupon->load('productVariants');
 
         return $this->resourceResponse(new CouponResource($coupon), 'Coupon retrieved successfully');
     }
@@ -88,13 +98,23 @@ class CouponController extends BaseApiController
      */
     public function update(UpdateCouponRequest $request, int $id): JsonResponse
     {
-        $coupon = $this->couponRepository->update($id, $request->validated());
+        $data = $request->validated();
+        $productVariantIds = $data['product_variant_ids'] ?? null;
+        unset($data['product_variant_ids']);
+
+        $coupon = $this->couponRepository->update($id, $data);
         if (!$coupon) {
             return $this->notFoundResponse('Coupon not found');
         }
 
+        if (array_key_exists('type', $request->validated()) && $coupon->type === 'product_variant') {
+            $coupon->productVariants()->sync($productVariantIds ?? []);
+        } elseif ($productVariantIds !== null) {
+            $coupon->productVariants()->sync($productVariantIds);
+        }
+
         logAdminActivity('updated', 'Coupon', $coupon->id);
-        return $this->updatedResponse(new CouponResource($coupon), 'Coupon updated successfully');
+        return $this->updatedResponse(new CouponResource($coupon->load('productVariants')), 'Coupon updated successfully');
     }
 
     /**

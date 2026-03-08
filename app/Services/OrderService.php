@@ -657,20 +657,62 @@ class OrderService
 
     protected function generatePaymentLink(Order $order, Invoice $invoice, float $amount): ?string
     {
-        // Create UpaymentsService instance and create payment
-        $upaymentsService = new UpaymentsService();
-        
         try {
-            // The UpaymentsService will handle customer loading and payload building
-            $paymentUrl = $upaymentsService->createPayment($order, $amount);
-            
+            $paymentUrl = $this->upaymentsService->createPayment($order, $amount);
             Log::info('Payment link generated successfully for order ' . $order->id);
-            
             return $paymentUrl;
         } catch (\Exception $e) {
-            // Re-throw the exception so it can be caught and logged in createOrder
             throw $e;
         }
+    }
+
+    /**
+     * Regenerate payment link for an order (online_link only). Uses remaining amount due.
+     *
+     * @return array{success: bool, message: string, payment_link?: string}
+     */
+    public function regeneratePaymentLink(int $orderId): array
+    {
+        $order = $this->orderRepository->findById($orderId);
+        if (!$order) {
+            return ['success' => false, 'message' => 'Order not found.'];
+        }
+
+        $order->load('invoice.payments');
+
+        if ($order->payment_method !== 'online_link') {
+            return ['success' => false, 'message' => 'Order payment method is not online link.'];
+        }
+
+        $invoice = $order->invoice;
+        if (!$invoice) {
+            return ['success' => false, 'message' => 'Order has no invoice.'];
+        }
+
+        if ($invoice->status === 'paid') {
+            return ['success' => false, 'message' => 'Invoice is already paid.'];
+        }
+
+        $totalPaid = (float) $invoice->payments()->where('status', 'completed')->sum('amount');
+        $amountDue = (float) $invoice->amount_due;
+        $remainingAmount = max(0, $amountDue - $totalPaid);
+        if ($remainingAmount <= 0) {
+            return ['success' => false, 'message' => 'No amount due for this order.'];
+        }
+
+        try {
+            $paymentLink = $this->generatePaymentLink($order, $invoice, $remainingAmount);
+            if ($paymentLink) {
+                $this->invoiceRepository->update($invoice->id, ['payment_link' => $paymentLink]);
+                Log::info('Payment link regenerated for order ' . $order->id);
+                return ['success' => true, 'message' => 'Payment link regenerated successfully.', 'payment_link' => $paymentLink];
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to regenerate payment link for order ' . $order->id . ': ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Failed to generate payment link: ' . $e->getMessage()];
+        }
+
+        return ['success' => false, 'message' => 'Failed to generate payment link.'];
     }
 
     /**

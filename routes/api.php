@@ -276,6 +276,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::get('/{id}', 'show')->middleware('admin.permission:orders,view');
          Route::put('/{id}', 'update')->middleware(['admin.permission:orders,edit', 'prevent.update.completed.order']);
          Route::patch('/{id}/cancel', 'cancel')->middleware('admin.permission:orders,edit');
+         Route::post('/{id}/regenerate-payment-link', 'regeneratePaymentLink')->middleware('admin.permission:orders,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:orders,delete');
       });
 
@@ -502,6 +503,7 @@ Route::middleware('api.auth')->prefix('mobile/orders')->group(function () {
    Route::get('/', [MobileOrderController::class, 'index']);
    Route::get('/{id}', [MobileOrderController::class, 'show']);
    Route::patch('/{id}/cancel', [MobileOrderController::class, 'cancel']);
+   Route::post('/{id}/regenerate-payment-link', [MobileOrderController::class, 'regeneratePaymentLink']);
 });
 
 

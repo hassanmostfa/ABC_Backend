@@ -17,6 +17,7 @@ class UpdateCouponRequest extends FormRequest
 
         return [
             'code' => 'sometimes|required|string|max:255|unique:coupons,code,' . $couponId,
+            'type' => 'sometimes|required|in:general,product_variant,welcome',
             'name' => 'sometimes|nullable|string|max:255',
             'discount_type' => 'sometimes|required|in:percentage,fixed',
             'discount_value' => 'sometimes|required|numeric|min:0.001',
@@ -26,6 +27,8 @@ class UpdateCouponRequest extends FormRequest
             'starts_at' => 'sometimes|nullable|date',
             'expires_at' => 'sometimes|nullable|date|after_or_equal:starts_at',
             'is_active' => 'sometimes|boolean',
+            'product_variant_ids' => 'required_if:type,product_variant|sometimes|array',
+            'product_variant_ids.*' => 'integer|exists:product_variants,id',
         ];
     }
 }

@@ -101,19 +101,24 @@ class AppContentController extends BaseApiController
     }
 
     /**
-     * Get order-related settings: tax, delivery_price, minimum_home_order.
+     * Get order-related settings: tax, delivery_price, minimum_home_order, app ordering status.
      */
     public function getOrderSettings(Request $request): JsonResponse
     {
+        $locale = $this->getLocaleFromRequest($request);
         $tax = (float) Setting::getValue('tax', 0.15);
         $deliveryPrice = (float) Setting::getValue('delivery_price', 0);
         $minimumHomeOrder = (float) Setting::getValue('minimum_home_order', 0);
+        $orderingEnabled = (bool) (Setting::getValue('app_ordering_enabled', '1') === '1' || Setting::getValue('app_ordering_enabled', '1') === 1);
+        $orderingDisabledMessage = (string) Setting::getTranslatedValue('app_ordering_disabled_message', $locale, '');
 
         return $this->successResponse(
             [
                 'tax' => $tax,
                 'delivery_price' => $deliveryPrice,
                 'minimum_home_order' => $minimumHomeOrder,
+                'ordering_enabled' => $orderingEnabled,
+                'ordering_disabled_message' => $orderingDisabledMessage,
             ],
             'Order settings retrieved successfully'
         );

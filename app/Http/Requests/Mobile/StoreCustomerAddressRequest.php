@@ -2,39 +2,15 @@
 
 namespace App\Http\Requests\Mobile;
 
-use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 
-class StoreCustomerAddressRequest extends FormRequest
+class StoreCustomerAddressRequest extends MobileFormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
         return true;
     }
 
-    /**
-     * Get the response that should be returned if validation fails.
-     */
-    public function failedValidation(\Illuminate\Contracts\Validation\Validator $validator)
-    {
-        throw new \Illuminate\Http\Exceptions\HttpResponseException(
-            response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422)
-        );
-    }
-
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
-     */
     public function rules(): array
     {
         $rules = [
@@ -79,21 +55,21 @@ class StoreCustomerAddressRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'country_id.required' => 'The country is required.',
-            'governorate_id.required' => 'The governorate is required.',
-            'area_id.required' => 'The area is required.',
-            'lat.required' => 'The latitude is required.',
-            'lng.required' => 'The longitude is required.',
-            'type.required' => 'The address type is required.',
-            'type.in' => 'The address type must be apartment, house, or office.',
-            'phone_number.required' => 'The phone number is required.',
-            'building_name.required' => 'The building name is required.',
-            'apartment_number.required' => 'The apartment number is required.',
-            'floor.required' => 'The floor is required.',
-            'street.required' => 'The street is required.',
-            'house.required' => 'The house is required.',
-            'block.required' => 'The block is required.',
-            'company.required' => 'The company name is required.',
+            'country_id.required' => $this->msg('The country is required.', 'الدولة مطلوبة.'),
+            'governorate_id.required' => $this->msg('The governorate is required.', 'المحافظة مطلوبة.'),
+            'area_id.required' => $this->msg('The area is required.', 'المنطقة مطلوبة.'),
+            'lat.required' => $this->msg('The latitude is required.', 'خط العرض مطلوب.'),
+            'lng.required' => $this->msg('The longitude is required.', 'خط الطول مطلوب.'),
+            'type.required' => $this->msg('The address type is required.', 'نوع العنوان مطلوب.'),
+            'type.in' => $this->msg('The address type must be apartment, house, or office.', 'نوع العنوان يجب أن يكون شقة أو منزل أو مكتب.'),
+            'phone_number.required' => $this->msg('The phone number is required.', 'رقم الهاتف مطلوب.'),
+            'building_name.required' => $this->msg('The building name is required.', 'اسم المبنى مطلوب.'),
+            'apartment_number.required' => $this->msg('The apartment number is required.', 'رقم الشقة مطلوب.'),
+            'floor.required' => $this->msg('The floor is required.', 'الطابق مطلوب.'),
+            'street.required' => $this->msg('The street is required.', 'الشارع مطلوب.'),
+            'house.required' => $this->msg('The house is required.', 'المنزل مطلوب.'),
+            'block.required' => $this->msg('The block is required.', 'القطعة مطلوبة.'),
+            'company.required' => $this->msg('The company name is required.', 'اسم الشركة مطلوب.'),
         ];
     }
 }

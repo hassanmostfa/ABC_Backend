@@ -187,6 +187,8 @@ class OtpService
                 'is_completed' => false,
                 'points' => 0
             ]);
+            // Assign welcome coupon (valid for one month) for first registration
+            app(\App\Services\CouponService::class)->createWelcomeCouponForCustomer($customer);
         }
 
         // Store device token if provided
