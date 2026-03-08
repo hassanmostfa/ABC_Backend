@@ -13,7 +13,7 @@
 /.zed
 /auth.json
 /node_modules
-/storage/firebase/*.json
+/storage/firebase/*
 /public/build
 /public/hot
 /public/storage
