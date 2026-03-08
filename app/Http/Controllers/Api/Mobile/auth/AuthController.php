@@ -148,6 +148,14 @@ class AuthController extends BaseApiController
                 ]
             );
 
+            // Assign welcome coupon if not already assigned (e.g. template was missing at OTP register)
+            $hasWelcomeCoupon = \App\Models\Coupon::where('type', 'welcome')
+                ->where('customer_id', $customer->id)
+                ->exists();
+            if (!$hasWelcomeCoupon) {
+                app(\App\Services\CouponService::class)->createWelcomeCouponForCustomer($customer);
+            }
+
             // Load relationships
             $customer->load(['wallet', 'addresses']);
 

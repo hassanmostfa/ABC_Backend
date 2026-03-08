@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Coupon;
 use App\Models\Customer;
+use App\Models\Setting;
 use App\Repositories\CouponRepositoryInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -180,29 +181,30 @@ class CouponService
     }
 
     /**
-     * Create a welcome coupon for a newly registered customer (valid for one month).
-     * Uses the first welcome-type template coupon (type=welcome, customer_id=null) as base.
+     * Create a welcome coupon for a newly registered customer (valid for one month, one-time use).
      */
-    public function createWelcomeCouponForCustomer(Customer $customer): ?Coupon
+    public function createWelcomeCouponForCustomer(Customer $customer): Coupon
     {
-        $template = Coupon::query()->welcomeTemplate()->first();
-        if (!$template) {
-            return null;
-        }
-
         $code = 'WELCOME' . strtoupper(Str::random(6));
         while (Coupon::where('code', $code)->exists()) {
             $code = 'WELCOME' . strtoupper(Str::random(6));
         }
 
+        $discountType = Setting::getValue('welcome_coupon_discount_type', 'percentage');
+        $discountValue = (float) Setting::getValue('welcome_coupon_discount_value', '10');
+        $minimumOrderAmount = (float) Setting::getValue('welcome_coupon_minimum_order_amount', '0');
+        if (! in_array($discountType, ['percentage', 'fixed'], true)) {
+            $discountType = 'percentage';
+        }
+
         $coupon = $this->couponRepository->create([
             'code' => $code,
             'type' => Coupon::TYPE_WELCOME,
-            'name' => $template->name ? $template->name . ' - ' . $customer->name : 'Welcome coupon',
-            'discount_type' => $template->discount_type,
-            'discount_value' => $template->discount_value,
-            'minimum_order_amount' => $template->minimum_order_amount ?? 0,
-            'maximum_discount_amount' => $template->maximum_discount_amount,
+            'name' => 'Welcome coupon - ' . $customer->name,
+            'discount_type' => $discountType,
+            'discount_value' => $discountValue,
+            'minimum_order_amount' => $minimumOrderAmount,
+            'maximum_discount_amount' => null,
             'usage_limit' => 1,
             'used_count' => 0,
             'starts_at' => now(),
@@ -210,6 +212,33 @@ class CouponService
             'is_active' => true,
             'customer_id' => $customer->id,
         ]);
+
+        $discountText = $discountType === 'percentage'
+            ? $discountValue . '%'
+            : $discountValue . ' KWD';
+        $expiresAt = $coupon->expires_at?->format('Y-m-d') ?? '';
+
+        $messageEn = 'Your welcome coupon code: ' . $coupon->code . '. Discount: ' . $discountText . '. Valid for one month. Use it at checkout!';
+        $messageAr = 'كود كوبون الترحيب الخاص بك: ' . $coupon->code . '. الخصم: ' . $discountText . '. صالح لمدة شهر. استخدمه عند الدفع!';
+
+        sendNotification(
+            null,
+            $customer->id,
+            'Welcome coupon',
+            $messageEn,
+            'welcome_coupon',
+            [
+                'coupon_code' => $coupon->code,
+                'coupon_id' => (string) $coupon->id,
+                'discount_type' => $discountType,
+                'discount_value' => (string) $discountValue,
+                'expires_at' => $expiresAt,
+            ],
+            'كوبون الترحيب',
+            $messageAr,
+            'Welcome coupon',
+            $messageEn
+        );
 
         return $coupon;
     }
