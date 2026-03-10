@@ -4,6 +4,7 @@ namespace App\Http\Resources\Admin;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 
 class CouponResource extends JsonResource
 {
@@ -28,6 +29,30 @@ class CouponResource extends JsonResource
             'is_active' => (bool) $this->is_active,
             'customer_id' => $this->customer_id,
             'product_variant_ids' => $this->whenLoaded('productVariants', fn () => $this->productVariants->pluck('id')->values()->all(), []),
+            'product_variants' => $this->when(
+                $this->type === 'product_variant' && $this->relationLoaded('productVariants'),
+                fn () => $this->productVariants->map(function ($variant) {
+                    $product = $variant->relationLoaded('product') ? $variant->product : null;
+                    return [
+                        'id' => $variant->id,
+                        'product_id' => $variant->product_id,
+                        'size' => $variant->size,
+                        'short_item' => $variant->short_item,
+                        'sku' => $variant->sku,
+                        'quantity' => (int) $variant->quantity,
+                        'price' => (float) $variant->price,
+                        'image' => $variant->image ? url(Storage::disk('public')->url($variant->image)) : null,
+                        'is_active' => (bool) $variant->is_active,
+                        'product' => $product ? [
+                            'id' => $product->id,
+                            'name_en' => $product->name_en,
+                            'name_ar' => $product->name_ar,
+                            'sku' => $product->sku,
+                            'is_active' => (bool) $product->is_active,
+                        ] : null,
+                    ];
+                })->values()->all()
+            ),
             'created_at' => \format_datetime_app_tz($this->created_at),
             'updated_at' => \format_datetime_app_tz($this->updated_at),
         ];

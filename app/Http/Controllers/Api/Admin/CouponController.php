@@ -76,7 +76,7 @@ class CouponController extends BaseApiController
 
         logAdminActivity('created', 'Coupon', $coupon->id);
 
-        return $this->createdResponse(new CouponResource($coupon->load('productVariants')), 'Coupon created successfully');
+        return $this->createdResponse(new CouponResource($coupon->load('productVariants.product')), 'Coupon created successfully');
     }
 
     /**
@@ -88,7 +88,7 @@ class CouponController extends BaseApiController
         if (!$coupon) {
             return $this->notFoundResponse('Coupon not found');
         }
-        $coupon->load('productVariants');
+        $coupon->load('productVariants.product');
 
         return $this->resourceResponse(new CouponResource($coupon), 'Coupon retrieved successfully');
     }
@@ -114,7 +114,7 @@ class CouponController extends BaseApiController
         }
 
         logAdminActivity('updated', 'Coupon', $coupon->id);
-        return $this->updatedResponse(new CouponResource($coupon->load('productVariants')), 'Coupon updated successfully');
+        return $this->updatedResponse(new CouponResource($coupon->load('productVariants.product')), 'Coupon updated successfully');
     }
 
     /**

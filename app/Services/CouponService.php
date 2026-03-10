@@ -182,9 +182,15 @@ class CouponService
 
     /**
      * Create a welcome coupon for a newly registered customer (valid for one month, one-time use).
+     * Returns null if welcome coupon is disabled in settings.
      */
-    public function createWelcomeCouponForCustomer(Customer $customer): Coupon
+    public function createWelcomeCouponForCustomer(Customer $customer): ?Coupon
     {
+        $enabled = Setting::getValue('welcome_coupon_enabled', '1');
+        if ($enabled !== '1' && $enabled !== 1) {
+            return null;
+        }
+
         $code = 'WELCOME' . strtoupper(Str::random(6));
         while (Coupon::where('code', $code)->exists()) {
             $code = 'WELCOME' . strtoupper(Str::random(6));

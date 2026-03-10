@@ -31,7 +31,7 @@ class CouponRepository implements CouponRepositoryInterface
             }
         }
 
-        return $query->orderByDesc('created_at')->paginate($perPage);
+        return $query->with('productVariants.product')->orderByDesc('created_at')->paginate($perPage);
     }
 
     public function getAll(): Collection
