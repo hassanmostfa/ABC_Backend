@@ -189,8 +189,16 @@ class ProductController extends BaseApiController
      */
     public function getProductsByCategoryWithVariants(Request $request, int $categoryId): JsonResponse
     {
+        // Validate pagination parameters
+        $request->validate([
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $perPage = (int) $request->input('per_page', 15);
+        $currentPage = (int) $request->input('page', 1);
+
         $products = $this->productRepository->getByCategory($categoryId);
-        
+
         // Filter only active products and load relationships
         $activeProducts = $products->filter(function ($product) {
             return $product->is_active;
@@ -198,10 +206,31 @@ class ProductController extends BaseApiController
             $query->where('is_active', true); // Only active variants for public API
         }, 'category', 'subcategory']);
 
-        // Transform data using ProductResource
-        $transformedProducts = WebProductResource::collection($activeProducts);
+        $total = $activeProducts->count();
+        $offset = ($currentPage - 1) * $perPage;
 
-        return $this->successResponse($transformedProducts, 'Products by category with variants retrieved successfully');
+        // Slice the collection for the current page
+        $paginatedProducts = $activeProducts->slice($offset, $perPage)->values();
+
+        // Transform data using WebProductResource
+        $transformedProducts = WebProductResource::collection($paginatedProducts);
+
+        // Create a custom response with pagination
+        $response = [
+            'success' => true,
+            'message' => 'Products by category with variants retrieved successfully',
+            'data' => $transformedProducts,
+            'pagination' => [
+                'current_page' => $currentPage,
+                'last_page' => $perPage > 0 ? (int) ceil($total / $perPage) : 0,
+                'per_page' => $perPage,
+                'total' => $total,
+                'from' => $total > 0 ? $offset + 1 : null,
+                'to' => $total > 0 ? min($offset + $perPage, $total) : null,
+            ],
+        ];
+
+        return response()->json($response);
     }
 
     /**
@@ -209,6 +238,14 @@ class ProductController extends BaseApiController
      */
     public function getProductsBySubcategoryWithVariants(Request $request, int $subcategoryId): JsonResponse
     {
+        // Validate pagination parameters
+        $request->validate([
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $perPage = (int) $request->input('per_page', 15);
+        $currentPage = (int) $request->input('page', 1);
+
         $products = $this->productRepository->getBySubcategory($subcategoryId);
         
         // Filter only active products and load relationships
@@ -218,10 +255,31 @@ class ProductController extends BaseApiController
             $query->where('is_active', true); // Only active variants for public API
         }, 'category', 'subcategory']);
 
-        // Transform data using ProductResource
-        $transformedProducts = WebProductResource::collection($activeProducts);
+        $total = $activeProducts->count();
+        $offset = ($currentPage - 1) * $perPage;
 
-        return $this->successResponse($transformedProducts, 'Products by subcategory with variants retrieved successfully');
+        // Slice the collection for the current page
+        $paginatedProducts = $activeProducts->slice($offset, $perPage)->values();
+
+        // Transform data using WebProductResource
+        $transformedProducts = WebProductResource::collection($paginatedProducts);
+
+        // Create a custom response with pagination
+        $response = [
+            'success' => true,
+            'message' => 'Products by subcategory with variants retrieved successfully',
+            'data' => $transformedProducts,
+            'pagination' => [
+                'current_page' => $currentPage,
+                'last_page' => $perPage > 0 ? (int) ceil($total / $perPage) : 0,
+                'per_page' => $perPage,
+                'total' => $total,
+                'from' => $total > 0 ? $offset + 1 : null,
+                'to' => $total > 0 ? min($offset + $perPage, $total) : null,
+            ],
+        ];
+
+        return response()->json($response);
     }
 
     /**

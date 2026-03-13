@@ -39,11 +39,12 @@ class SmsBoxService
 
         $userAgent = config('smsbox.user_agent');
         try {
-            $request = Http::asForm()->timeout(15);
+            $request = Http::timeout(15);
             if (!empty($userAgent)) {
                 $request = $request->withHeaders(['User-Agent' => $userAgent]);
             }
-            $response = $request->post($baseUrl, $payload);
+            // Use GET with query parameters (POST has issues; GET works in browser)
+            $response = $request->get($baseUrl, $payload);
 
             $body = $response->body();
             $normalized = $this->parseResponse($body, $response->successful());

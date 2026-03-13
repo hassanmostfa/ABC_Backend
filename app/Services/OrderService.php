@@ -187,8 +187,8 @@ class OrderService
                 $this->walletService->validateBalance($customerId, $amountDue);
             }
 
-            // Generate order number
-            $source = 'call_center'; // Default to call_center for admin
+            // Generate order number (source: app = mobile, call_center = admin)
+            $source = $data['source'] ?? 'call_center';
             $orderNumber = $this->generateOrderNumber($source);
             
             // Create the order
@@ -720,10 +720,10 @@ class OrderService
      */
     protected function generateOrderNumber(string $source): string
     {
-        // Map source to prefix
+        // Map source to prefix (APP = mobile app, CALS = call center/admin only)
         $prefixes = [
-            'app' => 'APPS',
-            'web' => 'WEBS',
+            'app' => 'APP',
+            'web' => 'WEB',
             'call_center' => 'CALS',
         ];
         

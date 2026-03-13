@@ -55,9 +55,10 @@ class OrderController extends BaseApiController
                 return $this->unauthorizedResponse('No authenticated customer found');
             }
 
-            // Merge customer_id from authenticated user
+            // Merge customer_id from authenticated user and set source for order number prefix (APP)
             $orderData = $request->validated();
             $orderData['customer_id'] = $customer->id;
+            $orderData['source'] = 'app';
 
             // Create order using the same service as admin
             $result = $this->orderService->createOrder($orderData);
