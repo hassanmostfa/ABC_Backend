@@ -68,6 +68,9 @@ class OrderController extends BaseApiController
                 $result['order']->payment_link = $result['payment_link'];
             }
             
+            // Send notifications after response is sent (non-blocking)
+            \App\Jobs\SendOrderCreatedNotificationsJob::dispatch($result['order']->id)->afterResponse();
+            
             return $this->createdResponse(new OrderResource($result['order']), 'Order created successfully');
         } catch (\Exception $e) {
             $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 500;

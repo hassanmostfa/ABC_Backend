@@ -24,11 +24,14 @@ class OrderItemService
      */
     public function processItems(array $items): array
     {
+        $variantIds = collect($items)->pluck('variant_id')->unique()->values()->all();
+        $variants = ProductVariant::with('product')->whereIn('id', $variantIds)->get()->keyBy('id');
+
         $totalAmount = 0;
         $orderItemsData = [];
 
         foreach ($items as $item) {
-            $variant = ProductVariant::with('product')->find($item['variant_id']);
+            $variant = $variants->get($item['variant_id']);
             
             if (!$variant) {
                 DB::rollBack();
@@ -42,7 +45,6 @@ class OrderItemService
 
             $quantity = $item['quantity'];
             
-            // Check if variant has sufficient quantity
             $availableQuantity = $variant->quantity ?? 0;
             if ($availableQuantity < $quantity) {
                 DB::rollBack();
@@ -57,7 +59,6 @@ class OrderItemService
             $totalPrice = $unitPrice * $quantity;
             $totalAmount += $totalPrice;
 
-            // Build product name (using English name, fallback to Arabic)
             $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
             if ($variant->size) {
                 $productName .= ' - ' . $variant->size;
@@ -90,14 +91,23 @@ class OrderItemService
      */
     public function createOrderItems(int $orderId, array $orderItemsData): void
     {
+        if (empty($orderItemsData)) {
+            return;
+        }
+
+        $variantIds = collect($orderItemsData)->pluck('variant_id')->unique()->values()->all();
+        $variants = ProductVariant::whereIn('id', $variantIds)->get()->keyBy('id');
+        $quantityByVariant = collect($orderItemsData)->groupBy('variant_id')->map(fn ($rows) => (int) $rows->sum('quantity'));
+
         foreach ($orderItemsData as $itemData) {
             $itemData['order_id'] = $orderId;
             $this->orderItemRepository->create($itemData);
-            
-            // Update product variant quantity
-            $variant = ProductVariant::find($itemData['variant_id']);
+        }
+
+        foreach ($quantityByVariant as $variantId => $qty) {
+            $variant = $variants->get($variantId);
             if ($variant) {
-                $newQuantity = max(0, ($variant->quantity ?? 0) - $itemData['quantity']);
+                $newQuantity = max(0, ($variant->quantity ?? 0) - $qty);
                 $variant->update(['quantity' => $newQuantity]);
             }
         }

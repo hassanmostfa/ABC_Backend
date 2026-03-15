@@ -9,7 +9,10 @@ use App\Models\Payment;
 
 class UpaymentsService
 {
-    public function createPayment(Order $order, float $amount): string
+    /**
+     * @param int|null $timeoutSeconds Optional request timeout (default from config). Use 10–15 when creating order to fail fast.
+     */
+    public function createPayment(Order $order, float $amount, ?int $timeoutSeconds = null): string
     {
         // Load customer and items
         if (!$order->relationLoaded('customer')) {
@@ -81,8 +84,8 @@ class UpaymentsService
             'payload'  => $payload,
         ]);
 
-        $timeout = config('services.upayments.timeout', 60);
-        $connectTimeout = config('services.upayments.connect_timeout', 15);
+        $timeout = $timeoutSeconds ?? config('services.upayments.timeout', 60);
+        $connectTimeout = min(10, (int) config('services.upayments.connect_timeout', 15));
 
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . config('services.upayments.key'), // Bearer token as per documentation

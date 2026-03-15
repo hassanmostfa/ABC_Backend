@@ -252,35 +252,6 @@ class OrderService
                 $this->walletService->deductBalance($order->customer_id, $amountDue);
             }
 
-            // Generate payment link if payment method is online_link
-            $paymentLink = null;
-            if ($paymentMethod === 'online_link') {
-                try {
-                    $paymentLink = $this->generatePaymentLink($order, $invoice, $amountDue);
-                    Log::info('Payment link generated for order ' . $order->id . ': ' . ($paymentLink ? 'Success' : 'Failed'));
-                    
-                    // Store payment link in invoice
-                    if ($paymentLink && $invoice) {
-                        $this->invoiceRepository->update($invoice->id, [
-                            'payment_link' => $paymentLink
-                        ]);
-                        Log::info('Payment link stored in invoice ' . $invoice->id . ' for order ' . $order->id);
-                    }
-                } catch (\Osama\Upayments\Exceptions\UpaymentsApiException $e) {
-                    // Log Upayments API error with full details
-                    Log::error('Upayments API error for order ' . $order->id, [
-                        'message' => $e->getMessage(),
-                        'code' => $e->getCode(),
-                    ]);
-                } catch (\Exception $e) {
-                    // Log other errors but don't fail the order creation
-                    Log::error('Failed to generate payment link for order ' . $order->id . ': ' . $e->getMessage(), [
-                        'exception' => get_class($e),
-                        'trace' => $e->getTraceAsString()
-                    ]);
-                }
-            }
-
             DB::commit();
 
             // Reload order with relationships
@@ -291,40 +262,23 @@ class OrderService
                 'order' => $order
             ];
 
-            // Add payment link to response if available
-            if ($paymentLink) {
-                $response['payment_link'] = $paymentLink;
-            }
-
-            try {
-                if ($order->customer_id) {
-                    sendNotification(
-                        null,
-                        $order->customer_id,
-                        'Order Created',
-                        "Your order {$order->order_number} has been created successfully.",
-                        'order',
-                        ['order_id' => $order->id, 'order_number' => $order->order_number, 'status' => $order->status],
-                        'تم إنشاء الطلب',
-                        "تم إنشاء طلبك رقم {$order->order_number} بنجاح."
-                    );
+            // Generate payment link AFTER commit (avoids holding transaction; use short timeout)
+            $paymentLink = null;
+            if ($paymentMethod === 'online_link') {
+                try {
+                    $paymentLink = $this->generatePaymentLink($order, $invoice, $amountDue, 12);
+                    if ($paymentLink && $invoice) {
+                        $this->invoiceRepository->update($invoice->id, [
+                            'payment_link' => $paymentLink
+                        ]);
+                        Log::info('Payment link stored in invoice ' . $invoice->id . ' for order ' . $order->id);
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Payment link generation failed for order ' . $order->id . ' (order created; link can be regenerated)', [
+                        'message' => $e->getMessage(),
+                    ]);
                 }
-
-                sendNotification(
-                    null,
-                    null,
-                    'New Order',
-                    "A new order {$order->order_number} has been created.",
-                    'order',
-                    ['order_id' => $order->id, 'order_number' => $order->order_number, 'status' => $order->status],
-                    'طلب جديد',
-                    "تم إنشاء طلب جديد برقم {$order->order_number}."
-                );
-            } catch (\Exception $e) {
-                Log::warning('Failed to dispatch order creation notifications', [
-                    'order_id' => $order->id,
-                    'message' => $e->getMessage(),
-                ]);
+                $response['payment_link'] = $paymentLink;
             }
 
             return $response;
@@ -655,10 +609,13 @@ class OrderService
     }
 
 
-    protected function generatePaymentLink(Order $order, Invoice $invoice, float $amount): ?string
+    /**
+     * @param int $timeoutSeconds Timeout for payment API (default from config). Use lower value (e.g. 12) when creating order to avoid long waits.
+     */
+    protected function generatePaymentLink(Order $order, Invoice $invoice, float $amount, ?int $timeoutSeconds = null): ?string
     {
         try {
-            $paymentUrl = $this->upaymentsService->createPayment($order, $amount);
+            $paymentUrl = $this->upaymentsService->createPayment($order, $amount, $timeoutSeconds);
             Log::info('Payment link generated successfully for order ' . $order->id);
             return $paymentUrl;
         } catch (\Exception $e) {
