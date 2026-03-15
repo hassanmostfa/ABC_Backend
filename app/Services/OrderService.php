@@ -262,11 +262,12 @@ class OrderService
                 'order' => $order
             ];
 
-            // Generate payment link AFTER commit (avoids holding transaction; use short timeout)
+            // Generate payment link AFTER commit (avoids holding transaction; use reasonable timeout for production API)
             $paymentLink = null;
             if ($paymentMethod === 'online_link') {
                 try {
-                    $paymentLink = $this->generatePaymentLink($order, $invoice, $amountDue, 12);
+                    Log::info('Starting payment link generation for order ' . $order->id);
+                    $paymentLink = $this->generatePaymentLink($order, $invoice, $amountDue, 25);
                     if ($paymentLink && $invoice) {
                         $this->invoiceRepository->update($invoice->id, [
                             'payment_link' => $paymentLink
@@ -276,6 +277,8 @@ class OrderService
                 } catch (\Throwable $e) {
                     Log::warning('Payment link generation failed for order ' . $order->id . ' (order created; link can be regenerated)', [
                         'message' => $e->getMessage(),
+                        'code' => $e->getCode(),
+                        'class' => get_class($e),
                     ]);
                 }
                 $response['payment_link'] = $paymentLink;
