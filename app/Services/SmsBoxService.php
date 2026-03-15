@@ -32,7 +32,7 @@ class SmsBoxService
             'senderText' => config('smsbox.sender'),
             'messageBody' => $message,
             'recipientNumbers' => $phone,
-            // 'defdate' => '',
+            'defdate' => '',
             'isBlink' => 'false',
             'isFlash' => 'false',
         ];
