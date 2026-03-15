@@ -37,14 +37,17 @@ class SmsBoxService
             'isFlash' => 'false',
         ];
 
-        $userAgent = config('smsbox.user_agent');
         try {
-            $request = Http::timeout(15);
-            if (!empty($userAgent)) {
-                $request = $request->withHeaders(['User-Agent' => $userAgent]);
-            }
-            // Use GET with query parameters (POST has issues; GET works in browser)
-            $response = $request->get($baseUrl, $payload);
+            $response = Http::timeout(15)
+                ->withoutVerifying()
+                ->withHeaders([
+                    'User-Agent'      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    'Accept'          => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language' => 'en-US,en;q=0.9',
+                    'Accept-Encoding' => 'gzip, deflate, br',
+                    'Connection'      => 'keep-alive',
+                ])
+                ->get($baseUrl, $payload);
 
             $body = $response->body();
             $normalized = $this->parseResponse($body, $response->successful());
@@ -52,7 +55,12 @@ class SmsBoxService
             if (!$response->successful()) {
                 Log::warning('SmsBoxService: HTTP error', [
                     'status' => $response->status(),
+                    'url' => $baseUrl,
                     'body_preview' => strlen($body) > 200 ? substr($body, 0, 200) . '...' : $body,
+                ]);
+            } else {
+                Log::info('SmsBoxService: SMS sent successfully', [
+                    'status' => $response->status(),
                 ]);
             }
 
