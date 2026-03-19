@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Resources\Admin\CustomerResource;
+use App\Models\Invoice;
+use App\Models\Order;
+use App\Models\Payment;
 use App\Repositories\CustomerRepositoryInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -144,6 +147,24 @@ class CustomerController extends BaseApiController
      */
     public function destroy(int $id): JsonResponse
     {
+        $customer = $this->customerRepository->findById($id);
+
+        if (!$customer) {
+            return $this->notFoundResponse('Customer not found');
+        }
+
+        if (Order::where('customer_id', $id)->exists()) {
+            return $this->errorResponse('Cannot delete customer because they are related to orders.', 422);
+        }
+
+        if (Invoice::whereHas('order', fn ($query) => $query->where('customer_id', $id))->exists()) {
+            return $this->errorResponse('Cannot delete customer because they are related to invoices.', 422);
+        }
+
+        if (Payment::where('customer_id', $id)->exists()) {
+            return $this->errorResponse('Cannot delete customer because they are related to payments.', 422);
+        }
+
         $deleted = $this->customerRepository->delete($id);
 
         if (!$deleted) {

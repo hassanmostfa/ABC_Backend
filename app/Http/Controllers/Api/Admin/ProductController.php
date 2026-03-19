@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
+use App\Models\OfferCondition;
+use App\Models\OfferReward;
+use App\Models\OrderItem;
 use App\Models\ProductVariant;
 use App\Repositories\ProductRepositoryInterface;
 use App\Repositories\ProductVariantRepositoryInterface;
@@ -237,6 +240,39 @@ class ProductController extends BaseApiController
 
         if (!$product) {
             return $this->notFoundResponse('Product not found');
+        }
+
+        $variantIds = $product->variants()->pluck('id');
+
+        $hasOrderRelations = OrderItem::query()
+            ->where('product_id', $product->id)
+            ->when(
+                $variantIds->isNotEmpty(),
+                fn ($query) => $query->orWhereIn('variant_id', $variantIds->all())
+            )
+            ->exists();
+
+        if ($hasOrderRelations) {
+            return $this->errorResponse('Cannot delete product because it is related to orders.', 422);
+        }
+
+        $hasOfferRelations = OfferCondition::query()
+            ->where('product_id', $product->id)
+            ->when(
+                $variantIds->isNotEmpty(),
+                fn ($query) => $query->orWhereIn('product_variant_id', $variantIds->all())
+            )
+            ->exists()
+            || OfferReward::query()
+                ->where('product_id', $product->id)
+                ->when(
+                    $variantIds->isNotEmpty(),
+                    fn ($query) => $query->orWhereIn('product_variant_id', $variantIds->all())
+                )
+                ->exists();
+
+        if ($hasOfferRelations) {
+            return $this->errorResponse('Cannot delete product because it is related to offers.', 422);
         }
 
         // Delete associated variant image files

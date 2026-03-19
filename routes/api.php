@@ -39,6 +39,7 @@ use App\Http\Controllers\Api\Web\AuthController;
 use App\Http\Controllers\Api\Web\SocialMediaLinkController as WebSocialMediaLinkController;
 use App\Http\Controllers\Api\Web\TeamMemberController as WebTeamMemberController;
 use App\Http\Controllers\Api\Web\SliderController as WebSliderController;
+use App\Http\Controllers\Api\Web\AppContentController as WebAppContentController;
 use App\Http\Controllers\Api\Web\NotificationController as CustomerNotificationController;
 use App\Http\Controllers\Api\Shared\ContactUsController;
 use App\Http\Controllers\Api\UtilsController;
@@ -414,6 +415,14 @@ Route::controller(WebTeamMemberController::class)->prefix('team-members')->group
 // Web Sliders Routes (Public)
 Route::controller(WebSliderController::class)->prefix('sliders')->group(function () {
    Route::get('/', 'getAllPublished');
+});
+
+// Web App Content Routes (Public)
+Route::controller(WebAppContentController::class)->group(function () {
+   Route::get('/about', 'getAbout');
+   Route::get('/terms-and-conditions', 'getTermsAndConditions');
+   Route::get('/offers', 'getOffers');
+   Route::get('/offers/{id}', 'getOfferDetails')->whereNumber('id');
 });
 
 // Customer Authentication Routes (Public)
