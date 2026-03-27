@@ -600,12 +600,14 @@ class PaymentController extends BaseApiController
                     'payment_id' => $statusResult['payment_id'] ?? $payment->payment_id,
                     'receipt_id' => $statusResult['receipt_id'] ?? $payment->receipt_id ?? $receiptId,
                     'paid_at' => $newStatus === 'completed' ? now('Asia/Kuwait') : null,
+                    'payment_gateway_src' => $payment->payment_gateway_src ?? $order->payment_gateway_src,
                 ]);
             } else {
                 $payment = Payment::create([
                     'invoice_id' => $invoice->id,
                     'payment_number' => $this->generatePaymentNumber(),
                     'gateway' => $gateway,
+                    'payment_gateway_src' => $order->payment_gateway_src,
                     'track_id' => $trackId,
                     'tran_id' => $statusResult['tran_id'] ?? null,
                     'payment_id' => $statusResult['payment_id'] ?? null,

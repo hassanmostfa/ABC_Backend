@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api\Mobile\orders;
+namespace App\Http\Controllers\Api\Web\orders;
 
 use App\Exceptions\PendingOnlineInvoiceException;
 use App\Http\Controllers\Api\BaseApiController;
@@ -16,25 +16,16 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 
-
 class OrderController extends BaseApiController
 {
-    protected $orderRepository;
-    protected $orderService;
-    protected $orderCancellationService;
-
     public function __construct(
-        OrderRepositoryInterface $orderRepository,
-        OrderService $orderService,
-        OrderCancellationService $orderCancellationService
-    ) {
-        $this->orderRepository = $orderRepository;
-        $this->orderService = $orderService;
-        $this->orderCancellationService = $orderCancellationService;
-    }
+        protected OrderRepositoryInterface $orderRepository,
+        protected OrderService $orderService,
+        protected OrderCancellationService $orderCancellationService
+    ) {}
 
     /**
-     * Create a new order (mobile API)
+     * Create order from website (order number prefix WEB- e.g. WEB-2026-000001; online payment redirects use website URLs).
      */
     public function store(StoreOrderRequest $request): JsonResponse
     {
@@ -45,33 +36,27 @@ class OrderController extends BaseApiController
                 $message = (string) Setting::getTranslatedValue('app_ordering_disabled_message', $locale, '');
                 if ($message === '') {
                     $message = $locale === 'ar'
-                        ? 'الطلب من التطبيق غير متاح حالياً. يرجى زيارة فروعنا لتقديم طلبك.'
-                        : 'Ordering from the app is currently unavailable. Please visit our stores to place your order.';
+                        ? 'الطلب عبر الموقع غير متاح حالياً. يرجى زيارة فروعنا لتقديم طلبك.'
+                        : 'Online ordering is currently unavailable. Please visit our stores to place your order.';
                 }
                 return $this->errorResponse($message, 503);
             }
 
-            // Get authenticated customer
             $customer = Auth::guard('sanctum')->user();
-
             if (!$customer) {
                 return $this->unauthorizedResponse('No authenticated customer found');
             }
 
-            // Merge customer_id from authenticated user and set source for order number prefix (APP)
             $orderData = $request->validated();
             $orderData['customer_id'] = $customer->id;
-            $orderData['source'] = 'app';
+            $orderData['source'] = 'web';
 
-            // Create order using the same service as admin
             $result = $this->orderService->createOrder($orderData);
-            
-            // Set payment_link as a temporary attribute on the order if available
+
             if (isset($result['payment_link'])) {
                 $result['order']->payment_link = $result['payment_link'];
             }
-            
-            // Order-created notifications (customer + admins). Skip for online_link: customer is notified after payment succeeds.
+
             if ($result['order']->payment_method !== 'online_link') {
                 SendOrderCreatedNotificationsJob::dispatch($result['order']->id)->afterResponse();
             }
@@ -94,73 +79,47 @@ class OrderController extends BaseApiController
         }
     }
 
-    /**
-     * Display the specified order (mobile API)
-     */
     public function show(int $id): JsonResponse
     {
-        // Get authenticated customer
         $customer = Auth::guard('sanctum')->user();
-
         if (!$customer) {
             return $this->unauthorizedResponse('No authenticated customer found');
         }
 
         $order = $this->orderRepository->findById($id);
-
         if (!$order) {
             return $this->notFoundResponse('Order not found');
         }
-
-        // Ensure the order belongs to the authenticated customer
         if ($order->customer_id !== $customer->id) {
             return $this->unauthorizedResponse('You do not have permission to view this order');
         }
 
-        // Load all relationships
         $order->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice', 'customerAddress']);
 
         return $this->resourceResponse(new OrderResource($order), 'Order retrieved successfully');
     }
 
-    /**
-     * Get all customer orders with statistics (mobile API)
-     */
     public function index(Request $request): JsonResponse
     {
-        // Validate filter parameters
         $request->validate([
             'status' => 'nullable|in:pending,processing,completed,cancelled',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
-        // Get authenticated customer
         $customer = Auth::guard('sanctum')->user();
-
         if (!$customer) {
             return $this->unauthorizedResponse('No authenticated customer found');
         }
 
-        // Prepare filters - always filter by customer_id
-        $filters = [
+        $filters = array_filter([
             'customer_id' => $customer->id,
             'status' => $request->input('status'),
-        ];
-
-        // Remove empty filters
-        $filters = array_filter($filters, function ($value) {
-            return $value !== null && $value !== '';
-        });
+        ], fn ($v) => $v !== null && $v !== '');
 
         $perPage = $request->input('per_page', 15);
-        
-        // Get paginated orders
         $orders = $this->orderRepository->getAllPaginated($filters, $perPage);
-
-        // Get all orders for statistics (not paginated)
         $allOrders = $this->orderRepository->getByCustomer($customer->id);
 
-        // Calculate statistics from all orders
         $stats = [
             'total_orders' => $allOrders->count(),
             'pending_orders' => $allOrders->where('status', 'pending')->count(),
@@ -169,14 +128,10 @@ class OrderController extends BaseApiController
             'cancelled_orders' => $allOrders->where('status', 'cancelled')->count(),
         ];
 
-        // Transform orders using resource
-        $transformedOrders = OrderResource::collection($orders->items());
-
-        // Create response with pagination, orders and statistics
         $response = [
             'success' => true,
             'message' => 'Orders retrieved successfully',
-            'data' => $transformedOrders,
+            'data' => OrderResource::collection($orders->items()),
             'pagination' => [
                 'current_page' => $orders->currentPage(),
                 'last_page' => $orders->lastPage(),
@@ -195,30 +150,23 @@ class OrderController extends BaseApiController
         return response()->json($response);
     }
 
-    /**
-     * Cancel order (mobile API) - customer can cancel their own order
-     */
     public function cancel(Request $request, int $id): JsonResponse
     {
         $customer = Auth::guard('sanctum')->user();
-
         if (!$customer) {
             return $this->unauthorizedResponse('No authenticated customer found');
         }
 
         $order = $this->orderRepository->findById($id);
-
         if (!$order) {
             return $this->notFoundResponse('Order not found');
         }
-
         if ($order->customer_id !== $customer->id) {
             return $this->unauthorizedResponse('You do not have permission to cancel this order');
         }
 
         try {
             $result = $this->orderCancellationService->cancelOrder($id, $request->input('reason'));
-
             if (!$result['success']) {
                 return $this->errorResponse($result['message'], 400);
             }
@@ -237,13 +185,9 @@ class OrderController extends BaseApiController
         }
     }
 
-    /**
-     * Regenerate payment link for customer's own order (online_link only).
-     */
     public function regeneratePaymentLink(Request $request, int $id): JsonResponse
     {
         $customer = Auth::guard('sanctum')->user();
-
         if (!$customer) {
             return $this->unauthorizedResponse('No authenticated customer found');
         }
@@ -253,17 +197,14 @@ class OrderController extends BaseApiController
         ]);
 
         $order = $this->orderRepository->findById($id);
-
         if (!$order) {
             return $this->notFoundResponse('Order not found');
         }
-
         if ((int) $order->customer_id !== (int) $customer->id) {
             return $this->unauthorizedResponse('You do not have permission to regenerate link for this order');
         }
 
         $result = $this->orderService->regeneratePaymentLink($id, $validated['src'] ?? null);
-
         if (!$result['success']) {
             $code = $result['message'] === 'Order not found.' ? 404 : 400;
             return $this->errorResponse($result['message'], $code);
@@ -276,7 +217,7 @@ class OrderController extends BaseApiController
 
     private function getLocaleFromRequest(Request $request): string
     {
-        $raw = strtolower((string) ($request->header('LANG') ?? $request->header('Accept-Language') ?? $request->input('locale', 'ar')));
+        $raw = strtolower((string) ($request->header('LANG') ?? $request->header('Accept-Language') ?? $request->input('locale', 'en')));
         $primary = trim(explode(',', $raw)[0]);
         $primary = trim(explode(';', $primary)[0]);
         if (str_starts_with($primary, 'ar')) {
@@ -285,6 +226,6 @@ class OrderController extends BaseApiController
         if (str_starts_with($primary, 'en')) {
             return 'en';
         }
-        return in_array($primary, ['ar', 'en']) ? $primary : 'ar';
+        return in_array($primary, ['ar', 'en']) ? $primary : 'en';
     }
 }

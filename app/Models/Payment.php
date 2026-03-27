@@ -19,6 +19,7 @@ class Payment extends Model
         'type',
         'payment_number',
         'gateway',
+        'payment_gateway_src',
         'track_id',
         'tran_id',
         'payment_id',

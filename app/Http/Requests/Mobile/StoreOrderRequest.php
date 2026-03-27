@@ -25,6 +25,7 @@ class StoreOrderRequest extends MobileFormRequest
             ],
             'delivery_type' => 'nullable|in:pickup,delivery',
             'payment_method' => 'nullable|in:cash,card,online_link,bank_transfer,wallet',
+            'src' => 'required_if:payment_method,online_link|nullable|string|in:knet,cc',
             'offer_ids' => 'nullable|array',
             'offer_ids.*' => 'required_with:offer_ids|integer|exists:offers,id',
             'offers' => 'nullable|array',
@@ -125,6 +126,8 @@ class StoreOrderRequest extends MobileFormRequest
             'items.*.quantity.min' => $this->msg('The quantity must be at least 1.', 'الكمية يجب أن تكون 1 على الأقل.'),
             'used_points.integer' => $this->msg('The used points must be a valid integer.', 'النقاط المستخدمة يجب أن تكون رقماً صحيحاً.'),
             'used_points.min' => $this->msg('The minimum points to use is 10.', 'الحد الأدنى للنقاط المستخدمة هو 10.'),
+            'src.required_if' => $this->msg('Payment source is required for online payment.', 'مصدر الدفع مطلوب للدفع الإلكتروني.'),
+            'src.in' => $this->msg('Payment source must be knet or cc.', 'مصدر الدفع يجب أن يكون knet أو cc.'),
         ];
     }
 
@@ -148,6 +151,7 @@ class StoreOrderRequest extends MobileFormRequest
             'items.*.variant_id' => 'variant',
             'items.*.quantity' => 'quantity',
             'used_points' => 'used points',
+            'src' => 'payment source',
         ];
     }
 }

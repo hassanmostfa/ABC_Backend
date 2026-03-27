@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Repositories\OrderRepositoryInterface;
 use App\Repositories\InvoiceRepositoryInterface;
 use App\Repositories\CustomerRepositoryInterface;
+use App\Exceptions\PendingOnlineInvoiceException;
 use App\Models\Order;
 use App\Models\Invoice;
 use App\Models\Offer;
@@ -175,6 +176,7 @@ class OrderService
 
             // Get payment method from root level
             $paymentMethod = $data['payment_method'] ?? null;
+            $paymentGatewaySrc = $data['src'] ?? null;
             $isWalletPayment = ($paymentMethod === 'wallet');
             
             // Validate wallet balance BEFORE creating order if payment method is wallet
@@ -187,12 +189,43 @@ class OrderService
                 $this->walletService->validateBalance($customerId, $amountDue);
             }
 
+            if ($paymentMethod === 'online_link' && $customerId) {
+                $pendingOrders = Order::query()
+                    ->where('customer_id', $customerId)
+                    ->where('payment_method', 'online_link')
+                    ->where('status', '!=', 'cancelled')
+                    ->whereHas('invoice', function ($q) {
+                        $q->where('status', 'pending');
+                    })
+                    ->with(['invoice'])
+                    ->orderByDesc('id')
+                    ->get();
+
+                if ($pendingOrders->isNotEmpty()) {
+                    DB::rollBack();
+                    $pendingOrders->load([
+                        'customer',
+                        'charity',
+                        'offers',
+                        'items.product',
+                        'items.variant',
+                        'invoice',
+                        'customerAddress',
+                    ]);
+
+                    throw new PendingOnlineInvoiceException(
+                        'You cannot create a new order with online payment until you pay or cancel your existing order with a pending invoice.',
+                        $pendingOrders->values()
+                    );
+                }
+            }
+
             // Generate order number (source: app = mobile, call_center = admin)
             $source = $data['source'] ?? 'call_center';
             $orderNumber = $this->generateOrderNumber($source);
             
             // Create the order
-            $orderData = Arr::except($data, ['items', 'source', 'offer_ids', 'offers']); // Remove offer_ids and offers from order data
+            $orderData = Arr::except($data, ['items', 'source', 'offer_ids', 'offers', 'src']); // Remove offer_ids and offers from order data
             
             // Remove delivery_type if it's "delivery" - it will be auto-determined
             if (isset($orderData['delivery_type']) && $orderData['delivery_type'] === 'delivery') {
@@ -216,6 +249,9 @@ class OrderService
             $paymentMethod = $data['payment_method'] ?? null;
             if ($paymentMethod && in_array($paymentMethod, ['cash', 'wallet', 'online_link'])) {
                 $orderData['payment_method'] = $paymentMethod;
+            }
+            if ($paymentGatewaySrc !== null && $paymentGatewaySrc !== '') {
+                $orderData['payment_gateway_src'] = $paymentGatewaySrc;
             }
             $order = $this->orderRepository->create($orderData);
 
@@ -267,7 +303,7 @@ class OrderService
             if ($paymentMethod === 'online_link') {
                 try {
                     Log::info('Starting payment link generation for order ' . $order->id);
-                    $paymentLink = $this->generatePaymentLink($order, $invoice, $amountDue, 25);
+                    $paymentLink = $this->generatePaymentLink($order, $invoice, $amountDue, 25, $paymentGatewaySrc);
                     if ($paymentLink && $invoice) {
                         $this->invoiceRepository->update($invoice->id, [
                             'payment_link' => $paymentLink
@@ -614,11 +650,12 @@ class OrderService
 
     /**
      * @param int $timeoutSeconds Timeout for payment API (default from config). Use lower value (e.g. 12) when creating order to avoid long waits.
+     * @param string|null $paymentGatewaySrc Upayments paymentGateway.src (e.g. knet, cc); null uses config fallback.
      */
-    protected function generatePaymentLink(Order $order, Invoice $invoice, float $amount, ?int $timeoutSeconds = null): ?string
+    protected function generatePaymentLink(Order $order, Invoice $invoice, float $amount, ?int $timeoutSeconds = null, ?string $paymentGatewaySrc = null): ?string
     {
         try {
-            $paymentUrl = $this->upaymentsService->createPayment($order, $amount, $timeoutSeconds);
+            $paymentUrl = $this->upaymentsService->createPayment($order, $amount, $timeoutSeconds, $paymentGatewaySrc);
             Log::info('Payment link generated successfully for order ' . $order->id);
             return $paymentUrl;
         } catch (\Exception $e) {
@@ -631,7 +668,7 @@ class OrderService
      *
      * @return array{success: bool, message: string, payment_link?: string}
      */
-    public function regeneratePaymentLink(int $orderId): array
+    public function regeneratePaymentLink(int $orderId, ?string $paymentGatewaySrc = null): array
     {
         $order = $this->orderRepository->findById($orderId);
         if (!$order) {
@@ -660,10 +697,20 @@ class OrderService
             return ['success' => false, 'message' => 'No amount due for this order.'];
         }
 
+        $effectiveSrc = ($paymentGatewaySrc !== null && $paymentGatewaySrc !== '')
+            ? $paymentGatewaySrc
+            : $order->payment_gateway_src;
+        if ($effectiveSrc === null || $effectiveSrc === '') {
+            return ['success' => false, 'message' => 'No payment gateway source (src) is stored for this order; create the order with src or pass src when regenerating the link.'];
+        }
+
         try {
-            $paymentLink = $this->generatePaymentLink($order, $invoice, $remainingAmount);
+            $paymentLink = $this->generatePaymentLink($order, $invoice, $remainingAmount, null, $effectiveSrc);
             if ($paymentLink) {
                 $this->invoiceRepository->update($invoice->id, ['payment_link' => $paymentLink]);
+                if ($paymentGatewaySrc !== null && $paymentGatewaySrc !== '') {
+                    $this->orderRepository->update($order->id, ['payment_gateway_src' => $paymentGatewaySrc]);
+                }
                 Log::info('Payment link regenerated for order ' . $order->id);
                 return ['success' => true, 'message' => 'Payment link regenerated successfully.', 'payment_link' => $paymentLink];
             }
@@ -673,6 +720,83 @@ class OrderService
         }
 
         return ['success' => false, 'message' => 'Failed to generate payment link.'];
+    }
+
+    /**
+     * Admin: switch a cash-on-delivery order to online payment (payment link) and generate Upayments URL.
+     *
+     * @return array{success: bool, message: string, payment_link?: string, order?: Order}
+     */
+    public function switchCashOrderToOnlinePayment(int $orderId, string $paymentGatewaySrc): array
+    {
+        $order = Order::with(['invoice.payments', 'items', 'customer'])->find($orderId);
+        if (!$order) {
+            return ['success' => false, 'message' => 'Order not found.'];
+        }
+        if ($order->payment_method !== 'cash') {
+            return ['success' => false, 'message' => 'Order payment method is not cash on delivery.'];
+        }
+        if ($order->status === 'cancelled') {
+            return ['success' => false, 'message' => 'Cannot change payment method for a cancelled order.'];
+        }
+
+        $invoice = $order->invoice;
+        if (!$invoice) {
+            return ['success' => false, 'message' => 'Order has no invoice.'];
+        }
+        if ($invoice->status === 'paid') {
+            return ['success' => false, 'message' => 'Invoice is already paid.'];
+        }
+
+        $totalPaid = (float) $invoice->payments()->where('status', 'completed')->sum('amount');
+        $remainingAmount = max(0, (float) $invoice->amount_due - $totalPaid);
+        if ($remainingAmount <= 0) {
+            return ['success' => false, 'message' => 'No amount due for this order.'];
+        }
+
+        DB::beginTransaction();
+        try {
+            $this->orderRepository->update($orderId, [
+                'payment_method' => 'online_link',
+                'payment_gateway_src' => $paymentGatewaySrc,
+            ]);
+
+            $order = Order::with(['customer', 'items', 'invoice'])->find($orderId);
+            if (!$order || !$order->invoice) {
+                DB::rollBack();
+                return ['success' => false, 'message' => 'Order or invoice not found after update.'];
+            }
+            $invoice = $order->invoice;
+
+            $paymentLink = $this->generatePaymentLink($order, $invoice, $remainingAmount, 25, $paymentGatewaySrc);
+            if (!$paymentLink) {
+                DB::rollBack();
+                return ['success' => false, 'message' => 'Failed to generate payment link.'];
+            }
+
+            $this->invoiceRepository->update($invoice->id, ['payment_link' => $paymentLink]);
+
+            DB::commit();
+
+            $fresh = $this->orderRepository->findById($orderId);
+            if ($fresh) {
+                $fresh->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice.payments', 'customerAddress']);
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Payment method updated to online payment. Payment link generated.',
+                'payment_link' => $paymentLink,
+                'order' => $fresh,
+            ];
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('switchCashOrderToOnlinePayment failed', [
+                'order_id' => $orderId,
+                'message' => $e->getMessage(),
+            ]);
+            return ['success' => false, 'message' => 'Failed to generate payment link: ' . $e->getMessage()];
+        }
     }
 
     /**

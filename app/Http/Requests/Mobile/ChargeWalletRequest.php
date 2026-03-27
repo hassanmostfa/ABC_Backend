@@ -17,6 +17,7 @@ class ChargeWalletRequest extends MobileFormRequest
 
         return [
             'amount' => ['required', 'numeric', 'min:' . $minAmount],
+            'src' => 'required|string|in:knet,cc',
         ];
     }
 
@@ -28,6 +29,8 @@ class ChargeWalletRequest extends MobileFormRequest
             'amount.required' => $this->msg('Amount is required.', 'المبلغ مطلوب.'),
             'amount.numeric' => $this->msg('Amount must be a number.', 'يجب أن يكون المبلغ رقماً.'),
             'amount.min' => $this->msg("Minimum charge amount is {$minAmount} KWD.", "الحد الأدنى للشحن هو {$minAmount} د.ك."),
+            'src.required' => $this->msg('Payment source is required.', 'مصدر الدفع مطلوب.'),
+            'src.in' => $this->msg('Payment source must be knet or cc.', 'مصدر الدفع يجب أن يكون knet أو cc.'),
         ];
     }
 }

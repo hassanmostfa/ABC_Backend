@@ -11,8 +11,9 @@ class UpaymentsService
 {
     /**
      * @param int|null $timeoutSeconds Optional request timeout (default from config). Use 10–15 when creating order to fail fast.
+     * @param string|null $gatewaySrcOverride Upayments paymentGateway.src (e.g. knet, cc). Falls back to config when null/empty.
      */
-    public function createPayment(Order $order, float $amount, ?int $timeoutSeconds = null): string
+    public function createPayment(Order $order, float $amount, ?int $timeoutSeconds = null, ?string $gatewaySrcOverride = null): string
     {
         // Load customer and items
         if (!$order->relationLoaded('customer')) {
@@ -71,13 +72,12 @@ class UpaymentsService
             'notificationUrl' => route('payments.notification'),
         ];
 
-        $gatewaySrc = config('services.upayments.payment_gateway_src');
-        if ($gatewaySrc) {
-            $payload['paymentGateway'] = ['src' => $gatewaySrc];
-            if ($gatewaySrc === 'create-invoice') {
-                $payload['notificationType'] = config('services.upayments.notification_type', 'link');
-            }
+        if (str_starts_with((string) $order->order_number, 'WEB-')) {
+            $payload['returnUrl'] = config('services.upayments.website_return_url');
+            $payload['cancelUrl'] = config('services.upayments.website_cancel_url');
         }
+
+        $this->applyPaymentGatewayToPayload($payload, $gatewaySrcOverride);
 
         Log::info('Upayments request', [
             'endpoint' => $endpoint,
@@ -147,8 +147,10 @@ class UpaymentsService
 
     /**
      * Create payment link for wallet charge (top-up)
+     *
+     * @param string|null $gatewaySrcOverride Upayments paymentGateway.src (e.g. knet, cc). Falls back to config when null/empty.
      */
-    public function createWalletChargePayment(Payment $payment, float $amount): string
+    public function createWalletChargePayment(Payment $payment, float $amount, ?string $gatewaySrcOverride = null): string
     {
         $payment->load('customer');
         $customer = $payment->customer;
@@ -196,13 +198,7 @@ class UpaymentsService
             'notificationUrl' => route('payments.wallet-charge.notification'),
         ];
 
-        $gatewaySrc = config('services.upayments.payment_gateway_src');
-        if ($gatewaySrc) {
-            $payload['paymentGateway'] = ['src' => $gatewaySrc];
-            if ($gatewaySrc === 'create-invoice') {
-                $payload['notificationType'] = config('services.upayments.notification_type', 'link');
-            }
-        }
+        $this->applyPaymentGatewayToPayload($payload, $gatewaySrcOverride);
 
         Log::info('Upayments wallet charge request', [
             'endpoint' => $endpoint,
@@ -246,6 +242,26 @@ class UpaymentsService
             Log::warning('Upayments wallet charge response had no payment URL', ['data' => $data]);
         }
         throw new \Exception('Payment link not found in Upayments response');
+    }
+
+    /**
+     * Set paymentGateway.src (and create-invoice extras) on charge payload.
+     * Uses $gatewaySrcOverride when non-empty; otherwise services.upayments.payment_gateway_src (may be empty).
+     */
+    protected function applyPaymentGatewayToPayload(array &$payload, ?string $gatewaySrcOverride = null): void
+    {
+        $src = $gatewaySrcOverride !== null && trim((string) $gatewaySrcOverride) !== ''
+            ? trim((string) $gatewaySrcOverride)
+            : trim((string) (config('services.upayments.payment_gateway_src') ?? ''));
+
+        if ($src === '') {
+            return;
+        }
+
+        $payload['paymentGateway'] = ['src' => $src];
+        if ($src === 'create-invoice') {
+            $payload['notificationType'] = config('services.upayments.notification_type', 'link');
+        }
     }
 
     /**

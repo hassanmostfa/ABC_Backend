@@ -28,6 +28,7 @@ class PaymentResource extends JsonResource
             'bonus_amount' => (float) ($this->bonus_amount ?? 0),
             'total_amount' => isset($this->total_amount) ? (float) $this->total_amount : null,
             'method' => $this->method,
+            'src' => $this->payment_gateway_src,
             'status' => $this->status,
             'paid_at' => \format_datetime_app_tz($this->paid_at),
             'receipt_id' => $this->receipt_id,

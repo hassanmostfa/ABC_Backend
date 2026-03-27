@@ -43,7 +43,8 @@ class WalletController extends BaseApiController
         }
 
         $amount = (float) $request->validated('amount');
-        $result = $this->walletChargeService->createCharge($customer->id, $amount);
+        $src = (string) $request->validated('src');
+        $result = $this->walletChargeService->createCharge($customer->id, $amount, $src);
 
         if (!$result['success']) {
             return $this->errorResponse($result['message'] ?? 'Failed to create charge', 400);

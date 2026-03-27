@@ -21,7 +21,7 @@ class WalletChargeService
     /**
      * Create wallet charge and generate payment link (stored as Payment with type=wallet_charge)
      */
-    public function createCharge(int $customerId, float $amount): array
+    public function createCharge(int $customerId, float $amount, ?string $paymentGatewaySrc = null): array
     {
         if ($amount <= 0 || !$customerId) {
             return [
@@ -59,9 +59,10 @@ class WalletChargeService
                 'total_amount' => $totalAmount,
                 'method' => 'online',
                 'status' => 'pending',
+                'payment_gateway_src' => $paymentGatewaySrc,
             ]);
 
-            $paymentLink = $this->upaymentsService->createWalletChargePayment($payment, $amount);
+            $paymentLink = $this->upaymentsService->createWalletChargePayment($payment, $amount, $paymentGatewaySrc);
 
             $payment->update(['payment_link' => $paymentLink]);
 

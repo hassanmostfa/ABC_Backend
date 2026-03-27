@@ -46,6 +46,7 @@ class StoreOrderRequest extends FormRequest
             'customer_address_id' => 'required|integer|exists:customer_addresses,id',
             'delivery_type' => 'nullable|in:pickup,delivery', // Will be auto-determined if not provided
             'payment_method' => 'nullable|in:cash,card,online_link,bank_transfer,wallet',
+            'src' => 'required_if:payment_method,online_link|nullable|string|in:knet,cc',
             'offer_ids' => 'nullable|array', // Backward compatibility: simple array of IDs
             'offer_ids.*' => 'required_with:offer_ids|integer|exists:offers,id',
             'offers' => 'nullable|array', // New format: array of objects with offer_id and quantity
@@ -151,6 +152,8 @@ class StoreOrderRequest extends FormRequest
             'items.*.quantity.min' => 'The quantity must be at least 1.',
             'used_points.integer' => 'The used points must be a valid integer.',
             'used_points.min' => 'The minimum points to use is 10.',
+            'src.required_if' => 'Payment gateway source (src) is required for online payment.',
+            'src.in' => 'Payment gateway source must be knet or cc.',
         ];
     }
 
@@ -176,6 +179,7 @@ class StoreOrderRequest extends FormRequest
             'items.*.variant_id' => 'variant',
             'items.*.quantity' => 'quantity',
             'used_points' => 'used points',
+            'src' => 'payment gateway source',
         ];
     }
 }

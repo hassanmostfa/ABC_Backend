@@ -47,6 +47,7 @@ use App\Http\Controllers\Api\Mobile\auth\AuthController as MobileAuthController;
 use App\Http\Controllers\Api\Mobile\offers\OfferController as MobileOfferController;
 use App\Http\Controllers\Api\Mobile\categories\CategoryController as MobileCategoryController;
 use App\Http\Controllers\Api\Mobile\orders\OrderController as MobileOrderController;
+use App\Http\Controllers\Api\Web\orders\OrderController as WebOrderController;
 use App\Http\Controllers\Api\Mobile\addresses\CustomerAddressController as MobileCustomerAddressController;
 use App\Http\Controllers\Api\Mobile\locations\LocationController as MobileLocationController;
 use App\Http\Controllers\Api\Mobile\payments\PaymentController as MobilePaymentController;
@@ -278,6 +279,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::put('/{id}', 'update')->middleware(['admin.permission:orders,edit', 'prevent.update.completed.order']);
          Route::patch('/{id}/cancel', 'cancel')->middleware('admin.permission:orders,edit');
          Route::post('/{id}/regenerate-payment-link', 'regeneratePaymentLink')->middleware('admin.permission:orders,edit');
+         Route::post('/{id}/switch-to-payment-link', 'switchToPaymentLink')->middleware('admin.permission:orders,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:orders,delete');
       });
 
@@ -515,6 +517,14 @@ Route::middleware('api.auth')->prefix('mobile/orders')->group(function () {
    Route::post('/{id}/regenerate-payment-link', [MobileOrderController::class, 'regeneratePaymentLink']);
 });
 
+// Website customer orders (same contract as mobile; order numbers use WEB- prefix; Upayments return/cancel URLs point at the marketing site)
+Route::middleware('api.auth')->prefix('web/orders')->group(function () {
+   Route::post('/', [WebOrderController::class, 'store']);
+   Route::get('/', [WebOrderController::class, 'index']);
+   Route::get('/{id}', [WebOrderController::class, 'show']);
+   Route::patch('/{id}/cancel', [WebOrderController::class, 'cancel']);
+   Route::post('/{id}/regenerate-payment-link', [WebOrderController::class, 'regeneratePaymentLink']);
+});
 
 Route::middleware('api.auth')->prefix('mobile/customer-addresses')->group(function () {
    Route::get('/', [MobileCustomerAddressController::class, 'index']);

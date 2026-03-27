@@ -19,6 +19,7 @@ class WalletChargeResource extends JsonResource
             'amount' => (float) $this->amount,
             'bonus_amount' => (float) ($this->bonus_amount ?? 0),
             'total_amount' => (float) ($this->total_amount ?? $this->amount),
+            'src' => $this->payment_gateway_src,
             'status' => $this->status,
             'created_at' => \format_datetime_app_tz($this->created_at),
         ];

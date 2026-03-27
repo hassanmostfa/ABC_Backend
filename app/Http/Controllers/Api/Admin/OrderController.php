@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Exceptions\PendingOnlineInvoiceException;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Admin\StoreOrderRequest;
 use App\Http\Requests\Admin\UpdateOrderRequest;
@@ -108,6 +109,12 @@ class OrderController extends BaseApiController
             }
             
             return $this->createdResponse(new OrderResource($result['order']), 'Order created successfully');
+        } catch (PendingOnlineInvoiceException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'pending_invoices' => OrderResource::collection($e->pendingOrders)->toArray($request),
+            ], 409);
         } catch (\Exception $e) {
             $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 500;
             return $this->errorResponse($e->getMessage(), $code);
@@ -209,9 +216,13 @@ class OrderController extends BaseApiController
     /**
      * Regenerate payment link for an order (online_link payment method only).
      */
-    public function regeneratePaymentLink(int $id): JsonResponse
+    public function regeneratePaymentLink(Request $request, int $id): JsonResponse
     {
-        $result = $this->orderService->regeneratePaymentLink($id);
+        $validated = $request->validate([
+            'src' => 'nullable|string|in:knet,cc',
+        ]);
+
+        $result = $this->orderService->regeneratePaymentLink($id, $validated['src'] ?? null);
 
         if (!$result['success']) {
             $code = in_array($result['message'], ['Order not found.'], true) ? 404 : 400;
@@ -221,6 +232,35 @@ class OrderController extends BaseApiController
         logAdminActivity('regenerated payment link', 'Order', $id);
 
         return $this->successResponse([
+            'payment_link' => $result['payment_link'],
+        ], $result['message']);
+    }
+
+    /**
+     * Switch cash-on-delivery order to online payment and return a new payment link.
+     */
+    public function switchToPaymentLink(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'src' => 'required|string|in:knet,cc',
+        ]);
+
+        $result = $this->orderService->switchCashOrderToOnlinePayment($id, $validated['src']);
+
+        if (!$result['success']) {
+            $code = in_array($result['message'], ['Order not found.'], true) ? 404 : 400;
+            return $this->errorResponse($result['message'], $code);
+        }
+
+        $order = $result['order'];
+        if ($order && isset($result['payment_link'])) {
+            $order->payment_link = $result['payment_link'];
+        }
+
+        logAdminActivity('switched order to online payment link', 'Order', $id);
+
+        return $this->successResponse([
+            'order' => new OrderResource($order),
             'payment_link' => $result['payment_link'],
         ], $result['message']);
     }
