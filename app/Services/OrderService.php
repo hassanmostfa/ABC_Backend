@@ -13,6 +13,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\UpaymentsService;
+use App\Jobs\SendOrderCreatedNotificationsJob;
 
 class OrderService
 {
@@ -294,6 +295,16 @@ class OrderService
 
             // Reload order with relationships
             $order->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice', 'customerAddress']);
+
+            // Admin (call center) orders: notify customer when paying cash on delivery or wallet (same flow as app/web for non-online)
+            $orderSource = $data['source'] ?? 'call_center';
+            if (
+                $orderSource === 'call_center'
+                && $order->customer_id
+                && in_array($order->payment_method, ['cash', 'wallet'], true)
+            ) {
+                SendOrderCreatedNotificationsJob::dispatch($order->id)->afterResponse();
+            }
 
             $response = [
                 'success' => true,
