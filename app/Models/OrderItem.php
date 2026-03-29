@@ -18,15 +18,30 @@ class OrderItem extends Model
         'quantity',
         'unit_price',
         'total_price',
+        'tax',
+        'discount',
         'is_offer',
+        'offer_line_kind',
     ];
 
     protected $casts = [
         'quantity' => 'integer',
         'unit_price' => 'decimal:3',
         'total_price' => 'decimal:3',
+        'tax' => 'decimal:3',
+        'discount' => 'decimal:3',
         'is_offer' => 'boolean',
     ];
+
+    /**
+     * Tax on net line (total_price - discount) using settings tax rate (e.g. 0.15).
+     */
+    public static function computeLineTax(float $totalPrice, float $discount, float $taxRate): float
+    {
+        $net = max(0, $totalPrice - $discount);
+
+        return round($net * $taxRate, 3);
+    }
 
     public function order()
     {

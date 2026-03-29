@@ -120,7 +120,10 @@ class OrderResource extends JsonResource
                         'quantity' => (int) $item->quantity,
                         'unit_price' => (float) $item->unit_price,
                         'total_price' => (float) $item->total_price,
+                        'tax' => (float) ($item->tax ?? 0),
+                        'discount' => (float) ($item->discount ?? 0),
                         'is_offer' => (bool) $item->is_offer,
+                        'offer_line_kind' => $item->offer_line_kind,
                         'product_variant' => $productVariant,
                     ];
                 });

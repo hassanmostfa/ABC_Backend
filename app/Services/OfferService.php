@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Repositories\OrderItemRepositoryInterface;
 use App\Models\Offer;
+use App\Models\OrderItem;
 use App\Models\ProductVariant;
+use App\Models\Setting;
 use App\Traits\ChecksOfferActive;
 use Illuminate\Support\Facades\DB;
 
@@ -57,9 +59,10 @@ class OfferService
      * @return array
      * @throws \Exception
      */
-    public function processOfferRewards(Offer $offer, array $orderItemsData, float $totalAmount): array
+    public function processOfferRewards(Offer $offer, array &$orderItemsData, float $totalAmount): array
     {
         $offerDiscount = 0.00;
+        $this->normalizeOrderItemRows($orderItemsData);
 
         if ($offer->reward_type === 'products') {
             // Add condition products to order items (if not already present)
@@ -100,6 +103,10 @@ class OfferService
                             $oldTotalPrice = $existingItem['total_price'];
                             $existingItem['quantity'] += $conditionQuantity;
                             $existingItem['total_price'] = $existingItem['unit_price'] * $existingItem['quantity'];
+                            $existingItem['is_offer'] = true;
+                            if (($existingItem['offer_line_kind'] ?? null) !== 'reward') {
+                                $existingItem['offer_line_kind'] = 'condition';
+                            }
                             $orderItemsData[$existingItemIndex] = $existingItem;
                             
                             // Update total amount (remove old, add new)
@@ -115,6 +122,9 @@ class OfferService
                                 'unit_price' => $conditionUnitPrice,
                                 'total_price' => $conditionTotalPrice,
                                 'is_offer' => true,
+                                'offer_line_kind' => 'condition',
+                                'discount' => 0,
+                                'tax' => 0,
                             ];
                             
                             // Add to total amount
@@ -164,6 +174,9 @@ class OfferService
                             'unit_price' => $rewardUnitPrice,
                             'total_price' => $rewardTotalPrice,
                             'is_offer' => true,
+                            'offer_line_kind' => 'reward',
+                            'discount' => $rewardTotalPrice,
+                            'tax' => 0,
                         ];
                         
                         // Add to total amount
@@ -178,6 +191,7 @@ class OfferService
             // Add condition products to order items (if not already present)
             // Discount offers also need their conditions fulfilled
             $totalBeforeConditions = $totalAmount;
+            $conditionDeltas = [];
             $activeConditions = $offer->activeConditions()->with(['product', 'productVariant'])->get();
             foreach ($activeConditions as $condition) {
                 if ($condition->product_variant_id) {
@@ -208,6 +222,7 @@ class OfferService
                         
                         $conditionUnitPrice = $variant->price;
                         $conditionTotalPrice = $conditionUnitPrice * $conditionQuantity;
+                        $deltaAmount = $conditionTotalPrice;
                         
                         if ($existingItemIndex !== false) {
                             // Item exists - update quantity and price
@@ -215,10 +230,15 @@ class OfferService
                             $oldTotalPrice = $existingItem['total_price'];
                             $existingItem['quantity'] += $conditionQuantity;
                             $existingItem['total_price'] = $existingItem['unit_price'] * $existingItem['quantity'];
+                            $existingItem['is_offer'] = true;
+                            if (($existingItem['offer_line_kind'] ?? null) !== 'reward') {
+                                $existingItem['offer_line_kind'] = 'condition';
+                            }
                             $orderItemsData[$existingItemIndex] = $existingItem;
                             
                             // Update total amount (remove old, add new)
                             $totalAmount = $totalAmount - $oldTotalPrice + $existingItem['total_price'];
+                            $conditionDeltas[] = ['index' => (int) $existingItemIndex, 'amount' => $deltaAmount];
                         } else {
                             // Add new condition product item
                             $orderItemsData[] = [
@@ -230,10 +250,14 @@ class OfferService
                                 'unit_price' => $conditionUnitPrice,
                                 'total_price' => $conditionTotalPrice,
                                 'is_offer' => true,
+                                'offer_line_kind' => 'condition',
+                                'discount' => 0,
+                                'tax' => 0,
                             ];
                             
                             // Add to total amount
                             $totalAmount += $conditionTotalPrice;
+                            $conditionDeltas[] = ['index' => count($orderItemsData) - 1, 'amount' => $deltaAmount];
                         }
                     }
                 }
@@ -254,7 +278,16 @@ class OfferService
                 }
             }
             // Cap this offer's discount to this offer's condition total (safety)
-            $offerDiscount = min($offerDiscount, $conditionTotalThisOffer > 0 ? $conditionTotalThisOffer : $totalAmount);
+            $cap = $conditionTotalThisOffer > 0 ? $conditionTotalThisOffer : $totalAmount;
+            $offerDiscount = min($offerDiscount, $cap);
+
+            $this->allocateDiscountTypeToConditionLines(
+                $orderItemsData,
+                $conditionDeltas,
+                $conditionTotalThisOffer,
+                $activeRewards,
+                $offerDiscount
+            );
         }
 
         return [
@@ -303,6 +336,9 @@ class OfferService
                     
                     $rewardUnitPrice = $variant->price;
                     $rewardTotalPrice = $rewardUnitPrice * $rewardQuantity;
+                    $taxRate = (float) Setting::getValue('tax', 0.15);
+                    $lineDiscount = $rewardTotalPrice;
+                    $lineTax = OrderItem::computeLineTax($rewardTotalPrice, $lineDiscount, $taxRate);
                     
                     $rewardItemData = [
                         'order_id' => $orderId,
@@ -314,6 +350,9 @@ class OfferService
                         'unit_price' => $rewardUnitPrice,
                         'total_price' => $rewardTotalPrice,
                         'is_offer' => true,
+                        'offer_line_kind' => 'reward',
+                        'discount' => $lineDiscount,
+                        'tax' => $lineTax,
                     ];
                     
                     $this->orderItemRepository->create($rewardItemData);
@@ -430,6 +469,106 @@ class OfferService
                 $order->id,
                 "Earned {$totalPoints} points from order #{$order->id}"
             );
+        }
+    }
+
+    private function normalizeOrderItemRows(array &$orderItemsData): void
+    {
+        foreach ($orderItemsData as &$item) {
+            $item['discount'] = isset($item['discount']) ? (float) $item['discount'] : 0.0;
+            $item['tax'] = isset($item['tax']) ? (float) $item['tax'] : 0.0;
+            if (!array_key_exists('offer_line_kind', $item)) {
+                $item['offer_line_kind'] = null;
+            }
+        }
+        unset($item);
+    }
+
+    /**
+     * Allocate discount-type offer across condition lines: fixed rewards proportional to line share of
+     * condition subtotal; percentage rewards as percent of each line amount. Scales to capped total.
+     *
+     * @param  array<int, array{index:int, amount:float}>  $conditionDeltas
+     */
+    private function allocateDiscountTypeToConditionLines(
+        array &$orderItemsData,
+        array $conditionDeltas,
+        float $conditionSubtotal,
+        $activeRewards,
+        float $cappedOfferDiscount
+    ): void {
+        if ($cappedOfferDiscount <= 0 || $conditionSubtotal <= 0 || empty($conditionDeltas)) {
+            return;
+        }
+
+        $merged = [];
+        foreach ($conditionDeltas as $d) {
+            $idx = $d['index'];
+            if (!isset($merged[$idx])) {
+                $merged[$idx] = 0.0;
+            }
+            $merged[$idx] += (float) $d['amount'];
+        }
+
+        $normalizedDeltas = [];
+        foreach ($merged as $idx => $amt) {
+            if ($amt > 0) {
+                $normalizedDeltas[] = ['index' => (int) $idx, 'amount' => $amt];
+            }
+        }
+        if (empty($normalizedDeltas)) {
+            return;
+        }
+
+        $byIndex = [];
+        foreach ($normalizedDeltas as $d) {
+            $byIndex[$d['index']] = 0.0;
+        }
+
+        foreach ($activeRewards as $reward) {
+            if (!$reward->discount_amount || !$reward->discount_type) {
+                continue;
+            }
+            if ($reward->discount_type === 'percentage') {
+                $p = (float) $reward->discount_amount;
+                foreach ($normalizedDeltas as $d) {
+                    $byIndex[$d['index']] += round($d['amount'] * $p / 100, 3);
+                }
+            } else {
+                $fixed = (float) $reward->discount_amount;
+                foreach ($normalizedDeltas as $d) {
+                    $byIndex[$d['index']] += round($fixed * ($d['amount'] / $conditionSubtotal), 3);
+                }
+            }
+        }
+
+        $rawSum = array_sum($byIndex);
+        if ($rawSum <= 0) {
+            return;
+        }
+
+        $target = min($cappedOfferDiscount, $conditionSubtotal);
+        $factor = $target / $rawSum;
+        foreach ($byIndex as $idx => $v) {
+            $byIndex[$idx] = round($v * $factor, 3);
+        }
+
+        $sumAfter = array_sum($byIndex);
+        $diff = round($target - $sumAfter, 3);
+        if (abs($diff) >= 0.0005) {
+            $fixIdx = $normalizedDeltas[0]['index'];
+            $maxAmt = -1.0;
+            foreach ($normalizedDeltas as $d) {
+                if ($d['amount'] > $maxAmt) {
+                    $maxAmt = $d['amount'];
+                    $fixIdx = $d['index'];
+                }
+            }
+            $byIndex[$fixIdx] = round(($byIndex[$fixIdx] ?? 0) + $diff, 3);
+        }
+
+        foreach ($byIndex as $idx => $disc) {
+            $orderItemsData[$idx]['discount'] = round(($orderItemsData[$idx]['discount'] ?? 0) + $disc, 3);
         }
     }
 }

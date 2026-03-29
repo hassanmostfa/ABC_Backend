@@ -80,6 +80,23 @@ class SettingSeeder extends Seeder
                 'key' => 'day_offs',
                 'value' => '[]', // Day offs (JSON array, e.g., ["saturday", "sunday"])
             ],
+            // Payment gateway / method customer codes (configure per provider)
+            [
+                'key' => 'cash_customer_code',
+                'value' => '',
+            ],
+            [
+                'key' => 'wallet_customer_code',
+                'value' => '',
+            ],
+            [
+                'key' => 'knet_customer_code',
+                'value' => '',
+            ],
+            [
+                'key' => 'credit_card_customer_code',
+                'value' => '',
+            ],
         ];
 
         foreach ($settings as $setting) {

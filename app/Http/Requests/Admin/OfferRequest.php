@@ -59,12 +59,18 @@ class OfferRequest extends FormRequest
      */
     public function rules(): array
     {
+        $isUpdate = $this->route('id') !== null;
+
+        $offerStartDateRules = $isUpdate
+            ? 'required|date'
+            : 'required|date|after_or_equal:today';
+
         $rules = [
             'title_en' => 'required|string|max:255',
             'title_ar' => 'required|string|max:255',
             'description_en' => 'required|string',
             'description_ar' => 'required|string',
-            'offer_start_date' => 'required|date|after_or_equal:today',
+            'offer_start_date' => $offerStartDateRules,
             'offer_end_date' => 'required|date|after:offer_start_date',
             'is_active' => 'boolean',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',

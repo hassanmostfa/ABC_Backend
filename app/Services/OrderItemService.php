@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Repositories\OrderItemRepositoryInterface;
+use App\Models\OrderItem;
 use App\Models\ProductVariant;
 use Illuminate\Support\Facades\DB;
 
@@ -73,6 +74,9 @@ class OrderItemService
                 'unit_price' => $unitPrice,
                 'total_price' => $totalPrice,
                 'is_offer' => false,
+                'offer_line_kind' => null,
+                'discount' => 0,
+                'tax' => 0,
             ];
         }
 
@@ -80,6 +84,20 @@ class OrderItemService
             'orderItemsData' => $orderItemsData,
             'totalAmount' => $totalAmount
         ];
+    }
+
+    /**
+     * Set each row's tax from settings rate on net line (total_price - discount).
+     */
+    public function applyLineTax(array &$orderItemsData): void
+    {
+        $taxRate = (float) \App\Models\Setting::getValue('tax', 0.15);
+        foreach ($orderItemsData as &$row) {
+            $total = (float) ($row['total_price'] ?? 0);
+            $disc = (float) ($row['discount'] ?? 0);
+            $row['tax'] = OrderItem::computeLineTax($total, $disc, $taxRate);
+        }
+        unset($row);
     }
 
     /**
@@ -197,6 +215,8 @@ class OrderItemService
             $totalPrice = $unitPrice * $quantity;
             $totalAmount += $totalPrice;
 
+            $taxRate = (float) \App\Models\Setting::getValue('tax', 0.15);
+
             // Build product name
             $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
             if ($variant->size) {
@@ -212,6 +232,9 @@ class OrderItemService
                 'unit_price' => $unitPrice,
                 'total_price' => $totalPrice,
                 'is_offer' => false,
+                'offer_line_kind' => null,
+                'discount' => 0,
+                'tax' => OrderItem::computeLineTax($totalPrice, 0, $taxRate),
             ];
 
             if (isset($item['id']) && $item['id']) {

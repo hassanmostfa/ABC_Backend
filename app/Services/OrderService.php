@@ -122,6 +122,8 @@ class OrderService
                 $offerDiscount += $offerResult['offerDiscount']; // Accumulate discounts from all offers
             }
 
+            $this->orderItemService->applyLineTax($orderItemsData);
+
             // Calculate final amount after discounts for minimum validation
             $finalAmountAfterDiscounts = $totalAmount - $offerDiscount;
 
