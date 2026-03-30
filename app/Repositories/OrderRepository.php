@@ -93,7 +93,7 @@ class OrderRepository implements OrderRepositoryInterface
         $sortOrder = $filters['sort_order'] ?? 'desc';
         
         // Validate sort fields
-        $allowedSortFields = ['order_number', 'status', 'total_amount', 'delivery_type', 'created_at', 'updated_at'];
+        $allowedSortFields = ['order_number', 'status', 'total_amount', 'delivery_type', 'delivery_date', 'delivery_time', 'created_at', 'updated_at'];
         if (!in_array($sortBy, $allowedSortFields)) {
             $sortBy = 'created_at';
         }

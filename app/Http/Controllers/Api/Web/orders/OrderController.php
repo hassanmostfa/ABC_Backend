@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\Web\orders;
 
 use App\Exceptions\PendingOnlineInvoiceException;
 use App\Http\Controllers\Api\BaseApiController;
-use App\Http\Requests\Mobile\StoreOrderRequest;
+use App\Http\Requests\Web\StoreOrderRequest;
 use App\Http\Resources\Admin\OrderResource;
 use App\Http\Resources\Admin\RefundRequestResource;
 use App\Models\Setting;

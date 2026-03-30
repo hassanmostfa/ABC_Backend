@@ -42,6 +42,7 @@ use App\Http\Controllers\Api\Web\SliderController as WebSliderController;
 use App\Http\Controllers\Api\Web\AppContentController as WebAppContentController;
 use App\Http\Controllers\Api\Web\NotificationController as CustomerNotificationController;
 use App\Http\Controllers\Api\Shared\ContactUsController;
+use App\Http\Controllers\Api\Shared\DeliverySlotController;
 use App\Http\Controllers\Api\UtilsController;
 use App\Http\Controllers\Api\Mobile\auth\AuthController as MobileAuthController;
 use App\Http\Controllers\Api\Mobile\offers\OfferController as MobileOfferController;
@@ -426,6 +427,9 @@ Route::controller(WebAppContentController::class)->group(function () {
    Route::get('/offers', 'getOffers');
    Route::get('/offers/{id}', 'getOfferDetails')->whereNumber('id');
 });
+
+// Delivery time slots (public; uses settings: opening_time, closing_time, slot_interval, max_delivery_per_slot, day_offs, delivery_days)
+Route::get('/delivery-slots', [DeliverySlotController::class, 'index']);
 
 // Customer Authentication Routes (Public)
 Route::controller(AuthController::class)->prefix('auth')->group(function () {

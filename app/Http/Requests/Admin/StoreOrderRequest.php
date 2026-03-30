@@ -45,6 +45,8 @@ class StoreOrderRequest extends FormRequest
             'charity_id' => 'nullable|integer|exists:charities,id',
             'customer_address_id' => 'required|integer|exists:customer_addresses,id',
             'delivery_type' => 'nullable|in:pickup,delivery', // Will be auto-determined if not provided
+            'delivery_date' => 'required|date',
+            'delivery_time' => ['required', 'regex:/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/'],
             'payment_method' => 'nullable|in:cash,card,online_link,bank_transfer,wallet',
             'src' => 'required_if:payment_method,online_link|nullable|string|in:knet,cc',
             'offer_ids' => 'nullable|array', // Backward compatibility: simple array of IDs
@@ -128,6 +130,10 @@ class StoreOrderRequest extends FormRequest
             'status.required' => 'The status is required.',
             'status.in' => 'The status must be one of: pending, processing, completed, cancelled.',
             'delivery_type.in' => 'The delivery type must be either pickup or delivery.',
+            'delivery_date.required' => 'Delivery date is required.',
+            'delivery_date.date' => 'Delivery date must be a valid date.',
+            'delivery_time.required' => 'Delivery time is required.',
+            'delivery_time.regex' => 'Delivery time must be a valid time (e.g. 09:30 or 09:30:00).',
             'offer_ids.array' => 'The offer IDs must be an array.',
             'offer_ids.*.integer' => 'Each offer ID must be a valid integer.',
             'offer_ids.*.exists' => 'One or more selected offers do not exist.',
@@ -171,6 +177,8 @@ class StoreOrderRequest extends FormRequest
             'source' => 'order source',
             'status' => 'status',
             'delivery_type' => 'delivery type',
+            'delivery_date' => 'delivery date',
+            'delivery_time' => 'delivery time',
             'offer_snapshot' => 'offer snapshot',
             'offers' => 'offers',
             'offers.*.offer_id' => 'offer ID',

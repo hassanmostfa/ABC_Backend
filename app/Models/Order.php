@@ -18,6 +18,8 @@ class Order extends Model
         'total_amount',
         'offer_snapshot',
         'delivery_type',
+        'delivery_date',
+        'delivery_time',
         'payment_method',
         'payment_gateway_src',
     ];
@@ -26,8 +28,27 @@ class Order extends Model
     protected $casts = [
         'total_amount' => 'decimal:2',
         'offer_snapshot' => 'array',
+        'delivery_date' => 'date',
     ];
 
+    /**
+     * Normalize HH:MM to HH:MM:SS for the database time column.
+     */
+    public function setDeliveryTimeAttribute($value): void
+    {
+        if ($value === null || $value === '') {
+            $this->attributes['delivery_time'] = null;
+
+            return;
+        }
+        $s = (string) $value;
+        if (preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $s)) {
+            $this->attributes['delivery_time'] = $s . ':00';
+
+            return;
+        }
+        $this->attributes['delivery_time'] = $s;
+    }
 
     public function customer()
     {

@@ -51,6 +51,10 @@ class OrderResource extends JsonResource
             'total_amount' => (float) $this->total_amount,
             'offer_snapshot' => $this->offer_snapshot,
             'delivery_type' => $this->delivery_type,
+            'delivery_date' => $this->delivery_date ? \format_date_app_tz($this->delivery_date) : null,
+            'delivery_time' => $this->delivery_time
+                ? \Carbon\Carbon::parse($this->delivery_time)->format('H:i')
+                : null,
             'customer' => $this->whenLoaded('customer', function () {
                 return [
                     'id' => $this->customer->id,

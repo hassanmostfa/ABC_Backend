@@ -59,6 +59,8 @@ class UpdateOrderRequest extends FormRequest
             'offer_snapshot' => 'sometimes|nullable|array',
             'coupons_discount' => 'sometimes|nullable|numeric|min:0',
             'delivery_type' => 'sometimes|nullable|in:pickup,delivery',
+            'delivery_date' => 'required|date',
+            'delivery_time' => ['required', 'regex:/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/'],
             'payment_method' => 'sometimes|nullable|in:cash,card,online_link,bank_transfer,wallet',
             'used_points' => [
                 'sometimes',
@@ -181,6 +183,8 @@ class UpdateOrderRequest extends FormRequest
             'order_number' => 'order number',
             'status' => 'status',
             'delivery_type' => 'delivery type',
+            'delivery_date' => 'delivery date',
+            'delivery_time' => 'delivery time',
             'offer_ids' => 'offers',
             'offer_snapshot' => 'offer snapshot',
             'items' => 'order items',
