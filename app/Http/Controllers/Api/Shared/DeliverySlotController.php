@@ -17,7 +17,11 @@ class DeliverySlotController extends BaseApiController
     ) {}
 
     /**
-     * GET ?date=Y-m-d — Available delivery time slots for that date (settings-driven; full slots excluded).
+     * Available delivery time windows for a date (settings-driven; full slots excluded).
+     *
+     * - GET: pass date as a query string only — do not send a JSON body on GET (many servers return 403).
+     *   Example: GET /api/mobile/delivery-slots?date=2026-03-31
+     * - POST: pass JSON body { "date": "2026-03-31" } if your client prefers a body.
      */
     public function index(Request $request): JsonResponse
     {
@@ -26,7 +30,7 @@ class DeliverySlotController extends BaseApiController
                 'date' => 'required|date_format:Y-m-d',
             ]);
 
-            $payload = $this->deliverySlotService->getAvailableSlotsForDate($request->input('date'));
+            $payload = $this->deliverySlotService->getAvailableSlotsForDate((string) $request->input('date'));
 
             if ($payload['out_of_range'] && !empty($payload['message'])) {
                 return response()->json([
