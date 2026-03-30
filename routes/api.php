@@ -430,6 +430,7 @@ Route::controller(WebAppContentController::class)->group(function () {
 
 // Delivery time slots (public; uses settings: opening_time, closing_time, slot_interval, max_delivery_per_slot, day_offs, delivery_days)
 Route::get('/delivery-slots', [DeliverySlotController::class, 'index']);
+Route::get('/mobile/delivery-slots', [DeliverySlotController::class, 'index']);
 
 // Customer Authentication Routes (Public)
 Route::controller(AuthController::class)->prefix('auth')->group(function () {
