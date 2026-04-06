@@ -87,6 +87,62 @@ class OrderItemService
     }
 
     /**
+     * Allocate order-level coupon discount across lines (same proportional rule as fixed discount rewards
+     * in OfferService: each line gets share of net line amount / net subtotal).
+     */
+    public function applyCouponDiscountToLines(array &$orderItemsData, float $couponsDiscount, float $totalAmount, float $offerDiscount): void
+    {
+        if ($couponsDiscount <= 0 || empty($orderItemsData)) {
+            return;
+        }
+
+        $nets = [];
+        $netSubtotal = 0.0;
+        foreach ($orderItemsData as $i => $row) {
+            $total = (float) ($row['total_price'] ?? 0);
+            $disc = (float) ($row['discount'] ?? 0);
+            $nets[$i] = max(0, $total - $disc);
+            $netSubtotal += $nets[$i];
+        }
+
+        if ($netSubtotal <= 0) {
+            return;
+        }
+
+        $remainingAfterOffer = max(0, $totalAmount - $offerDiscount);
+        $target = min($couponsDiscount, $remainingAfterOffer, $netSubtotal);
+        if ($target <= 0) {
+            return;
+        }
+
+        $byIndex = [];
+        foreach ($nets as $i => $net) {
+            if ($net > 0) {
+                $byIndex[$i] = round($target * ($net / $netSubtotal), 3);
+            }
+        }
+
+        $sumAfter = array_sum($byIndex);
+        $diff = round($target - $sumAfter, 3);
+        if (abs($diff) >= 0.0005 && !empty($byIndex)) {
+            $fixIdx = array_key_first($byIndex);
+            $maxAmt = -1.0;
+            foreach ($byIndex as $idx => $_) {
+                $n = $nets[$idx] ?? 0;
+                if ($n > $maxAmt) {
+                    $maxAmt = $n;
+                    $fixIdx = $idx;
+                }
+            }
+            $byIndex[$fixIdx] = round(($byIndex[$fixIdx] ?? 0) + $diff, 3);
+        }
+
+        foreach ($byIndex as $idx => $disc) {
+            $orderItemsData[$idx]['discount'] = round(($orderItemsData[$idx]['discount'] ?? 0) + $disc, 3);
+        }
+    }
+
+    /**
      * Set each row's tax from settings rate on net line (total_price - discount).
      */
     public function applyLineTax(array &$orderItemsData): void

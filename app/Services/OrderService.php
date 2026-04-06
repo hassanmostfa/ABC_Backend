@@ -13,6 +13,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\UpaymentsService;
+use App\Services\ErpOrderService;
 use App\Jobs\SendOrderCreatedNotificationsJob;
 
 class OrderService
@@ -26,6 +27,7 @@ class OrderService
     protected $pointsService;
     protected $customerRepository;
     protected $upaymentsService;
+    protected $erpOrderService;
 
     public function __construct(
         OrderRepositoryInterface $orderRepository,
@@ -36,7 +38,8 @@ class OrderService
         WalletService $walletService,
         PointsService $pointsService,
         CustomerRepositoryInterface $customerRepository,
-        UpaymentsService $upaymentsService
+        UpaymentsService $upaymentsService,
+        ErpOrderService $erpOrderService
     ) {
         $this->orderRepository = $orderRepository;
         $this->invoiceRepository = $invoiceRepository;
@@ -47,6 +50,7 @@ class OrderService
         $this->pointsService = $pointsService;
         $this->customerRepository = $customerRepository;
         $this->upaymentsService = $upaymentsService;
+        $this->erpOrderService = $erpOrderService;
     }
 
     /**
@@ -123,6 +127,9 @@ class OrderService
                 $offerDiscount += $offerResult['offerDiscount']; // Accumulate discounts from all offers
             }
 
+            $couponsDiscount = (float) ($data['coupons_discount'] ?? 0);
+            $this->orderItemService->applyCouponDiscountToLines($orderItemsData, $couponsDiscount, $totalAmount, $offerDiscount);
+
             $this->orderItemService->applyLineTax($orderItemsData);
 
             // Calculate final amount after discounts for minimum validation
@@ -133,10 +140,9 @@ class OrderService
             $pointsResult = $this->pointsService->calculateDiscount($requestedPoints, $totalAmount, $offerDiscount);
             $usedPoints = $pointsResult['usedPoints'];
             $pointsDiscount = $pointsResult['pointsDiscount'];
-            $couponsDiscount = (float) ($data['coupons_discount'] ?? 0);
 
             // Calculate final amount after all discounts for minimum validation
-            $finalAmountAfterAllDiscounts = $totalAmount - $offerDiscount - $pointsDiscount;
+            $finalAmountAfterAllDiscounts = $totalAmount - $offerDiscount - $couponsDiscount - $pointsDiscount;
 
             // Determine delivery type for invoice calculation
             $deliveryType = $data['delivery_type'] ?? null;
@@ -295,6 +301,11 @@ class OrderService
 
             // Reload order with relationships
             $order->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice', 'customerAddress']);
+
+            // ERP: cash on delivery or wallet — push order after successful creation
+            if (in_array($order->payment_method, ['cash', 'wallet'], true)) {
+                $this->erpOrderService->dispatchAfterCashOrWalletOrderCreated($order);
+            }
 
             // Admin (call center) orders: notify customer when paying cash on delivery or wallet (same flow as app/web for non-online)
             $orderSource = $data['source'] ?? 'call_center';

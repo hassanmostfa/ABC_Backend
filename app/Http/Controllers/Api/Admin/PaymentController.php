@@ -15,6 +15,7 @@ use App\Models\PaymentGatewayEvent;
 use App\Models\Wallet;
 use App\Services\UpaymentsService;
 use App\Services\WalletChargeService;
+use App\Services\ErpOrderService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\View\View;
@@ -28,19 +29,22 @@ class PaymentController extends BaseApiController
     protected $orderRepository;
     protected $walletChargeService;
     protected $upaymentsService;
+    protected $erpOrderService;
 
     public function __construct(
         PaymentRepositoryInterface $paymentRepository,
         InvoiceRepositoryInterface $invoiceRepository,
         OrderRepositoryInterface $orderRepository,
         WalletChargeService $walletChargeService,
-        UpaymentsService $upaymentsService
+        UpaymentsService $upaymentsService,
+        ErpOrderService $erpOrderService
     ) {
         $this->paymentRepository = $paymentRepository;
         $this->invoiceRepository = $invoiceRepository;
         $this->orderRepository = $orderRepository;
         $this->walletChargeService = $walletChargeService;
         $this->upaymentsService = $upaymentsService;
+        $this->erpOrderService = $erpOrderService;
     }
 
     /**
@@ -216,6 +220,15 @@ class PaymentController extends BaseApiController
 
             DB::commit();
 
+            // ERP: online_link orders when invoice becomes fully paid (e.g. admin-recorded payment)
+            $invoiceAfter = $this->invoiceRepository->findById($invoice->id);
+            if ($invoiceAfter && $invoiceAfter->status === 'paid') {
+                $invoiceAfter->load('order');
+                if ($invoiceAfter->order && $invoiceAfter->order->payment_method === 'online_link') {
+                    $this->erpOrderService->dispatchAfterOnlineInvoicePaid($invoiceAfter->order);
+                }
+            }
+
             // Reload with relationships
             $payment = $this->paymentRepository->findById($payment->id);
             $payment->load([
@@ -341,6 +354,22 @@ class PaymentController extends BaseApiController
             }
 
             DB::commit();
+
+            $paymentJustCompleted = isset($updateData['status']) && $updateData['status'] === 'completed' && $oldStatus !== 'completed';
+
+            // ERP: online_link when this update marks payment completed and invoice is fully paid
+            if ($paymentJustCompleted) {
+                $paymentForInvoice = $this->paymentRepository->findById($id);
+                if ($paymentForInvoice) {
+                    $invoiceAfter = $this->invoiceRepository->findById($paymentForInvoice->invoice_id);
+                    if ($invoiceAfter && $invoiceAfter->status === 'paid') {
+                        $invoiceAfter->load('order');
+                        if ($invoiceAfter->order && $invoiceAfter->order->payment_method === 'online_link') {
+                            $this->erpOrderService->dispatchAfterOnlineInvoicePaid($invoiceAfter->order);
+                        }
+                    }
+                }
+            }
 
             // Reload with relationships
             $payment = $this->paymentRepository->findById($id);
@@ -633,6 +662,13 @@ class PaymentController extends BaseApiController
             }
 
             DB::commit();
+
+            // ERP: online_link orders after gateway confirms payment and invoice is (or becomes) paid
+            if ($newStatus === 'completed') {
+                $order->refresh();
+                $order->load('invoice');
+                $this->erpOrderService->dispatchAfterOnlineInvoicePaid($order);
+            }
 
             try {
                 if ($newStatus === 'completed' && $order->customer_id) {
