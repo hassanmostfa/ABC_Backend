@@ -137,7 +137,15 @@ return [
             'driver' => 'single',
             'path' => storage_path('logs/upayments.log'),
             'level' => 'info',
-    ],
+        ],
+
+        'erp' => [
+            'driver' => 'daily',
+            'path'   => storage_path('logs/erp.log'),
+            'level'  => 'info',
+            'days'   => 30,
+            'replace_placeholders' => true,
+        ],
 
 
     ],

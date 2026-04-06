@@ -34,6 +34,13 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
+    'erp' => [
+        'url'      => env('ERP_URL', 'http://31.214.1.139:61402'),
+        'username' => env('ERP_USERNAME', 'SONIC'),
+        'password' => env('ERP_PASSWORD', 'S0n!c@AP!'),
+        'timeout'  => (int) env('ERP_TIMEOUT', 30),
+    ],
+
     'upayments' => [
         'key' => env('UPAYMENTS_API_KEY'),
         'url' => env('UPAYMENTS_API_URL'),
