@@ -23,7 +23,7 @@ class ErpOrderService
     }
 
     /**
-     * Send an order to the ERP via GET /API/Order/SendOrder (same URL as configured ERP base; order data as query string).
+     * Send an order to the ERP via POST /API/Order/SendOrder (same URL as configured ERP base; order data as JSON body).
      *
      * @param  Order  $order  Must have items.variant and invoice loaded (or will be eager-loaded here).
      * @return array  ['success' => bool, 'status' => int|null, 'body' => mixed, 'error' => string|null]
@@ -48,11 +48,12 @@ class ErpOrderService
             $order->load('charity');
         }
 
-        $query    = $this->buildPayload($order);
+        $payload  = $this->buildPayload($order);
         $endpoint = $this->buildEndpoint('/API/Order/SendOrder');
 
         return $this->request($endpoint, [
-            'query' => $query,
+            'method' => 'POST',
+            'json'   => $payload,
             'log_context' => [
                 'action'       => 'SendOrder',
                 'order_number' => $order->order_number,
@@ -133,20 +134,29 @@ class ErpOrderService
     }
 
     /**
-     * @param  array{query?: array, log_context?: array}  $options
+     * @param  array{method?: string, query?: array, json?: array, log_context?: array}  $options
      * @return array{success: bool, status: int|null, body: mixed, error: string|null}
      */
     private function request(string $url, array $options = []): array
     {
-        $logContext = array_merge(['method' => 'GET', 'url' => $url], $options['log_context'] ?? []);
+        $method = strtoupper($options['method'] ?? 'GET');
+        $logContext = array_merge(['method' => $method, 'url' => $url], $options['log_context'] ?? []);
         unset($options['log_context']);
+
+        $query = $options['query'] ?? [];
+        $json  = $options['json'] ?? null;
+        unset($options['method'], $options['query'], $options['json']);
 
         try {
             $pending = Http::withBasicAuth($this->username, $this->password)
                 ->timeout($this->timeout)
                 ->acceptJson();
 
-            $response = $pending->get($url, $options['query'] ?? []);
+            if ($method === 'POST' && is_array($json)) {
+                $response = $pending->asJson()->post($url, $json);
+            } else {
+                $response = $pending->get($url, $query);
+            }
 
             $success = $response->successful();
 

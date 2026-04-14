@@ -7,6 +7,7 @@ use Illuminate\Auth\AuthenticationException;
 use App\Http\Middleware\ApiAuth;
 use App\Http\Middleware\CheckAdminPermission;
 use App\Http\Middleware\PreventUpdateCompletedOrder;
+use App\Http\Middleware\VerifyOctopusApiToken;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Middleware\HandleCors;
@@ -24,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.permission' => CheckAdminPermission::class,
             'api.auth' => ApiAuth::class,
             'prevent.update.completed.order' => PreventUpdateCompletedOrder::class,
+            'octopus.token' => VerifyOctopusApiToken::class,
         ]);
         
         // Configure authentication for API

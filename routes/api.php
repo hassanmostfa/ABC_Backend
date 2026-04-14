@@ -58,6 +58,7 @@ use App\Http\Controllers\Api\Mobile\points_transactions\PointsTransactionControl
 use App\Http\Controllers\Api\Mobile\wallet\WalletController as MobileWalletController;
 use App\Http\Controllers\Api\Mobile\products\ProductController as MobileProductController;
 use App\Http\Controllers\Api\Mobile\coupons\CouponController as MobileCouponController;
+use App\Http\Controllers\Api\OctopusOrderController;
 
 /*
 |--------------------------------------------------------------------------
@@ -583,6 +584,13 @@ Route::middleware('api.auth')->prefix('mobile/coupons')->group(function () {
 });
    
 Route::middleware('api.auth')->group(function () {
+});
+
+// =====================================================================================================
+// ================== Octopus Integration Routes (Public) =============================================
+// =====================================================================================================
+Route::prefix('octopus')->middleware('octopus.token')->group(function () {
+    Route::post('/orders', [OctopusOrderController::class, 'store']);
 });
 // =====================================================================================================
 // =====================================================================================================

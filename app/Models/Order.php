@@ -13,6 +13,7 @@ class Order extends Model
         'customer_id',
         'charity_id',
         'customer_address_id',
+        'address',
         'order_number',
         'status',
         'total_amount',

@@ -41,6 +41,15 @@ return [
         'timeout'  => (int) env('ERP_TIMEOUT', 30),
     ],
 
+    /*
+    | Octopus integration: POST /api/octopus/orders
+    | Send Authorization: Bearer {OCTOPUS_API_TOKEN} or X-Access-Token: {token}
+    | Token must start with abc_
+    */
+    'octopus' => [
+        'access_token' => env('OCTOPUS_API_TOKEN'),
+    ],
+
     'upayments' => [
         'key' => env('UPAYMENTS_API_KEY'),
         'url' => env('UPAYMENTS_API_URL'),
