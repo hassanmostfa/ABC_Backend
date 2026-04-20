@@ -59,8 +59,9 @@ class UpdateOrderRequest extends FormRequest
             'offer_snapshot' => 'sometimes|nullable|array',
             'coupons_discount' => 'sometimes|nullable|numeric|min:0',
             'delivery_type' => 'sometimes|nullable|in:pickup,delivery',
-            'delivery_date' => 'required|date',
-            'delivery_time' => ['required', 'regex:/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/'],
+            // Omit both when e.g. only cancelling; if one is sent, the other is required (same as create).
+            'delivery_date' => 'nullable|date|required_with:delivery_time',
+            'delivery_time' => ['nullable', 'required_with:delivery_date', 'regex:/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/'],
             'payment_method' => 'sometimes|nullable|in:cash,card,online_link,bank_transfer,wallet',
             'used_points' => [
                 'sometimes',
@@ -166,6 +167,8 @@ class UpdateOrderRequest extends FormRequest
             'items.*.quantity.min' => 'The quantity must be at least 1.',
             'used_points.integer' => 'The used points must be a valid integer.',
             'used_points.min' => 'The minimum points to use is 10.',
+            'delivery_date.required_with' => 'The delivery date is required when delivery time is provided.',
+            'delivery_time.required_with' => 'The delivery time is required when delivery date is provided.',
         ];
     }
 
