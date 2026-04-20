@@ -48,6 +48,13 @@ class ErpOrderService
             $order->load('charity');
         }
 
+        $order->loadMissing([
+            'invoice.payments',
+            'customerAddress.country',
+            'customerAddress.governorate',
+            'customerAddress.area',
+        ]);
+
         $payload  = $this->buildPayload($order);
         $endpoint = $this->buildEndpoint('/API/Order/SendOrder');
 
@@ -220,8 +227,91 @@ class ErpOrderService
             'DeliveryDate'  => $deliveryDate,
             'DeliveryValue' => round($deliveryFee, 3),
             'CustomerCode'  => $this->resolveCustomerCode($order),
+            'LPO'           => $this->resolveLpo($order),
+            'Notes'         => $this->resolveNotes($order),
             'allItems'      => $this->buildItems($order),
         ];
+    }
+
+    /**
+     * ERP LPO: payment receipt_id when the invoice is paid (e.g. gateway receipt).
+     */
+    private function resolveLpo(Order $order): string
+    {
+        $invoice = $order->invoice;
+        if (!$invoice || $invoice->status !== 'paid') {
+            return '';
+        }
+
+        $payments = $invoice->relationLoaded('payments')
+            ? $invoice->payments
+            : $invoice->payments()->get();
+
+        $completed = $payments->where('status', 'completed')->sortByDesc('id');
+        $withReceipt = $completed->first(function ($p) {
+            $r = $p->receipt_id ?? null;
+
+            return $r !== null && $r !== '';
+        });
+
+        if ($withReceipt) {
+            return (string) $withReceipt->receipt_id;
+        }
+
+        $latest = $completed->first();
+
+        return $latest && $latest->receipt_id !== null && $latest->receipt_id !== ''
+            ? (string) $latest->receipt_id
+            : '';
+    }
+
+    /**
+     * ERP Notes: order.address text, or full customer-address detail for ERP.
+     */
+    private function resolveNotes(Order $order): string
+    {
+        $direct = trim((string) ($order->address ?? ''));
+        if ($direct !== '') {
+            return $direct;
+        }
+
+        $order->loadMissing('customerAddress.country', 'customerAddress.governorate', 'customerAddress.area');
+        $addr = $order->customerAddress;
+        if (!$addr) {
+            return '';
+        }
+
+        $parts = [];
+
+        if ($addr->governorate?->name_en) {
+            $parts[] = $addr->governorate->name_en;
+        }
+        if ($addr->area?->name_en) {
+            $parts[] = $addr->area->name_en;
+        }
+        if (!empty($addr->type)) {
+            $parts[] = (string) $addr->type;
+        }
+        if (!empty($addr->building_name)) {
+            $parts[] = (string) $addr->building_name;
+        }
+        if (!empty($addr->apartment_number)) {
+            $parts[] = 'Apt ' . $addr->apartment_number;
+        }
+        if (!empty($addr->company)) {
+            $parts[] = (string) $addr->company;
+        }
+        if (!empty($addr->street)) {
+            $parts[] = (string) $addr->street;
+        }
+        if (!empty($addr->house)) {
+            $parts[] = (string) $addr->house;
+        }
+        if (!empty($addr->block)) {
+            $parts[] = 'Block ' . $addr->block;
+        }
+
+        return implode(' | ', array_filter($parts));
     }
 
     /**
