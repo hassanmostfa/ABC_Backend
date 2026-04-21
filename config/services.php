@@ -35,10 +35,13 @@ return [
         ],
     ],
     'erp' => [
-        'url'      => env('ERP_URL', 'http://31.214.1.139:61402'),
-        'username' => env('ERP_USERNAME', 'SONIC'),
-        'password' => env('ERP_PASSWORD', 'S0n!c@AP!'),
-        'timeout'  => (int) env('ERP_TIMEOUT', 30),
+        'url'             => env('ERP_URL', 'http://31.214.1.139:61402'),
+        'username'        => env('ERP_USERNAME', 'SONIC'),
+        'password'        => env('ERP_PASSWORD', 'S0n!c@AP!'),
+        'timeout'         => (int) env('ERP_TIMEOUT', 30),
+        'connect_timeout' => (int) env('ERP_CONNECT_TIMEOUT', 10),
+        'retries'         => (int) env('ERP_RETRIES', 2),
+        'retry_sleep_ms'  => (int) env('ERP_RETRY_SLEEP_MS', 1000),
     ],
 
     /*
