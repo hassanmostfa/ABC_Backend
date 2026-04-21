@@ -174,7 +174,16 @@ class ErpOrderService
                 $pending = Http::withBasicAuth($this->username, $this->password)
                     ->connectTimeout($this->connectTimeout)
                     ->timeout($this->timeout)
+                    ->withHeaders([
+                        'Connection' => 'close',
+                        'Expect' => '',
+                    ])
                     ->withOptions([
+                        'version' => 1.1,
+                        'curl' => [
+                            CURLOPT_FORBID_REUSE => true,
+                            CURLOPT_FRESH_CONNECT => true,
+                        ],
                         'on_stats' => function (TransferStats $stats) use (&$requestStats): void {
                             $handlerStats = $stats->getHandlerStats();
 
