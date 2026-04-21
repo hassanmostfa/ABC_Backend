@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\DispatchErpOrderJob;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
@@ -21,7 +22,6 @@ class OctopusOrderService
     protected OrderItemRepositoryInterface $orderItemRepository;
     protected InvoiceService $invoiceService;
     protected OfferService $offerService;
-    protected ErpOrderService $erpOrderService;
     protected UpaymentsService $upaymentsService;
 
     public function __construct(
@@ -30,7 +30,6 @@ class OctopusOrderService
         OrderItemRepositoryInterface $orderItemRepository,
         InvoiceService $invoiceService,
         OfferService $offerService,
-        ErpOrderService $erpOrderService,
         UpaymentsService $upaymentsService
     ) {
         $this->orderRepository = $orderRepository;
@@ -38,7 +37,6 @@ class OctopusOrderService
         $this->orderItemRepository = $orderItemRepository;
         $this->invoiceService = $invoiceService;
         $this->offerService = $offerService;
-        $this->erpOrderService = $erpOrderService;
         $this->upaymentsService = $upaymentsService;
     }
 
@@ -200,11 +198,9 @@ class OctopusOrderService
             // Reload order with relationships
             $order->load(['customer', 'offers', 'items.product', 'items.variant', 'invoice']);
 
-            // Send to ERP (must branch by payment_method: online_link is excluded from cash/wallet handler)
-            if ($paymentMethod === 'online_link' && $isPaid) {
-                $this->erpOrderService->dispatchAfterOnlineInvoicePaid($order);
-            } elseif ($paymentMethod === 'cash') {
-                $this->erpOrderService->dispatchAfterCashOrWalletOrderCreated($order);
+            // Dispatch ERP after response so Octopus request is not blocked by ERP latency.
+            if (($paymentMethod === 'online_link' && $isPaid) || $paymentMethod === 'cash') {
+                DispatchErpOrderJob::dispatchAfterResponse($order->id);
             }
             // online_link + unpaid: ERP sends after Upayments callback marks invoice paid (PaymentController)
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Jobs\DispatchErpOrderJob;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Admin\StorePaymentRequest;
 use App\Http\Requests\Admin\UpdatePaymentRequest;
@@ -15,7 +16,6 @@ use App\Models\PaymentGatewayEvent;
 use App\Models\Wallet;
 use App\Services\UpaymentsService;
 use App\Services\WalletChargeService;
-use App\Services\ErpOrderService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\View\View;
@@ -29,22 +29,19 @@ class PaymentController extends BaseApiController
     protected $orderRepository;
     protected $walletChargeService;
     protected $upaymentsService;
-    protected $erpOrderService;
 
     public function __construct(
         PaymentRepositoryInterface $paymentRepository,
         InvoiceRepositoryInterface $invoiceRepository,
         OrderRepositoryInterface $orderRepository,
         WalletChargeService $walletChargeService,
-        UpaymentsService $upaymentsService,
-        ErpOrderService $erpOrderService
+        UpaymentsService $upaymentsService
     ) {
         $this->paymentRepository = $paymentRepository;
         $this->invoiceRepository = $invoiceRepository;
         $this->orderRepository = $orderRepository;
         $this->walletChargeService = $walletChargeService;
         $this->upaymentsService = $upaymentsService;
-        $this->erpOrderService = $erpOrderService;
     }
 
     /**
@@ -225,7 +222,7 @@ class PaymentController extends BaseApiController
             if ($invoiceAfter && $invoiceAfter->status === 'paid') {
                 $invoiceAfter->load('order');
                 if ($invoiceAfter->order && $invoiceAfter->order->payment_method === 'online_link') {
-                    $this->erpOrderService->dispatchAfterOnlineInvoicePaid($invoiceAfter->order);
+                    DispatchErpOrderJob::dispatchAfterResponse($invoiceAfter->order->id);
                 }
             }
 
@@ -365,7 +362,7 @@ class PaymentController extends BaseApiController
                     if ($invoiceAfter && $invoiceAfter->status === 'paid') {
                         $invoiceAfter->load('order');
                         if ($invoiceAfter->order && $invoiceAfter->order->payment_method === 'online_link') {
-                            $this->erpOrderService->dispatchAfterOnlineInvoicePaid($invoiceAfter->order);
+                            DispatchErpOrderJob::dispatchAfterResponse($invoiceAfter->order->id);
                         }
                     }
                 }
@@ -667,7 +664,7 @@ class PaymentController extends BaseApiController
             if ($newStatus === 'completed') {
                 $order->refresh();
                 $order->load('invoice');
-                $this->erpOrderService->dispatchAfterOnlineInvoicePaid($order);
+                DispatchErpOrderJob::dispatchAfterResponse($order->id);
             }
 
             try {
