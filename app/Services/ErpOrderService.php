@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Order;
 use App\Models\Setting;
+use GuzzleHttp\TransferStats;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -70,6 +71,8 @@ class ErpOrderService
             'log_context' => [
                 'action'       => 'SendOrder',
                 'order_number' => $order->order_number,
+                'items_count'  => is_array($payload['allItems'] ?? null) ? count($payload['allItems']) : 0,
+                'payload_bytes' => strlen((string) json_encode($payload)),
             ],
         ]);
     }
@@ -163,10 +166,31 @@ class ErpOrderService
         $maxAttempts = max(1, $this->retries + 1);
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $requestStats = [];
+
             try {
                 $pending = Http::withBasicAuth($this->username, $this->password)
                     ->connectTimeout($this->connectTimeout)
                     ->timeout($this->timeout)
+                    ->withOptions([
+                        'on_stats' => function (TransferStats $stats) use (&$requestStats): void {
+                            $handlerStats = $stats->getHandlerStats();
+
+                            $requestStats = [
+                                'effective_uri'      => (string) $stats->getEffectiveUri(),
+                                'total_time_sec'     => $stats->getTransferTime(),
+                                'primary_ip'         => $handlerStats['primary_ip'] ?? null,
+                                'primary_port'       => $handlerStats['primary_port'] ?? null,
+                                'local_ip'           => $handlerStats['local_ip'] ?? null,
+                                'local_port'         => $handlerStats['local_port'] ?? null,
+                                'connect_time_sec'   => $handlerStats['connect_time'] ?? null,
+                                'starttransfer_sec'  => $handlerStats['starttransfer_time'] ?? null,
+                                'pretransfer_sec'    => $handlerStats['pretransfer_time'] ?? null,
+                                'uploaded_bytes'     => $handlerStats['size_upload'] ?? null,
+                                'downloaded_bytes'   => $handlerStats['size_download'] ?? null,
+                            ];
+                        },
+                    ])
                     ->acceptJson();
 
                 if ($method === 'POST' && is_array($json)) {
@@ -182,6 +206,7 @@ class ErpOrderService
                     'success'       => $success,
                     'attempt'       => $attempt,
                     'max_attempts'  => $maxAttempts,
+                    'stats'         => $requestStats,
                     'response'      => $response->json() ?? $response->body(),
                 ]));
 
@@ -199,6 +224,7 @@ class ErpOrderService
                     array_merge($logContext, [
                         'attempt'      => $attempt,
                         'max_attempts' => $maxAttempts,
+                        'stats'        => $requestStats,
                         'message'      => $e->getMessage(),
                     ])
                 );
@@ -219,6 +245,7 @@ class ErpOrderService
                 Log::channel('erp')->error('ERP request error', array_merge($logContext, [
                     'attempt'      => $attempt,
                     'max_attempts' => $maxAttempts,
+                    'stats'        => $requestStats,
                     'message'      => $e->getMessage(),
                 ]));
 
