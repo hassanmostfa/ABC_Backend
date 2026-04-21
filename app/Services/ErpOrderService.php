@@ -13,6 +13,9 @@ class ErpOrderService
     private string $username;
     private string $password;
     private int $timeout;
+    private int $connectTimeout;
+    private int $retries;
+    private int $retrySleepMs;
 
     public function __construct()
     {
@@ -20,6 +23,9 @@ class ErpOrderService
         $this->username = config('services.erp.username', '');
         $this->password = config('services.erp.password', '');
         $this->timeout  = (int) config('services.erp.timeout', 30);
+        $this->connectTimeout = (int) config('services.erp.connect_timeout', 10);
+        $this->retries = (int) config('services.erp.retries', 2);
+        $this->retrySleepMs = (int) config('services.erp.retry_sleep_ms', 1000);
     }
 
     /**
@@ -154,54 +160,83 @@ class ErpOrderService
         $json  = $options['json'] ?? null;
         unset($options['method'], $options['query'], $options['json']);
 
-        try {
-            $pending = Http::withBasicAuth($this->username, $this->password)
-                ->timeout($this->timeout)
-                ->acceptJson();
+        $maxAttempts = max(1, $this->retries + 1);
 
-            if ($method === 'POST' && is_array($json)) {
-                $response = $pending->asJson()->post($url, $json);
-            } else {
-                $response = $pending->get($url, $query);
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            try {
+                $pending = Http::withBasicAuth($this->username, $this->password)
+                    ->connectTimeout($this->connectTimeout)
+                    ->timeout($this->timeout)
+                    ->acceptJson();
+
+                if ($method === 'POST' && is_array($json)) {
+                    $response = $pending->asJson()->post($url, $json);
+                } else {
+                    $response = $pending->get($url, $query);
+                }
+
+                $success = $response->successful();
+
+                Log::channel('erp')->info('ERP ' . ($logContext['action'] ?? 'GET'), array_merge($logContext, [
+                    'http_status'   => $response->status(),
+                    'success'       => $success,
+                    'attempt'       => $attempt,
+                    'max_attempts'  => $maxAttempts,
+                    'response'      => $response->json() ?? $response->body(),
+                ]));
+
+                return [
+                    'success' => $success,
+                    'status'  => $response->status(),
+                    'body'    => $response->json() ?? $response->body(),
+                    'error'   => $success ? null : 'ERP responded with HTTP ' . $response->status(),
+                ];
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                $isLastAttempt = $attempt >= $maxAttempts;
+
+                Log::channel('erp')->{$isLastAttempt ? 'error' : 'warning'}(
+                    $isLastAttempt ? 'ERP connection error' : 'ERP connection error, retrying',
+                    array_merge($logContext, [
+                        'attempt'      => $attempt,
+                        'max_attempts' => $maxAttempts,
+                        'message'      => $e->getMessage(),
+                    ])
+                );
+
+                if ($isLastAttempt) {
+                    return [
+                        'success' => false,
+                        'status'  => null,
+                        'body'    => null,
+                        'error'   => 'ERP connection error: ' . $e->getMessage(),
+                    ];
+                }
+
+                if ($this->retrySleepMs > 0) {
+                    usleep($this->retrySleepMs * 1000);
+                }
+            } catch (\Throwable $e) {
+                Log::channel('erp')->error('ERP request error', array_merge($logContext, [
+                    'attempt'      => $attempt,
+                    'max_attempts' => $maxAttempts,
+                    'message'      => $e->getMessage(),
+                ]));
+
+                return [
+                    'success' => false,
+                    'status'  => null,
+                    'body'    => null,
+                    'error'   => $e->getMessage(),
+                ];
             }
-
-            $success = $response->successful();
-
-            Log::channel('erp')->info('ERP ' . ($logContext['action'] ?? 'GET'), array_merge($logContext, [
-                'http_status' => $response->status(),
-                'success'     => $success,
-                'response'    => $response->json() ?? $response->body(),
-            ]));
-
-            return [
-                'success' => $success,
-                'status'  => $response->status(),
-                'body'    => $response->json() ?? $response->body(),
-                'error'   => $success ? null : 'ERP responded with HTTP ' . $response->status(),
-            ];
-        } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            Log::channel('erp')->error('ERP connection error', array_merge($logContext, [
-                'message' => $e->getMessage(),
-            ]));
-
-            return [
-                'success' => false,
-                'status'  => null,
-                'body'    => null,
-                'error'   => 'ERP connection error: ' . $e->getMessage(),
-            ];
-        } catch (\Throwable $e) {
-            Log::channel('erp')->error('ERP request error', array_merge($logContext, [
-                'message' => $e->getMessage(),
-            ]));
-
-            return [
-                'success' => false,
-                'status'  => null,
-                'body'    => null,
-                'error'   => $e->getMessage(),
-            ];
         }
+
+        return [
+            'success' => false,
+            'status'  => null,
+            'body'    => null,
+            'error'   => 'ERP request failed unexpectedly before execution.',
+        ];
     }
 
     private function buildEndpoint(string $path): string
