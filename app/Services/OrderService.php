@@ -13,7 +13,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\UpaymentsService;
-use App\Services\ErpOrderService;
+use App\Jobs\DispatchErpOrderJob;
 use App\Jobs\SendOrderCreatedNotificationsJob;
 
 class OrderService
@@ -27,7 +27,6 @@ class OrderService
     protected $pointsService;
     protected $customerRepository;
     protected $upaymentsService;
-    protected $erpOrderService;
 
     public function __construct(
         OrderRepositoryInterface $orderRepository,
@@ -38,8 +37,7 @@ class OrderService
         WalletService $walletService,
         PointsService $pointsService,
         CustomerRepositoryInterface $customerRepository,
-        UpaymentsService $upaymentsService,
-        ErpOrderService $erpOrderService
+        UpaymentsService $upaymentsService
     ) {
         $this->orderRepository = $orderRepository;
         $this->invoiceRepository = $invoiceRepository;
@@ -50,7 +48,6 @@ class OrderService
         $this->pointsService = $pointsService;
         $this->customerRepository = $customerRepository;
         $this->upaymentsService = $upaymentsService;
-        $this->erpOrderService = $erpOrderService;
     }
 
     /**
@@ -302,9 +299,9 @@ class OrderService
             // Reload order with relationships
             $order->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice', 'customerAddress']);
 
-            // ERP: cash on delivery or wallet — push order after successful creation
+            // ERP dispatch is moved after response so order creation is not blocked by ERP slowness.
             if (in_array($order->payment_method, ['cash', 'wallet'], true)) {
-                $this->erpOrderService->dispatchAfterCashOrWalletOrderCreated($order);
+                DispatchErpOrderJob::dispatchAfterResponse($order->id);
             }
 
             // Admin (call center) orders: notify customer when paying cash on delivery or wallet (same flow as app/web for non-online)
