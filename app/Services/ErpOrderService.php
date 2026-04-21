@@ -17,6 +17,7 @@ class ErpOrderService
     private int $connectTimeout;
     private int $retries;
     private int $retrySleepMs;
+    private bool $logFailedPayload;
 
     public function __construct()
     {
@@ -27,6 +28,7 @@ class ErpOrderService
         $this->connectTimeout = (int) config('services.erp.connect_timeout', 10);
         $this->retries = (int) config('services.erp.retries', 2);
         $this->retrySleepMs = (int) config('services.erp.retry_sleep_ms', 1000);
+        $this->logFailedPayload = (bool) config('services.erp.log_failed_payload', false);
     }
 
     /**
@@ -230,6 +232,14 @@ class ErpOrderService
                 );
 
                 if ($isLastAttempt) {
+                    if ($this->shouldLogFailedPayload($method, $json)) {
+                        Log::channel('erp')->warning('ERP final failed payload', array_merge($logContext, [
+                            'attempt'      => $attempt,
+                            'max_attempts' => $maxAttempts,
+                            'payload'      => $json,
+                        ]));
+                    }
+
                     return [
                         'success' => false,
                         'status'  => null,
@@ -264,6 +274,11 @@ class ErpOrderService
             'body'    => null,
             'error'   => 'ERP request failed unexpectedly before execution.',
         ];
+    }
+
+    private function shouldLogFailedPayload(string $method, mixed $json): bool
+    {
+        return $this->logFailedPayload && $method === 'POST' && is_array($json);
     }
 
     private function buildEndpoint(string $path): string

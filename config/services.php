@@ -42,6 +42,7 @@ return [
         'connect_timeout' => (int) env('ERP_CONNECT_TIMEOUT', 10),
         'retries'         => (int) env('ERP_RETRIES', 2),
         'retry_sleep_ms'  => (int) env('ERP_RETRY_SLEEP_MS', 1000),
+        'log_failed_payload' => env('ERP_LOG_FAILED_PAYLOAD', false),
     ],
 
     /*
