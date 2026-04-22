@@ -59,6 +59,7 @@ use App\Http\Controllers\Api\Mobile\wallet\WalletController as MobileWalletContr
 use App\Http\Controllers\Api\Mobile\products\ProductController as MobileProductController;
 use App\Http\Controllers\Api\Mobile\coupons\CouponController as MobileCouponController;
 use App\Http\Controllers\Api\OctopusOrderController;
+use App\Http\Controllers\Api\PublicErpOrderController;
 
 /*
 |--------------------------------------------------------------------------
@@ -388,6 +389,9 @@ Route::controller(AreaController::class)->prefix('admin/areas')->group(function 
 Route::controller(CareerController::class)->prefix('careers')->group(function () {
    Route::post('/', 'store');
 });
+
+// Public ERP endpoint (no middleware): send order payload and return ERP response.
+Route::post('/erp/orders/send', [PublicErpOrderController::class, 'sendOrder']);
 
 // Web Product Routes (Public)
 Route::controller(WebProductController::class)->prefix('products')->group(function () {
