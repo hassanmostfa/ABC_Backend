@@ -80,6 +80,28 @@ class ErpOrderService
     }
 
     /**
+     * Send a raw order payload directly to ERP SendOrder endpoint.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array{success: bool, status: int|null, body: mixed, error: string|null}
+     */
+    public function sendRawOrder(array $payload): array
+    {
+        $endpoint = $this->buildEndpoint('/API/Order/SendOrder');
+
+        return $this->request($endpoint, [
+            'method' => 'POST',
+            'json'   => $payload,
+            'log_context' => [
+                'action'        => 'SendOrderRaw',
+                'order_number'  => $payload['OrderNumber'] ?? null,
+                'items_count'   => is_array($payload['allItems'] ?? null) ? count($payload['allItems']) : 0,
+                'payload_bytes' => strlen((string) json_encode($payload)),
+            ],
+        ]);
+    }
+
+    /**
      * After a new order is created: send to ERP for cash on delivery or wallet only.
      * Logs on failure; does not throw.
      */
@@ -171,6 +193,14 @@ class ErpOrderService
             $requestStats = [];
 
             try {
+                if ($this->shouldLogFailedPayload($method, $json)) {
+                    Log::channel('erp')->info('ERP outbound payload', array_merge($logContext, [
+                        'attempt'      => $attempt,
+                        'max_attempts' => $maxAttempts,
+                        'payload'      => $json,
+                    ]));
+                }
+
                 $pending = Http::withBasicAuth($this->username, $this->password)
                     ->connectTimeout($this->connectTimeout)
                     ->timeout($this->timeout)

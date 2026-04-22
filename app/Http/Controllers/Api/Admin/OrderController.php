@@ -13,6 +13,7 @@ use App\Services\OrderCancellationService;
 use App\Services\OrderService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 
 class OrderController extends BaseApiController
 {
@@ -102,10 +103,10 @@ class OrderController extends BaseApiController
             
             // Set payment_link as a temporary attribute on the order if available
             if (isset($result['payment_link'])) {
-                \Log::info('Payment link found in result for order ' . $result['order']->id . ': ' . $result['payment_link']);
+                Log::info('Payment link found in result for order ' . $result['order']->id . ': ' . $result['payment_link']);
                 $result['order']->payment_link = $result['payment_link'];
             } else {
-                \Log::info('Payment link NOT found in result for order ' . $result['order']->id . '. Result keys: ' . implode(', ', array_keys($result)));
+                Log::info('Payment link NOT found in result for order ' . $result['order']->id . '. Result keys: ' . implode(', ', array_keys($result)));
             }
             
             return $this->createdResponse(new OrderResource($result['order']), 'Order created successfully');
@@ -264,5 +265,6 @@ class OrderController extends BaseApiController
             'payment_link' => $result['payment_link'],
         ], $result['message']);
     }
+
 }
 
