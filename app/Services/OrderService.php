@@ -259,6 +259,14 @@ class OrderService
             if ($paymentGatewaySrc !== null && $paymentGatewaySrc !== '') {
                 $orderData['payment_gateway_src'] = $paymentGatewaySrc;
             }
+            
+            // Capture created_by information from authenticated user
+            $user = auth()->user();
+            if ($user) {
+                $orderData['created_by_id'] = $user->id;
+                $orderData['created_by_type'] = get_class($user);
+            }
+            
             $order = $this->orderRepository->create($orderData);
 
             // Attach all offers to the order (many-to-many) with quantities
