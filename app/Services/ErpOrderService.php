@@ -121,6 +121,8 @@ class ErpOrderService
                 'error'        => $result['error'],
                 'http_status'  => $result['status'],
             ]);
+        } else {
+            $order->update(['is_sent_to_erp' => true]);
         }
     }
 
@@ -149,6 +151,8 @@ class ErpOrderService
                 'error'        => $result['error'],
                 'http_status'  => $result['status'],
             ]);
+        } else {
+            $order->update(['is_sent_to_erp' => true]);
         }
     }
 
@@ -427,7 +431,16 @@ class ErpOrderService
             $parts[] = 'Block ' . $addr->block;
         }
 
-        return implode(' | ', array_filter($parts));
+        $addressText = implode(' ', array_filter($parts));
+        
+        $customerPhone = $order->customer?->phone ?? '';
+        
+        $notes = 'address : ' . $addressText;
+        if (!empty($customerPhone)) {
+            $notes .= ' - Phone: ' . $customerPhone;
+        }
+
+        return $notes;
     }
 
     /**
@@ -436,12 +449,12 @@ class ErpOrderService
     private function buildItems(Order $order): array
     {
         return $order->items->map(function ($item) {
-            // itemCode: prefer the variant's short_item (ERP item code), fall back to sku
-            $itemCode = $item->variant?->short_item ?? $item->sku ?? '';
+            $itemCode = $item->variant?->sku ?? '';
+            $uom = $item->variant?->short_item ?? '';
 
             return [
                 'itemCode'       => $itemCode,
-                'uom'            => 'EA',
+                'uom'            => $uom,
                 'price'          => round((float) $item->unit_price, 3),
                 'quantity'       => (int) $item->quantity,
                 'isFOC'          => false,

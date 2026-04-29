@@ -57,7 +57,7 @@ class ProductController extends BaseApiController
         
         // Load relationships for all products
         $products->getCollection()->load(['variants' => function ($query) {
-            $query->where('is_active', true); // Only active variants for public API
+            $query->where('is_active', true)->orderBy('sku', 'asc'); // Only active variants for public API
         }, 'category', 'subcategory']);
 
         // Transform data using ProductResource
@@ -119,7 +119,7 @@ class ProductController extends BaseApiController
         
         // Load relationships for all products
         $products->getCollection()->load(['variants' => function ($query) {
-            $query->where('is_active', true); // Only active variants for public API
+            $query->where('is_active', true)->orderBy('sku', 'asc'); // Only active variants for public API
         }, 'category', 'subcategory']);
 
         // Flatten variants into separate products
@@ -175,7 +175,7 @@ class ProductController extends BaseApiController
 
         // Load relationships
         $product->load(['variants' => function ($query) {
-            $query->where('is_active', true); // Only active variants for public API
+            $query->where('is_active', true)->orderBy('sku', 'asc'); // Only active variants for public API
         }, 'category', 'subcategory']);
 
         // Transform data using WebProductDetailsResource
@@ -203,7 +203,7 @@ class ProductController extends BaseApiController
         $activeProducts = $products->filter(function ($product) {
             return $product->is_active;
         })->load(['variants' => function ($query) {
-            $query->where('is_active', true); // Only active variants for public API
+            $query->where('is_active', true)->orderBy('sku', 'asc'); // Only active variants for public API
         }, 'category', 'subcategory']);
 
         $total = $activeProducts->count();
@@ -252,7 +252,7 @@ class ProductController extends BaseApiController
         $activeProducts = $products->filter(function ($product) {
             return $product->is_active;
         })->load(['variants' => function ($query) {
-            $query->where('is_active', true); // Only active variants for public API
+            $query->where('is_active', true)->orderBy('sku', 'asc'); // Only active variants for public API
         }, 'category', 'subcategory']);
 
         $total = $activeProducts->count();
@@ -301,8 +301,9 @@ class ProductController extends BaseApiController
         $products = Product::whereIn('id', $topProducts)
             ->where('is_active', true)
             ->with(['variants' => function ($query) {
-                $query->where('is_active', true);
+                $query->where('is_active', true)->orderBy('sku', 'asc');
             }, 'category', 'subcategory'])
+            ->orderBy('sku', 'asc')
             ->get();
 
         // Sort products by the order they appear in topProducts array

@@ -65,8 +65,8 @@ class ProductRepository implements ProductRepositoryInterface
             $query->where('price', '<=', $filters['max_price']);
         }
 
-        // Default sorting by created_at desc
-        $query->orderBy('created_at', 'desc');
+        // Default sorting by product SKU ascending
+        $query->orderBy('sku', 'asc');
 
         return $query->paginate($perPage);
     }
@@ -76,7 +76,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getAll(): Collection
     {
-        return $this->model->with(['category', 'subcategory', 'variants'])->get();
+        return $this->model->with(['category', 'subcategory', 'variants'])->orderBy('sku', 'asc')->get();
     }
 
     /**
@@ -139,6 +139,7 @@ class ProductRepository implements ProductRepositoryInterface
     {
         return $this->model->with(['category', 'subcategory', 'variants'])
                           ->where('is_active', true)
+                          ->orderBy('sku', 'asc')
                           ->get();
     }
 
@@ -149,6 +150,7 @@ class ProductRepository implements ProductRepositoryInterface
     {
         return $this->model->with(['category', 'subcategory', 'variants'])
                           ->where('is_active', false)
+                          ->orderBy('sku', 'asc')
                           ->get();
     }
 
@@ -159,6 +161,7 @@ class ProductRepository implements ProductRepositoryInterface
     {
         return $this->model->with(['category', 'subcategory', 'variants'])
                           ->where('category_id', $categoryId)
+                          ->orderBy('sku', 'asc')
                           ->get();
     }
 
@@ -169,6 +172,7 @@ class ProductRepository implements ProductRepositoryInterface
     {
         return $this->model->with(['category', 'subcategory', 'variants'])
                           ->where('subcategory_id', $subcategoryId)
+                          ->orderBy('sku', 'asc')
                           ->get();
     }
 
@@ -179,6 +183,7 @@ class ProductRepository implements ProductRepositoryInterface
     {
         return $this->model->with(['category', 'subcategory', 'variants'])
                           ->where('has_variants', true)
+                          ->orderBy('sku', 'asc')
                           ->get();
     }
 
@@ -189,6 +194,7 @@ class ProductRepository implements ProductRepositoryInterface
     {
         return $this->model->with(['category', 'subcategory', 'variants'])
                           ->where('has_variants', false)
+                          ->orderBy('sku', 'asc')
                           ->get();
     }
 }

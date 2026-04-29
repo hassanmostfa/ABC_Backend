@@ -23,6 +23,9 @@ class Order extends Model
         'delivery_time',
         'payment_method',
         'payment_gateway_src',
+        'is_sent_to_erp',
+        'created_by_id',
+        'created_by_type',
     ];
 
 
@@ -30,6 +33,7 @@ class Order extends Model
         'total_amount' => 'decimal:2',
         'offer_snapshot' => 'array',
         'delivery_date' => 'date',
+        'is_sent_to_erp' => 'boolean',
     ];
 
     /**
@@ -86,5 +90,13 @@ class Order extends Model
     public function customerAddress()
     {
         return $this->belongsTo(CustomerAddress::class, 'customer_address_id');
+    }
+
+    /**
+     * Get the creator of the order (polymorphic relation: Admin, Customer, User, etc.)
+     */
+    public function createdBy()
+    {
+        return $this->morphTo('created_by');
     }
 }

@@ -86,13 +86,39 @@ class CustomerController extends BaseApiController
     {
         $request->validate([
             'name' => 'required|string|max:255',
-            'phone' => 'required|string|max:20',
-            'email' => 'nullable|email|max:255',
+            'phone' => 'required|string|max:20|unique:customers,phone',
+            'email' => 'nullable|email|max:255|unique:customers,email',
             'is_active' => 'boolean',
             'points' => 'integer|min:0',
+            'addresses' => 'nullable|array',
+            'addresses.*.country_id' => 'required_with:addresses|integer|exists:countries,id',
+            'addresses.*.governorate_id' => 'required_with:addresses|integer|exists:governorates,id',
+            'addresses.*.area_id' => 'required_with:addresses|integer|exists:areas,id',
+            'addresses.*.lat' => 'nullable|numeric|between:-90,90',
+            'addresses.*.lng' => 'nullable|numeric|between:-180,180',
+            'addresses.*.type' => 'nullable|in:apartment,house,office',
+            'addresses.*.building_name' => 'nullable|string|max:255',
+            'addresses.*.apartment_number' => 'nullable|string|max:255',
+            'addresses.*.company' => 'nullable|string|max:255',
+            'addresses.*.street' => 'nullable|string|max:255',
+            'addresses.*.house' => 'nullable|string|max:255',
+            'addresses.*.block' => 'nullable|string|max:255',
+            'addresses.*.floor' => 'nullable|string|max:255',
+            'addresses.*.phone_number' => 'nullable|string|max:20',
+            'addresses.*.additional_directions' => 'nullable|string',
+            'addresses.*.address_label' => 'nullable|string|max:255',
         ]);
 
-        $customer = $this->customerRepository->create($request->all());
+        $customerData = $request->except('addresses');
+        $customer = $this->customerRepository->create($customerData);
+        
+        // Create addresses if provided
+        if ($request->has('addresses') && is_array($request->addresses)) {
+            foreach ($request->addresses as $addressData) {
+                $addressData['customer_id'] = $customer->id;
+                $customer->addresses()->create($addressData);
+            }
+        }
         
         // Load relationships
         $customer->load(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area']);
@@ -124,8 +150,8 @@ class CustomerController extends BaseApiController
     {
         $request->validate([
             'name' => 'sometimes|required|string|max:255|regex:/^[a-zA-Z\s]+$/',
-            'phone' => 'sometimes|required|string|max:20',
-            'email' => 'nullable|email|max:255',
+            'phone' => 'sometimes|required|string|max:20|unique:customers,phone,' . $id,
+            'email' => 'nullable|email|max:255|unique:customers,email,' . $id,
             'is_active' => 'boolean',
             'points' => 'integer|min:0',
         ]);

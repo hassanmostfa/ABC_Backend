@@ -40,7 +40,7 @@ class ProductController extends BaseApiController
         $products = $this->productRepository->getAllPaginated($filters, $perPage);
 
         $products->getCollection()->load([
-            'variants' => fn($q) => $q->where('is_active', true),
+            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sku', 'asc'),
             'category',
             'subcategory',
         ]);
@@ -80,7 +80,7 @@ class ProductController extends BaseApiController
         $products = $this->productRepository->getAllPaginated($filters, $perPage);
 
         $products->getCollection()->load([
-            'variants' => fn($q) => $q->where('is_active', true),
+            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sku', 'asc'),
             'category',
             'subcategory',
         ]);
@@ -114,10 +114,11 @@ class ProductController extends BaseApiController
         $products = Product::whereIn('id', $topProductIds)
             ->where('is_active', true)
             ->with([
-                'variants' => fn($q) => $q->where('is_active', true),
+                'variants' => fn($q) => $q->where('is_active', true)->orderBy('sku', 'asc'),
                 'category',
                 'subcategory',
             ])
+            ->orderBy('sku', 'asc')
             ->get()
             ->sortBy(fn($p) => array_search($p->id, $topProductIds))
             ->values();
@@ -137,7 +138,7 @@ class ProductController extends BaseApiController
         }
 
         $product->load([
-            'variants' => fn($q) => $q->where('is_active', true),
+            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sku', 'asc'),
             'category',
             'subcategory',
         ]);
@@ -154,7 +155,7 @@ class ProductController extends BaseApiController
 
         $activeProducts = $products->filter(fn($p) => $p->is_active);
         $activeProducts->load([
-            'variants' => fn($q) => $q->where('is_active', true),
+            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sku', 'asc'),
             'category',
             'subcategory',
         ]);
@@ -171,7 +172,7 @@ class ProductController extends BaseApiController
 
         $activeProducts = $products->filter(fn($p) => $p->is_active);
         $activeProducts->load([
-            'variants' => fn($q) => $q->where('is_active', true),
+            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sku', 'asc'),
             'category',
             'subcategory',
         ]);

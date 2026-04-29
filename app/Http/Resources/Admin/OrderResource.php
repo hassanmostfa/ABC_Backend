@@ -49,6 +49,8 @@ class OrderResource extends JsonResource
             'src' => $this->payment_gateway_src,
             'order_number' => $this->order_number,
             'status' => $this->status,
+            'is_sent_to_erp' => (bool) $this->is_sent_to_erp,
+            'created_by_type' => $this->created_by_type ? strtolower(class_basename($this->created_by_type)) : null,
             'total_amount' => (float) $this->total_amount,
             'offer_snapshot' => $this->offer_snapshot,
             'delivery_type' => $this->delivery_type,
@@ -74,6 +76,30 @@ class OrderResource extends JsonResource
                     'name_en' => $this->charity->name_en,
                     'phone' => $this->charity->phone,
                 ];
+            }),
+            'created_by' => $this->whenLoaded('createdBy', function () {
+                if (!$this->createdBy) {
+                    return null;
+                }
+                
+                $creatorData = [
+                    'id' => $this->createdBy->id,
+                    'type' => class_basename($this->created_by_type),
+                ];
+                
+                if ($this->created_by_type === 'App\\Models\\Admin') {
+                    $creatorData['name'] = $this->createdBy->name ?? null;
+                    $creatorData['email'] = $this->createdBy->email ?? null;
+                } elseif ($this->created_by_type === 'App\\Models\\Customer') {
+                    $creatorData['name'] = $this->createdBy->name ?? null;
+                    $creatorData['phone'] = $this->createdBy->phone ?? null;
+                    $creatorData['email'] = $this->createdBy->email ?? null;
+                } else {
+                    $creatorData['name'] = $this->createdBy->name ?? null;
+                    $creatorData['email'] = $this->createdBy->email ?? null;
+                }
+                
+                return $creatorData;
             }),
             'offers' => $this->whenLoaded('offers', function () {
                 return $this->offers->map(function ($offer) {

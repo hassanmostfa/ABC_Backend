@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use App\Models\Area;
+use App\Models\Country;
 use App\Models\Governorate;
 
 class KuwaitAreaSeeder extends Seeder
@@ -14,8 +15,20 @@ class KuwaitAreaSeeder extends Seeder
      */
     public function run(): void
     {
+        // Resolve Kuwait dynamically instead of assuming country_id = 1.
+        $kuwaitCountryId = Country::where('name_en', 'Kuwait')->value('id');
+
+        if (!$kuwaitCountryId) {
+            $this->call(KuwaitGovernorateSeeder::class);
+            $kuwaitCountryId = Country::where('name_en', 'Kuwait')->value('id');
+        }
+
+        if (!$kuwaitCountryId) {
+            throw new \RuntimeException('Kuwait country was not found while seeding areas.');
+        }
+
         // Get governorate IDs
-        $governorates = Governorate::where('country_id', 1)->get()->keyBy('name_en');
+        $governorates = Governorate::where('country_id', $kuwaitCountryId)->get()->keyBy('name_en');
         
         $areas = [
             // Al Ahmadi Governorate Areas
