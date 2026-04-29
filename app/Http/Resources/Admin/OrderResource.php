@@ -2,6 +2,8 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Models\Admin;
+use App\Models\Customer;
 use App\Traits\CustomerUnreadNotificationsCountTrait;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -77,30 +79,7 @@ class OrderResource extends JsonResource
                     'phone' => $this->charity->phone,
                 ];
             }),
-            'created_by' => $this->whenLoaded('createdBy', function () {
-                if (!$this->createdBy) {
-                    return null;
-                }
-                
-                $creatorData = [
-                    'id' => $this->createdBy->id,
-                    'type' => class_basename($this->created_by_type),
-                ];
-                
-                if ($this->created_by_type === 'App\\Models\\Admin') {
-                    $creatorData['name'] = $this->createdBy->name ?? null;
-                    $creatorData['email'] = $this->createdBy->email ?? null;
-                } elseif ($this->created_by_type === 'App\\Models\\Customer') {
-                    $creatorData['name'] = $this->createdBy->name ?? null;
-                    $creatorData['phone'] = $this->createdBy->phone ?? null;
-                    $creatorData['email'] = $this->createdBy->email ?? null;
-                } else {
-                    $creatorData['name'] = $this->createdBy->name ?? null;
-                    $creatorData['email'] = $this->createdBy->email ?? null;
-                }
-                
-                return $creatorData;
-            }),
+            'created_by' => $this->resolveCreatedBy(),
             'offers' => $this->whenLoaded('offers', function () {
                 return $this->offers->map(function ($offer) {
                     return [
@@ -226,6 +205,52 @@ class OrderResource extends JsonResource
             'created_at' => \format_datetime_app_tz($this->created_at),
             'updated_at' => \format_datetime_app_tz($this->updated_at),
         ];
+    }
+
+    private function resolveCreatedBy(): ?array
+    {
+        if (empty($this->created_by_id) || empty($this->created_by_type)) {
+            return null;
+        }
+
+        $creator = $this->createdBy;
+        if (!$creator) {
+            $creator = $this->findCreatorByTypeAndId();
+        }
+
+        if (!$creator) {
+            return null;
+        }
+
+        $creatorData = [
+            'id' => $creator->id,
+            'type' => class_basename($this->created_by_type),
+            'name' => $creator->name ?? null,
+            'email' => $creator->email ?? null,
+        ];
+
+        if ($this->created_by_type === Customer::class) {
+            $creatorData['phone'] = $creator->phone ?? null;
+        }
+
+        return $creatorData;
+    }
+
+    private function findCreatorByTypeAndId(): ?object
+    {
+        if ($this->created_by_type === Admin::class) {
+            return Admin::query()->find($this->created_by_id);
+        }
+
+        if ($this->created_by_type === Customer::class) {
+            return Customer::query()->find($this->created_by_id);
+        }
+
+        if (class_exists($this->created_by_type)) {
+            return $this->created_by_type::query()->find($this->created_by_id);
+        }
+
+        return null;
     }
 }
 
