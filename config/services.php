@@ -45,6 +45,18 @@ return [
         'log_failed_payload' => env('ERP_LOG_FAILED_PAYLOAD', false),
     ],
 
+    'warehouse_stock' => [
+        'url'             => env('WAREHOUSE_STOCK_URL', 'http://31.214.1.139:61402'),
+        'username'        => env('WAREHOUSE_STOCK_USERNAME', 'SONIC'),
+        'password'        => env('WAREHOUSE_STOCK_PASSWORD', 'S0n!c@AP!'),
+        'endpoint'        => env('WAREHOUSE_STOCK_ENDPOINT', '/API/order/GetWHStock'),
+        'default_code'    => env('WAREHOUSE_STOCK_DEFAULT_CODE', 'FGW1'),
+        'timeout'         => (int) env('WAREHOUSE_STOCK_TIMEOUT', 30),
+        'connect_timeout' => (int) env('WAREHOUSE_STOCK_CONNECT_TIMEOUT', 10),
+        'retries'         => (int) env('WAREHOUSE_STOCK_RETRIES', 2),
+        'retry_sleep_ms'  => (int) env('WAREHOUSE_STOCK_RETRY_SLEEP_MS', 1000),
+    ],
+
     /*
     | Octopus integration: POST /api/octopus/orders
     | Send Authorization: Bearer {OCTOPUS_API_TOKEN} or X-Access-Token: {token}

@@ -60,6 +60,7 @@ use App\Http\Controllers\Api\Mobile\products\ProductController as MobileProductC
 use App\Http\Controllers\Api\Mobile\coupons\CouponController as MobileCouponController;
 use App\Http\Controllers\Api\OctopusOrderController;
 use App\Http\Controllers\Api\PublicErpOrderController;
+use App\Http\Controllers\Api\WarehouseStockController;
 
 /*
 |--------------------------------------------------------------------------
@@ -392,6 +393,9 @@ Route::controller(CareerController::class)->prefix('careers')->group(function ()
 
 // Public ERP endpoint (no middleware): send order payload and return ERP response.
 Route::post('/erp/orders/send', [PublicErpOrderController::class, 'sendOrder']);
+
+// Public Warehouse Stock endpoint (no middleware): fetch warehouse stock data.
+Route::get('/warehouse/stock', [WarehouseStockController::class, 'getStock']);
 
 // Web Product Routes (Public)
 Route::controller(WebProductController::class)->prefix('products')->group(function () {
