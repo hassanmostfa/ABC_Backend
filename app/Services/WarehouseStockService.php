@@ -69,6 +69,7 @@ class WarehouseStockService
                     ->connectTimeout($this->connectTimeout)
                     ->timeout($this->timeout)
                     ->withHeaders([
+                        'Accept' => 'application/json',
                         'Connection' => 'close',
                         'Expect' => '',
                     ])
@@ -95,26 +96,32 @@ class WarehouseStockService
                                 'downloaded_bytes'   => $handlerStats['size_download'] ?? null,
                             ];
                         },
-                    ])
-                    ->acceptJson();
+                    ]);
 
                 $response = $pending->get($url, $query);
 
                 $success = $response->successful();
+                
+                $bodyData = $response->json();
+                if ($bodyData === null && !empty($response->body())) {
+                    $bodyData = $response->body();
+                }
 
                 Log::channel('erp')->info('Warehouse GetWHStock', array_merge($logContext, [
                     'http_status'   => $response->status(),
                     'success'       => $success,
                     'attempt'       => $attempt,
                     'max_attempts'  => $maxAttempts,
+                    'query'         => $query,
                     'stats'         => $requestStats,
-                    'response'      => $response->json() ?? $response->body(),
+                    'response'      => $bodyData,
+                    'response_raw'  => $response->body(),
                 ]));
 
                 return [
                     'success' => $success,
                     'status'  => $response->status(),
-                    'body'    => $response->json() ?? $response->body(),
+                    'body'    => $bodyData,
                     'error'   => $success ? null : 'Warehouse API responded with HTTP ' . $response->status(),
                 ];
             } catch (\Illuminate\Http\Client\ConnectionException $e) {
