@@ -74,10 +74,14 @@ class WarehouseStockService
                         'Expect' => '',
                     ])
                     ->withOptions([
+                        'verify' => false,
                         'version' => 1.1,
                         'curl' => [
                             CURLOPT_FORBID_REUSE => true,
                             CURLOPT_FRESH_CONNECT => true,
+                            CURLOPT_SSL_VERIFYPEER => false,
+                            CURLOPT_SSL_VERIFYHOST => false,
+                            CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
                         ],
                         'on_stats' => function (TransferStats $stats) use (&$requestStats): void {
                             $handlerStats = $stats->getHandlerStats();

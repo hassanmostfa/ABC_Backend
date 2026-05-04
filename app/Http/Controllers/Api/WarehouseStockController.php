@@ -38,4 +38,28 @@ class WarehouseStockController extends BaseApiController
             'warehouse_status' => $result['status'],
         ], 'Warehouse stock fetched successfully');
     }
+
+    /**
+     * Test warehouse API connection.
+     */
+    public function testConnection(): JsonResponse
+    {
+        $config = config('services.warehouse_stock');
+        
+        $startTime = microtime(true);
+        $result = $this->warehouseStockService->getStock($config['default_code'] ?? 'FGW1');
+        $duration = round((microtime(true) - $startTime) * 1000, 2);
+
+        return $this->successResponse([
+            'config' => [
+                'url' => $config['url'],
+                'endpoint' => $config['endpoint'],
+                'default_code' => $config['default_code'],
+                'timeout' => $config['timeout'],
+                'connect_timeout' => $config['connect_timeout'],
+            ],
+            'request_duration_ms' => $duration,
+            'result' => $result,
+        ], 'Connection test completed');
+    }
 }

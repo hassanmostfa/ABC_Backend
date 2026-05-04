@@ -396,6 +396,7 @@ Route::post('/erp/orders/send', [PublicErpOrderController::class, 'sendOrder']);
 
 // Public Warehouse Stock endpoint (no middleware): fetch warehouse stock data.
 Route::get('/warehouse/stock', [WarehouseStockController::class, 'getStock']);
+Route::get('/warehouse/test-connection', [WarehouseStockController::class, 'testConnection']);
 
 // Web Product Routes (Public)
 Route::controller(WebProductController::class)->prefix('products')->group(function () {
