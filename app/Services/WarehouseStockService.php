@@ -67,6 +67,10 @@ class WarehouseStockService
             return $this->requestUsingCurlBinary($url, $query, $logContext);
         }
 
+        if ($this->driver === 'stream') {
+            return $this->requestUsingPhpStream($url, $query, $logContext);
+        }
+
         $maxAttempts = max(1, $this->retries + 1);
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
@@ -259,5 +263,100 @@ class WarehouseStockService
             'body' => $body,
             'error' => $success ? null : 'Warehouse curl request failed with exit code ' . $exitCode,
         ];
+    }
+
+    /**
+     * Use PHP streams when the Laravel HTTP client hangs and exec() is disabled.
+     *
+     * @param  array<string, scalar|array|null>  $query
+     * @param  array<string, mixed>  $logContext
+     * @return array{success: bool, status: int|null, body: mixed, error: string|null}
+     */
+    private function requestUsingPhpStream(string $url, array $query, array $logContext): array
+    {
+        if (!ini_get('allow_url_fopen')) {
+            return [
+                'success' => false,
+                'status' => null,
+                'body' => null,
+                'error' => 'PHP allow_url_fopen is disabled; cannot run stream request.',
+            ];
+        }
+
+        $fullUrl = $url . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+        $headers = [
+            'Accept: application/json',
+            'Authorization: Basic ' . base64_encode($this->username . ':' . $this->password),
+            'Connection: close',
+        ];
+
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'header' => implode("\r\n", $headers),
+                'timeout' => $this->timeout,
+                'ignore_errors' => true,
+                'protocol_version' => 1.1,
+            ],
+        ]);
+
+        $startedAt = microtime(true);
+        $rawBody = @file_get_contents($fullUrl, false, $context);
+        $durationMs = round((microtime(true) - $startedAt) * 1000, 2);
+        $status = $this->resolveStreamStatus($http_response_header ?? []);
+
+        if ($rawBody === false) {
+            $error = error_get_last();
+
+            Log::channel('erp')->error('Warehouse GetWHStock stream failed', array_merge($logContext, [
+                'http_status' => $status,
+                'duration_ms' => $durationMs,
+                'query' => $query,
+                'error' => $error['message'] ?? 'Unknown stream request error',
+            ]));
+
+            return [
+                'success' => false,
+                'status' => $status,
+                'body' => null,
+                'error' => $error['message'] ?? 'Unknown stream request error',
+            ];
+        }
+
+        $body = json_decode($rawBody, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $body = $rawBody !== '' ? $rawBody : null;
+        }
+
+        $success = $status !== null && $status >= 200 && $status < 300;
+
+        Log::channel('erp')->info('Warehouse GetWHStock stream', array_merge($logContext, [
+            'http_status' => $status,
+            'success' => $success,
+            'duration_ms' => $durationMs,
+            'query' => $query,
+            'response' => $body,
+        ]));
+
+        return [
+            'success' => $success,
+            'status' => $status,
+            'body' => $body,
+            'error' => $success ? null : 'Warehouse stream request failed with HTTP ' . ($status ?? 'unknown'),
+        ];
+    }
+
+    /**
+     * @param  array<int, string>  $headers
+     */
+    private function resolveStreamStatus(array $headers): ?int
+    {
+        foreach ($headers as $header) {
+            if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $header, $matches) === 1) {
+                return (int) $matches[1];
+            }
+        }
+
+        return null;
     }
 }
