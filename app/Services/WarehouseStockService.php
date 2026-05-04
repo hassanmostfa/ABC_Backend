@@ -11,6 +11,8 @@ class WarehouseStockService
     private string $baseUrl;
     private string $endpoint;
     private string $defaultCode;
+    private string $driver;
+    private string $curlPath;
     private string $username;
     private string $password;
     private int $timeout;
@@ -23,6 +25,8 @@ class WarehouseStockService
         $this->baseUrl  = rtrim(config('services.warehouse_stock.url', ''), '/');
         $this->endpoint = config('services.warehouse_stock.endpoint', '/API/order/GetWHStock');
         $this->defaultCode = config('services.warehouse_stock.default_code', 'FGW1');
+        $this->driver = config('services.warehouse_stock.driver', 'curl');
+        $this->curlPath = config('services.warehouse_stock.curl_path', 'curl');
         $this->username = config('services.warehouse_stock.username', '');
         $this->password = config('services.warehouse_stock.password', '');
         $this->timeout  = (int) config('services.warehouse_stock.timeout', 30);
@@ -58,6 +62,10 @@ class WarehouseStockService
     {
         $url = $this->buildUrl();
         $logContext = array_merge(['method' => 'GET', 'url' => $url], $options['log_context'] ?? []);
+
+        if ($this->driver === 'curl') {
+            return $this->requestUsingCurlBinary($url, $query, $logContext);
+        }
 
         $maxAttempts = max(1, $this->retries + 1);
 
@@ -181,5 +189,75 @@ class WarehouseStockService
     private function buildUrl(): string
     {
         return $this->baseUrl . $this->endpoint;
+    }
+
+    /**
+     * Use the server curl binary because it is proven to reach the ERP API quickly from SSH.
+     *
+     * @param  array<string, scalar|array|null>  $query
+     * @param  array<string, mixed>  $logContext
+     * @return array{success: bool, status: int|null, body: mixed, error: string|null}
+     */
+    private function requestUsingCurlBinary(string $url, array $query, array $logContext): array
+    {
+        if (!function_exists('exec')) {
+            return [
+                'success' => false,
+                'status' => null,
+                'body' => null,
+                'error' => 'PHP exec function is disabled; cannot run curl binary.',
+            ];
+        }
+
+        $fullUrl = $url . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+        $command = implode(' ', [
+            escapeshellcmd($this->curlPath),
+            '-sS',
+            '--connect-timeout',
+            escapeshellarg((string) $this->connectTimeout),
+            '--max-time',
+            escapeshellarg((string) $this->timeout),
+            '-H',
+            escapeshellarg('Accept: application/json'),
+            '-u',
+            escapeshellarg($this->username . ':' . $this->password),
+            '-w',
+            escapeshellarg("\n%{http_code}"),
+            escapeshellarg($fullUrl),
+        ]);
+
+        $startedAt = microtime(true);
+        $output = [];
+        $exitCode = 0;
+
+        exec($command . ' 2>&1', $output, $exitCode);
+
+        $durationMs = round((microtime(true) - $startedAt) * 1000, 2);
+        $statusLine = array_pop($output);
+        $rawBody = trim(implode("\n", $output));
+        $status = is_numeric($statusLine) ? (int) $statusLine : null;
+        $body = json_decode($rawBody, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $body = $rawBody !== '' ? $rawBody : null;
+        }
+
+        $success = $exitCode === 0 && $status !== null && $status >= 200 && $status < 300;
+
+        Log::channel('erp')->info('Warehouse GetWHStock curl', array_merge($logContext, [
+            'http_status' => $status,
+            'success' => $success,
+            'exit_code' => $exitCode,
+            'duration_ms' => $durationMs,
+            'query' => $query,
+            'response' => $body,
+        ]));
+
+        return [
+            'success' => $success,
+            'status' => $status,
+            'body' => $body,
+            'error' => $success ? null : 'Warehouse curl request failed with exit code ' . $exitCode,
+        ];
     }
 }
