@@ -51,6 +51,8 @@ use App\Repositories\FaqRepositoryInterface;
 use App\Repositories\FaqRepository;
 use App\Repositories\CouponRepositoryInterface;
 use App\Repositories\CouponRepository;
+use App\Repositories\FeedbackRepositoryInterface;
+use App\Repositories\FeedbackRepository;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -85,6 +87,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(NotificationRepositoryInterface::class, NotificationRepository::class);
         $this->app->bind(FaqRepositoryInterface::class, FaqRepository::class);
         $this->app->bind(CouponRepositoryInterface::class, CouponRepository::class);
+        $this->app->bind(FeedbackRepositoryInterface::class, FeedbackRepository::class);
     }
 
     /**

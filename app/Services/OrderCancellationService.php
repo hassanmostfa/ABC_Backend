@@ -41,6 +41,14 @@ class OrderCancellationService
         $invoice = $this->invoiceRepository->getByOrder($orderId);
         $paymentMethod = $order->payment_method;
         $isPaid = $invoice && $invoice->status === 'paid';
+        $hasOnlineCompletedPayment = false;
+
+        if ($invoice) {
+            $hasOnlineCompletedPayment = $invoice->payments()
+                ->where('status', 'completed')
+                ->whereIn('method', ['online', 'card', 'bank_transfer'])
+                ->exists();
+        }
 
         $refundRequest = null;
 
@@ -65,22 +73,33 @@ class OrderCancellationService
                         $this->invoiceService->markAsRefunded($invoice->id);
                         break;
 
-                    case 'online_link':
-                        // Create refund request for admin approval - money returned when admin approves
-                        $refundRequest = RefundRequest::create([
-                            'order_id' => $order->id,
-                            'invoice_id' => $invoice->id,
-                            'customer_id' => $order->customer_id,
-                            'amount' => $invoice->amount_due,
-                            'status' => RefundRequest::STATUS_PENDING,
-                            'reason' => $reason,
-                        ]);
-                        $refundRequest->load(['order', 'customer']);
-                        $this->invoiceService->markAsCancelled($invoice->id);
-                        break;
-
                     default:
-                        // Unknown payment method - treat as cash (do nothing)
+                        // For online gateway payments, create refund request for admin approval.
+                        // This covers online_link orders and legacy/normalized payment method values.
+                        if ($paymentMethod === 'online_link' || $hasOnlineCompletedPayment) {
+                            $refundRequest = RefundRequest::where('order_id', $order->id)
+                                ->where('invoice_id', $invoice->id)
+                                ->where('status', RefundRequest::STATUS_PENDING)
+                                ->first();
+
+                            if (!$refundRequest) {
+                                $refundRequest = RefundRequest::create([
+                                    'order_id' => $order->id,
+                                    'invoice_id' => $invoice->id,
+                                    'customer_id' => $order->customer_id,
+                                    'amount' => $invoice->amount_due,
+                                    'status' => RefundRequest::STATUS_PENDING,
+                                    'reason' => $reason,
+                                ]);
+                            }
+
+                            $refundRequest->load(['order', 'customer']);
+                            $this->invoiceService->markAsCancelled($invoice->id);
+                            break;
+                        }
+
+                        // Unknown payment method with no online completed payment evidence: treat as cash.
+                        $this->invoiceService->markAsCancelled($invoice->id);
                         break;
                 }
             } else {

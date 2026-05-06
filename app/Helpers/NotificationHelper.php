@@ -17,8 +17,8 @@ if (!function_exists('sendNotification')) {
     function sendNotification(
         ?int $adminId = null,
         ?int $customerId = null,
-        string $title,
-        string $message,
+        string $title = '',
+        string $message = '',
         string $type = 'info',
         ?array $data = null,
         ?string $titleAr = null,

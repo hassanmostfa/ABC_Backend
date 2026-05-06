@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Exceptions\PendingOnlineInvoiceException;
 use App\Http\Controllers\Api\BaseApiController;
+use App\Http\Requests\Admin\BulkUpdateOrderStatusRequest;
 use App\Http\Requests\Admin\StoreOrderRequest;
 use App\Http\Requests\Admin\UpdateOrderRequest;
 use App\Http\Resources\Admin\OrderResource;
 use App\Http\Resources\Admin\RefundRequestResource;
+use App\Models\Order;
 use App\Repositories\OrderRepositoryInterface;
 use App\Services\OrderCancellationService;
 use App\Services\OrderService;
@@ -150,6 +152,32 @@ class OrderController extends BaseApiController
             return $this->notFoundResponse('Order not found');
         }
 
+        $newStatus = $request->input('status');
+        if ($newStatus === 'cancelled' && $order->status !== 'cancelled') {
+            try {
+                $result = $this->orderCancellationService->cancelOrder($id, $request->input('reason'));
+
+                if (!$result['success']) {
+                    return $this->errorResponse($result['message'], 400);
+                }
+
+                logAdminActivity('cancelled', 'Order', $id);
+
+                $response = [
+                    'order' => new OrderResource($this->orderRepository->findById($id)),
+                ];
+
+                if (isset($result['refund_request']) && $result['refund_request']) {
+                    $response['refund_request'] = new RefundRequestResource($result['refund_request']);
+                }
+
+                return $this->updatedResponse($response, $result['message']);
+            } catch (\Exception $e) {
+                $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 500;
+                return $this->errorResponse($e->getMessage(), $code);
+            }
+        }
+
         try {
             $result = $this->orderService->updateOrder($id, $request->validated());
             
@@ -264,6 +292,91 @@ class OrderController extends BaseApiController
             'order' => new OrderResource($order),
             'payment_link' => $result['payment_link'],
         ], $result['message']);
+    }
+
+    /**
+     * Bulk update order statuses.
+     */
+    public function bulkUpdateStatus(BulkUpdateOrderStatusRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+        $orderIds = $validated['order_ids'];
+        $status = $validated['status'];
+        $reason = $validated['reason'] ?? null;
+
+        $existingOrderIds = Order::query()
+            ->whereIn('id', $orderIds)
+            ->pluck('id')
+            ->all();
+
+        $notFoundOrderIds = array_values(array_diff($orderIds, $existingOrderIds));
+
+        $skippedOrderIds = Order::query()
+            ->whereIn('id', $existingOrderIds)
+            ->whereIn('status', ['completed', 'cancelled'])
+            ->pluck('id')
+            ->all();
+
+        $updatableOrderIds = array_values(array_diff($existingOrderIds, $skippedOrderIds));
+
+        $updatedCount = 0;
+        $updatedOrderIds = [];
+        $failedOrderIds = [];
+        $refundRequestIds = [];
+
+        if ($status === 'cancelled') {
+            foreach ($updatableOrderIds as $orderId) {
+                try {
+                    $result = $this->orderCancellationService->cancelOrder($orderId, $reason);
+
+                    if (!$result['success']) {
+                        $failedOrderIds[] = $orderId;
+                        continue;
+                    }
+
+                    $updatedCount++;
+                    $updatedOrderIds[] = $orderId;
+
+                    if (isset($result['refund_request']) && $result['refund_request']) {
+                        $refundRequestIds[] = $result['refund_request']->id;
+                    }
+                } catch (\Exception $e) {
+                    $failedOrderIds[] = $orderId;
+                }
+            }
+        } elseif (!empty($updatableOrderIds)) {
+            $updatedCount = Order::query()
+                ->whereIn('id', $updatableOrderIds)
+                ->update(['status' => $status]);
+            $updatedOrderIds = $updatableOrderIds;
+        }
+
+        logAdminActivity('bulk updated status', 'Order', null, [
+            'requested_order_ids' => $orderIds,
+            'status' => $status,
+            'reason' => $reason,
+            'updated_count' => $updatedCount,
+            'updated_order_ids' => $updatedOrderIds,
+            'skipped_order_ids' => $skippedOrderIds,
+            'not_found_order_ids' => $notFoundOrderIds,
+            'failed_order_ids' => $failedOrderIds,
+            'refund_request_ids' => $refundRequestIds,
+        ]);
+
+        return $this->successResponse([
+            'status' => $status,
+            'requested_count' => count($orderIds),
+            'updated_count' => $updatedCount,
+            'updated_order_ids' => $updatedOrderIds,
+            'skipped_count' => count($skippedOrderIds),
+            'skipped_order_ids' => $skippedOrderIds,
+            'not_found_count' => count($notFoundOrderIds),
+            'not_found_order_ids' => $notFoundOrderIds,
+            'failed_count' => count($failedOrderIds),
+            'failed_order_ids' => $failedOrderIds,
+            'refund_request_count' => count($refundRequestIds),
+            'refund_request_ids' => $refundRequestIds,
+        ], 'Orders status updated successfully');
     }
 
 }

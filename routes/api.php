@@ -58,6 +58,7 @@ use App\Http\Controllers\Api\Mobile\points_transactions\PointsTransactionControl
 use App\Http\Controllers\Api\Mobile\wallet\WalletController as MobileWalletController;
 use App\Http\Controllers\Api\Mobile\products\ProductController as MobileProductController;
 use App\Http\Controllers\Api\Mobile\coupons\CouponController as MobileCouponController;
+use App\Http\Controllers\Api\Mobile\feedbacks\FeedbackController as MobileFeedbackController;
 use App\Http\Controllers\Api\OctopusOrderController;
 use App\Http\Controllers\Api\PublicErpOrderController;
 use App\Http\Controllers\Api\WarehouseStockController;
@@ -279,6 +280,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
       Route::controller(OrderController::class)->prefix('orders')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:orders,view');
          Route::post('/', 'store')->middleware('admin.permission:orders,add');
+         Route::patch('/bulk-status', 'bulkUpdateStatus')->middleware('admin.permission:orders,edit');
          Route::get('/{id}', 'show')->middleware('admin.permission:orders,view');
          Route::put('/{id}', 'update')->middleware(['admin.permission:orders,edit', 'prevent.update.completed.order']);
          Route::patch('/{id}/cancel', 'cancel')->middleware('admin.permission:orders,edit');
@@ -590,6 +592,11 @@ Route::middleware('api.auth')->prefix('mobile/wallet')->group(function () {
 
 Route::middleware('api.auth')->prefix('mobile/coupons')->group(function () {
    Route::post('/apply', [MobileCouponController::class, 'apply']);
+});
+
+Route::middleware('api.auth')->prefix('feedbacks')->group(function () {
+   Route::get('/', [MobileFeedbackController::class, 'index']);
+   Route::post('/', [MobileFeedbackController::class, 'store']);
 });
    
 Route::middleware('api.auth')->group(function () {
