@@ -92,6 +92,11 @@ class Order extends Model
         return $this->belongsTo(CustomerAddress::class, 'customer_address_id');
     }
 
+    public function feedbacks()
+    {
+        return $this->hasMany(Feedback::class);
+    }
+
     /**
      * Get the creator of the order (polymorphic relation: Admin, Customer, User, etc.)
      */

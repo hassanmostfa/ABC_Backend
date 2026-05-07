@@ -4,6 +4,7 @@ namespace App\Http\Resources\Admin;
 
 use App\Models\Admin;
 use App\Models\Customer;
+use App\Models\Feedback;
 use App\Traits\CustomerUnreadNotificationsCountTrait;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -51,6 +52,7 @@ class OrderResource extends JsonResource
             'src' => $this->payment_gateway_src,
             'order_number' => $this->order_number,
             'status' => $this->status,
+            'feedback_submited' => $this->hasSubmittedFeedback(),
             'is_sent_to_erp' => (bool) $this->is_sent_to_erp,
             'created_by_type' => $this->created_by_type ? strtolower(class_basename($this->created_by_type)) : null,
             'total_amount' => (float) $this->total_amount,
@@ -251,6 +253,18 @@ class OrderResource extends JsonResource
         }
 
         return null;
+    }
+
+    private function hasSubmittedFeedback(): bool
+    {
+        if (!$this->customer_id) {
+            return false;
+        }
+
+        return Feedback::query()
+            ->where('order_id', $this->id)
+            ->where('customer_id', $this->customer_id)
+            ->exists();
     }
 }
 
