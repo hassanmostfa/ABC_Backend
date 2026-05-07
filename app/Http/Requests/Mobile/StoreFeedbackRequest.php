@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Mobile;
 
+use App\Models\Feedback;
+use App\Models\Order;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 
@@ -17,15 +19,31 @@ class StoreFeedbackRequest extends MobileFormRequest
         $customerId = Auth::guard('sanctum')->id();
 
         return [
-            'order_id' => [
+            'order_number' => [
                 'required',
-                'integer',
-                Rule::exists('orders', 'id')->where(function ($query) use ($customerId) {
+                'string',
+                Rule::exists('orders', 'order_number')->where(function ($query) use ($customerId) {
                     $query->where('customer_id', $customerId);
                 }),
-                Rule::unique('feedbacks', 'order_id')->where(function ($query) use ($customerId) {
-                    $query->where('customer_id', $customerId);
-                }),
+                function (string $attribute, mixed $value, \Closure $fail) use ($customerId) {
+                    $order = Order::query()
+                        ->where('order_number', (string) $value)
+                        ->where('customer_id', $customerId)
+                        ->first();
+
+                    if (!$order) {
+                        return;
+                    }
+
+                    $alreadySubmitted = Feedback::query()
+                        ->where('order_id', $order->id)
+                        ->where('customer_id', $customerId)
+                        ->exists();
+
+                    if ($alreadySubmitted) {
+                        $fail($this->msg('You already submitted feedback for this order.', 'لقد قمت بإرسال تقييم لهذا الطلب من قبل.'));
+                    }
+                },
             ],
             'rating' => 'required|integer|min:1|max:5',
             'review' => 'required|string|max:2000',
@@ -35,10 +53,9 @@ class StoreFeedbackRequest extends MobileFormRequest
     public function messages(): array
     {
         return [
-            'order_id.required' => $this->msg('The order field is required.', 'حقل الطلب مطلوب.'),
-            'order_id.integer' => $this->msg('The order must be a valid integer.', 'يجب أن يكون الطلب رقماً صحيحاً.'),
-            'order_id.exists' => $this->msg('The selected order is invalid.', 'الطلب المحدد غير صالح.'),
-            'order_id.unique' => $this->msg('You already submitted feedback for this order.', 'لقد قمت بإرسال تقييم لهذا الطلب من قبل.'),
+            'order_number.required' => $this->msg('The order number field is required.', 'حقل رقم الطلب مطلوب.'),
+            'order_number.string' => $this->msg('The order number must be a valid string.', 'يجب أن يكون رقم الطلب نصاً صالحاً.'),
+            'order_number.exists' => $this->msg('The selected order number is invalid.', 'رقم الطلب المحدد غير صالح.'),
             'rating.required' => $this->msg('The rating field is required.', 'حقل التقييم مطلوب.'),
             'rating.integer' => $this->msg('The rating must be a valid integer.', 'يجب أن يكون التقييم رقماً صحيحاً.'),
             'rating.min' => $this->msg('The rating must be at least 1.', 'يجب أن يكون التقييم 1 على الأقل.'),

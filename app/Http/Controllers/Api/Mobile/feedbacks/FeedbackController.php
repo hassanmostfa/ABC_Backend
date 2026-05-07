@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Mobile\feedbacks;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Mobile\StoreFeedbackRequest;
 use App\Http\Resources\Mobile\FeedbackResource;
+use App\Models\Order;
 use App\Repositories\FeedbackRepositoryInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -61,10 +62,21 @@ class FeedbackController extends BaseApiController
     public function store(StoreFeedbackRequest $request): JsonResponse
     {
         $customerId = Auth::guard('sanctum')->id();
+        $orderNumber = (string) $request->validated('order_number');
+        $order = Order::query()
+            ->where('order_number', $orderNumber)
+            ->where('customer_id', $customerId)
+            ->first();
+
+        if (!$order) {
+            return $this->validationErrorResponse([
+                'order_number' => ['The selected order number is invalid.'],
+            ]);
+        }
 
         $feedback = $this->feedbackRepository->create([
             'customer_id' => $customerId,
-            'order_id' => $request->validated('order_id'),
+            'order_id' => $order->id,
             'rating' => $request->validated('rating'),
             'review' => $request->validated('review'),
         ]);
