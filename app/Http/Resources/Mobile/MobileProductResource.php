@@ -16,6 +16,7 @@ class MobileProductResource extends JsonResource
             'id' => $this->id,
             'name_ar' => $this->name_ar,
             'name_en' => $this->name_en,
+            'in_stock' => $this->isProductInStock(),
             'category' => $this->whenLoaded('category', function () {
                 return [
                     'id' => $this->category->id,
@@ -45,6 +46,7 @@ class MobileProductResource extends JsonResource
                         'sku' => $variant->sku,
                         'short_item' => $variant->short_item,
                         'quantity' => (int) $variant->quantity,
+                        'in_stock' => ((int) $variant->quantity > 0 && (bool) $variant->is_active),
                         'price' => (float) $variant->price,
                         'image' => $variant->image ? $this->getFileUrl($variant->image, 'public', 'no-image.png') : null,
                         'is_active' => (bool) $variant->is_active,
@@ -56,5 +58,23 @@ class MobileProductResource extends JsonResource
             'created_at' => \format_datetime_app_tz($this->created_at),
             'updated_at' => \format_datetime_app_tz($this->updated_at),
         ];
+    }
+
+    private function isProductInStock(): bool
+    {
+        if (!$this->relationLoaded('variants')) {
+            $hasInStockVariant = $this->variants()
+                ->where('is_active', true)
+                ->where('quantity', '>', 0)
+                ->exists();
+
+            return $hasInStockVariant;
+        }
+
+        $hasInStockVariant = $this->variants->contains(function ($variant) {
+            return (bool) $variant->is_active && (int) $variant->quantity > 0;
+        });
+
+        return $hasInStockVariant;
     }
 }

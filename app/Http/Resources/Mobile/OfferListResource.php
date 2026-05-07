@@ -93,6 +93,7 @@ class OfferListResource extends JsonResource
             'id' => $this->id,
             'title' => $lang === 'ar' ? $this->title_ar : $this->title_en,
             'description' => $lang === 'ar' ? $this->description_ar : $this->description_en,
+            'in_stock' => $this->isOfferInStock(),
             'price_before_discount' => round($priceBeforeDiscount, 3),
             'price_after_discount' => round($priceAfterDiscount, 3),
             'image' => $this->getFileUrl($this->image, 'public', 'no-image.png'),
@@ -139,5 +140,36 @@ class OfferListResource extends JsonResource
     {
         $locale = strtolower($request->header('Accept-Language', $request->input('locale', 'ar')));
         return in_array($locale, ['ar', 'en']) ? $locale : 'ar';
+    }
+
+    private function isOfferInStock(): bool
+    {
+        foreach ($this->conditions as $condition) {
+            if (!$condition->is_active) {
+                continue;
+            }
+
+            $variant = $condition->productVariant;
+
+            if (!$variant || !$variant->is_active || (int) $variant->quantity < (int) $condition->quantity) {
+                return false;
+            }
+        }
+
+        if ($this->reward_type === 'products') {
+            foreach ($this->rewards as $reward) {
+                if (!$reward->is_active) {
+                    continue;
+                }
+
+                $variant = $reward->productVariant;
+
+                if (!$variant || !$variant->is_active || (int) $variant->quantity < (int) $reward->quantity) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 }
