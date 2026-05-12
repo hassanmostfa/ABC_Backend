@@ -12,7 +12,7 @@ use App\Models\Offer;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use App\Services\UpaymentsService;
+use App\Services\OttuService;
 use App\Jobs\DispatchErpOrderJob;
 use App\Jobs\SendOrderCreatedNotificationsJob;
 
@@ -26,7 +26,7 @@ class OrderService
     protected $walletService;
     protected $pointsService;
     protected $customerRepository;
-    protected $upaymentsService;
+    protected $ottuService;
 
     public function __construct(
         OrderRepositoryInterface $orderRepository,
@@ -37,7 +37,7 @@ class OrderService
         WalletService $walletService,
         PointsService $pointsService,
         CustomerRepositoryInterface $customerRepository,
-        UpaymentsService $upaymentsService
+        OttuService $ottuService
     ) {
         $this->orderRepository = $orderRepository;
         $this->invoiceRepository = $invoiceRepository;
@@ -47,7 +47,7 @@ class OrderService
         $this->walletService = $walletService;
         $this->pointsService = $pointsService;
         $this->customerRepository = $customerRepository;
-        $this->upaymentsService = $upaymentsService;
+        $this->ottuService = $ottuService;
     }
 
     /**
@@ -679,12 +679,12 @@ class OrderService
 
     /**
      * @param int $timeoutSeconds Timeout for payment API (default from config). Use lower value (e.g. 12) when creating order to avoid long waits.
-     * @param string|null $paymentGatewaySrc Upayments paymentGateway.src (e.g. knet, cc); null uses config fallback.
+     * @param string|null $pgCode Ottu pg_code (e.g. credit-card, knet); null uses config fallback.
      */
-    protected function generatePaymentLink(Order $order, Invoice $invoice, float $amount, ?int $timeoutSeconds = null, ?string $paymentGatewaySrc = null): ?string
+    protected function generatePaymentLink(Order $order, Invoice $invoice, float $amount, ?int $timeoutSeconds = null, ?string $pgCode = null): ?string
     {
         try {
-            $paymentUrl = $this->upaymentsService->createPayment($order, $amount, $timeoutSeconds, $paymentGatewaySrc);
+            $paymentUrl = $this->ottuService->createPayment($order, $amount, $timeoutSeconds, $pgCode);
             Log::info('Payment link generated successfully for order ' . $order->id);
             return $paymentUrl;
         } catch (\Exception $e) {

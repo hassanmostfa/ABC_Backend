@@ -14,7 +14,7 @@ class WalletChargeService
     public function __construct(
         protected CustomerRepositoryInterface $customerRepository,
         protected WalletService $walletService,
-        protected UpaymentsService $upaymentsService,
+        protected OttuService $ottuService,
         protected PaymentRepositoryInterface $paymentRepository
     ) {}
 
@@ -62,7 +62,7 @@ class WalletChargeService
                 'payment_gateway_src' => $paymentGatewaySrc,
             ]);
 
-            $paymentLink = $this->upaymentsService->createWalletChargePayment($payment, $amount, $paymentGatewaySrc);
+            $paymentLink = $this->ottuService->createWalletChargePayment($payment, $amount, $paymentGatewaySrc);
 
             $payment->update(['payment_link' => $paymentLink]);
 

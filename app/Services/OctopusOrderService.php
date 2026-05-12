@@ -22,7 +22,7 @@ class OctopusOrderService
     protected OrderItemRepositoryInterface $orderItemRepository;
     protected InvoiceService $invoiceService;
     protected OfferService $offerService;
-    protected UpaymentsService $upaymentsService;
+    protected OttuService $ottuService;
 
     public function __construct(
         OrderRepositoryInterface $orderRepository,
@@ -30,14 +30,14 @@ class OctopusOrderService
         OrderItemRepositoryInterface $orderItemRepository,
         InvoiceService $invoiceService,
         OfferService $offerService,
-        UpaymentsService $upaymentsService
+        OttuService $ottuService
     ) {
         $this->orderRepository = $orderRepository;
         $this->invoiceRepository = $invoiceRepository;
         $this->orderItemRepository = $orderItemRepository;
         $this->invoiceService = $invoiceService;
         $this->offerService = $offerService;
-        $this->upaymentsService = $upaymentsService;
+        $this->ottuService = $ottuService;
     }
 
     /**
@@ -220,7 +220,7 @@ class OctopusOrderService
             // Generate payment link if online and not paid
             if ($paymentMethod === 'online_link' && !$isPaid) {
                 try {
-                    $paymentLink = $this->upaymentsService->createPayment($order, $amountDue, 25, $paymentGatewaySrc);
+                    $paymentLink = $this->ottuService->createPayment($order, $amountDue, 25, $paymentGatewaySrc);
                     if ($paymentLink && $invoice) {
                         $this->invoiceRepository->update($invoice->id, ['payment_link' => $paymentLink]);
                     }

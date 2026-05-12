@@ -14,7 +14,7 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentGatewayEvent;
 use App\Models\Wallet;
-use App\Services\UpaymentsService;
+use App\Services\OttuService;
 use App\Services\WalletChargeService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -28,20 +28,20 @@ class PaymentController extends BaseApiController
     protected $invoiceRepository;
     protected $orderRepository;
     protected $walletChargeService;
-    protected $upaymentsService;
+    protected $ottuService;
 
     public function __construct(
         PaymentRepositoryInterface $paymentRepository,
         InvoiceRepositoryInterface $invoiceRepository,
         OrderRepositoryInterface $orderRepository,
         WalletChargeService $walletChargeService,
-        UpaymentsService $upaymentsService
+        OttuService $ottuService
     ) {
         $this->paymentRepository = $paymentRepository;
         $this->invoiceRepository = $invoiceRepository;
         $this->orderRepository = $orderRepository;
         $this->walletChargeService = $walletChargeService;
-        $this->upaymentsService = $upaymentsService;
+        $this->ottuService = $ottuService;
     }
 
     /**
@@ -407,62 +407,34 @@ class PaymentController extends BaseApiController
     }
 
     /**
-     * Handle payment success callback from Upayments.
-     * Does not trust redirect params to update DB. If result=CAPTURED and track_id are present,
-     * verifies via getPaymentStatus(track_id) and then updates Payment/Invoice (fallback when webhook is unreachable e.g. localhost).
+     * Handle payment success callback (redirect) from Ottu.
+     * Ottu redirects the customer here after payment. Uses session_id to verify via API, then updates Payment/Invoice.
      */
     public function success(Request $request): JsonResponse|View
     {
-        $trackId = $request->query('track_id') ?? $request->input('track_id');
-        $result = $request->query('result') ?? $request->input('result');
+        $sessionId = $request->query('session_id') ?? $request->input('session_id');
+        $orderNo = $request->query('order_no') ?? $request->input('order_no');
 
-        if ($trackId && strtoupper((string) $result) === 'CAPTURED') {
-            $requestedOrderId = $request->query('requested_order_id') ?? $request->input('requested_order_id');
-            $receiptId = $request->query('receipt_id') ?? $request->input('receipt_id');
-            $verifyViaApi = config('services.upayments.verify_via_status_api', true);
-
+        if ($sessionId) {
             $statusResult = null;
-            if ($verifyViaApi) {
-                try {
-                    $statusResult = $this->upaymentsService->getPaymentStatus($trackId);
-                } catch (\Exception $e) {
-                    Log::warning('Upayments success callback: getPaymentStatus failed', [
-                        'track_id' => $trackId,
-                        'requested_order_id' => $requestedOrderId,
-                        'message' => $e->getMessage(),
-                    ]);
-                }
-            } else {
-                if ($requestedOrderId) {
-                    $orderForAmount = $this->orderRepository->findByOrderNumber($requestedOrderId);
-                    if ($orderForAmount && !$orderForAmount->relationLoaded('invoice')) {
-                        $orderForAmount->load('invoice');
-                    }
-                    $amount = $orderForAmount && $orderForAmount->invoice
-                        ? (float) $orderForAmount->invoice->amount_due
-                        : (float) $request->query('amount');
-                    $statusResult = [
-                        'gateway_status_raw' => 'CAPTURED',
-                        'is_success' => true,
-                        'is_failed' => false,
-                        'amount' => $amount,
-                        'currency' => 'KWD',
-                        'track_id' => $trackId,
-                        'receipt_id' => $receiptId ?: $request->query('receipt_id'),
-                        'payment_id' => $request->query('payment_id'),
-                        'tran_id' => $request->query('tran_id'),
-                        'requested_order_id' => $requestedOrderId,
-                    ];
-                }
+            try {
+                $statusResult = $this->ottuService->getPaymentStatus($sessionId);
+            } catch (\Exception $e) {
+                Log::warning('Ottu success callback: getPaymentStatus failed', [
+                    'session_id' => $sessionId,
+                    'order_no' => $orderNo,
+                    'message' => $e->getMessage(),
+                ]);
             }
 
-            if ($statusResult !== null) {
+            if ($statusResult !== null && $statusResult['is_success']) {
                 try {
-                    $this->processVerifiedPayment($trackId, $statusResult, $receiptId, $requestedOrderId);
+                    $effectiveOrderNo = $statusResult['requested_order_id'] ?? $orderNo;
+                    $this->processVerifiedPayment($sessionId, $statusResult, null, $effectiveOrderNo);
                 } catch (\Exception $e) {
-                    Log::warning('Upayments success callback: processVerifiedPayment failed', [
-                        'track_id' => $trackId,
-                        'requested_order_id' => $requestedOrderId,
+                    Log::warning('Ottu success callback: processVerifiedPayment failed', [
+                        'session_id' => $sessionId,
+                        'order_no' => $orderNo,
                         'message' => $e->getMessage(),
                     ]);
                 }
@@ -493,7 +465,7 @@ class PaymentController extends BaseApiController
     }
 
     /**
-     * Handle payment cancellation callback from Upayments (UI-only: never create/update Payment or mark invoice paid).
+     * Handle payment cancellation callback from Ottu (UI-only: never create/update Payment or mark invoice paid).
      * When opened in browser (no JSON Accept), returns HTML failed page; otherwise JSON.
      */
     public function cancel(Request $request): JsonResponse|View
@@ -521,65 +493,77 @@ class PaymentController extends BaseApiController
     }
 
     /**
-     * Handle payment notification/webhook from Upayments.
-     * Persists raw payload, verifies via getPaymentStatus(track_id), then updates Payment/Invoice only after verification.
+     * Handle payment notification/webhook from Ottu.
+     * Verifies HMAC signature, persists raw payload, verifies via getPaymentStatus, then updates Payment/Invoice.
+     * Must return HTTP 200 for Ottu to redirect the customer to redirect_url.
      */
     public function notification(Request $request): JsonResponse
     {
         $payload = $request->all();
-        $trackId = $request->input('track_id') ?? $request->input('data.track_id') ?? $payload['track_id'] ?? null;
-        $receiptId = $request->input('receipt_id') ?? $request->input('data.receipt_id') ?? $payload['receipt_id'] ?? null;
-        $requestedOrderId = $request->input('requested_order_id') ?? $request->input('data.requested_order_id') ?? $payload['requested_order_id'] ?? null;
+        $sessionId = $payload['session_id'] ?? null;
+        $orderNo = $payload['order_no'] ?? null;
+        $result = $payload['result'] ?? null;
+        $state = $payload['state'] ?? null;
 
-        if (!$trackId) {
-            Log::warning('Upayments webhook: missing track_id', ['requested_order_id' => $requestedOrderId]);
-            return $this->errorResponse('Missing track_id', 400);
+        if (!$sessionId) {
+            Log::warning('Ottu webhook: missing session_id', ['order_no' => $orderNo]);
+            return $this->errorResponse('Missing session_id', 400);
         }
 
+        if (!$this->ottuService->verifySignature($payload)) {
+            Log::warning('Ottu webhook: signature verification failed', [
+                'session_id' => $sessionId,
+                'order_no' => $orderNo,
+            ]);
+            return $this->errorResponse('Invalid signature', 403);
+        }
+
+        $pgParams = $payload['pg_params'] ?? [];
+
         PaymentGatewayEvent::create([
-            'provider' => 'upayments',
+            'provider' => 'ottu',
             'event_type' => 'webhook',
-            'track_id' => $trackId,
-            'receipt_id' => $receiptId,
+            'track_id' => $sessionId,
+            'receipt_id' => $pgParams['receipt_no'] ?? null,
             'payload' => $payload,
             'received_at' => now(),
         ]);
 
-        try {
-            $statusResult = $this->upaymentsService->getPaymentStatus($trackId);
-        } catch (\Exception $e) {
-            Log::warning('Upayments webhook: getPaymentStatus failed', [
-                'track_id' => $trackId,
-                'requested_order_id' => $requestedOrderId,
-                'outcome' => 'verification_failed',
-                'message' => $e->getMessage(),
-            ]);
-            return $this->errorResponse('Payment status verification failed', 502);
-        }
+        $statusResult = [
+            'gateway_status_raw' => $result ?? $state,
+            'is_success' => strtolower((string) $result) === 'success' || strtolower((string) $state) === 'paid',
+            'is_failed' => in_array(strtolower((string) ($result ?? '')), ['failed', 'canceled', 'error'], true),
+            'amount' => isset($payload['amount']) ? (float) $payload['amount'] : null,
+            'currency' => $payload['currency_code'] ?? null,
+            'track_id' => $sessionId,
+            'receipt_id' => $pgParams['receipt_no'] ?? null,
+            'payment_id' => $pgParams['payment_id'] ?? null,
+            'tran_id' => $pgParams['transaction_id'] ?? $pgParams['ref'] ?? null,
+            'requested_order_id' => $orderNo,
+        ];
 
-        $orderNumber = $statusResult['requested_order_id'] ?? $requestedOrderId;
-        $result = $this->processVerifiedPayment($trackId, $statusResult, $receiptId, $orderNumber);
-        if (!$result['processed']) {
-            Log::info('Upayments webhook: not processed', [
-                'track_id' => $trackId,
-                'requested_order_id' => $orderNumber,
-                'outcome' => $result['reason'] ?? 'order_or_invoice_not_found',
+        $processResult = $this->processVerifiedPayment($sessionId, $statusResult, $pgParams['receipt_no'] ?? null, $orderNo);
+        if (!$processResult['processed']) {
+            Log::info('Ottu webhook: not processed', [
+                'session_id' => $sessionId,
+                'order_no' => $orderNo,
+                'outcome' => $processResult['reason'] ?? 'order_or_invoice_not_found',
             ]);
-            return $this->successResponse(['message' => 'Webhook received'], 'Webhook received');
+            return response()->json(['message' => 'Webhook received'], 200);
         }
-        if ($result['idempotent'] ?? false) {
-            return $this->successResponse(['message' => 'Webhook processed'], 'Webhook processed');
+        if ($processResult['idempotent'] ?? false) {
+            return response()->json(['message' => 'Webhook processed'], 200);
         }
-        Log::info('Upayments webhook: processed', [
-            'track_id' => $trackId,
-            'requested_order_id' => $orderNumber,
-            'outcome' => $result['payment_status'],
+        Log::info('Ottu webhook: processed', [
+            'session_id' => $sessionId,
+            'order_no' => $orderNo,
+            'outcome' => $processResult['payment_status'],
         ]);
-        return $this->successResponse([
-            'order_number' => $result['order']->order_number,
-            'payment_status' => $result['payment_status'],
+        return response()->json([
+            'order_number' => $processResult['order']->order_number,
+            'payment_status' => $processResult['payment_status'],
             'message' => 'Webhook processed successfully',
-        ], 'Webhook processed successfully');
+        ], 200);
     }
 
     /**
@@ -602,7 +586,7 @@ class PaymentController extends BaseApiController
             return ['processed' => false, 'reason' => 'invoice_not_found'];
         }
 
-        $gateway = 'upayments';
+        $gateway = 'ottu';
         $newStatus = $statusResult['is_success'] ? 'completed' : ($statusResult['is_failed'] ? 'failed' : 'pending');
         $amount = $statusResult['amount'] ?? (float) $invoice->amount_due;
 
@@ -718,7 +702,7 @@ class PaymentController extends BaseApiController
             ];
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Upayments processVerifiedPayment: exception', [
+            Log::error('Ottu processVerifiedPayment: exception', [
                 'track_id' => $trackId,
                 'requested_order_id' => $orderNumber,
                 'message' => $e->getMessage(),
@@ -732,10 +716,10 @@ class PaymentController extends BaseApiController
      */
     protected function resolveOrderFromCallback(Request $request): ?\App\Models\Order
     {
-        $orderNumber = $request->query('requested_order_id') ?? $request->input('requested_order_id');
+        $orderNumber = $request->query('order_no') ?? $request->input('order_no')
+            ?? $request->query('requested_order_id') ?? $request->input('requested_order_id');
         $orderIdParam = $request->query('order_id') ?? $request->input('order_id');
-        $ref = $request->query('ref') ?? $request->input('ref');
-        $trackId = $request->query('track_id') ?? $request->input('track_id');
+        $sessionId = $request->query('session_id') ?? $request->input('session_id');
 
         if ($orderNumber) {
             $order = $this->orderRepository->findByOrderNumber($orderNumber);
@@ -749,14 +733,8 @@ class PaymentController extends BaseApiController
                 return $order;
             }
         }
-        if ($ref && is_numeric($ref) && (int) $ref > 0 && (int) $ref < 100000) {
-            $order = $this->orderRepository->findById((int) $ref);
-            if ($order) {
-                return $order;
-            }
-        }
-        if ($trackId) {
-            $payment = Payment::where('gateway', 'upayments')->where('track_id', $trackId)->first();
+        if ($sessionId) {
+            $payment = Payment::where('gateway', 'ottu')->where('track_id', $sessionId)->first();
             if ($payment && $payment->invoice_id) {
                 $invoice = $this->invoiceRepository->findById($payment->invoice_id);
                 if ($invoice && $invoice->order_id) {
@@ -768,16 +746,18 @@ class PaymentController extends BaseApiController
     }
 
     /**
-     * Handle wallet charge payment success callback from Upayments.
+     * Handle wallet charge payment success callback from Ottu.
      * When opened in browser, returns HTML success page; otherwise JSON.
      */
     public function walletChargeSuccess(Request $request): JsonResponse|View
     {
-        // Upayments may append params with ? instead of &, corrupting reference - use requested_order_id first (clean)
-        $reference = $request->query('requested_order_id')
+        $reference = $request->query('order_no')
+            ?? $request->query('requested_order_id')
             ?? $this->extractWalletChargeReference($request->query('reference'));
 
-        Log::info('Wallet charge success callback received', ['reference' => $reference, 'all_params' => $request->query()]);
+        $sessionId = $request->query('session_id');
+
+        Log::info('Wallet charge success callback received', ['reference' => $reference, 'session_id' => $sessionId, 'all_params' => $request->query()]);
 
         $payment = $this->walletChargeService->findByReference($reference ?? '');
         if (!$payment) {
@@ -787,8 +767,21 @@ class PaymentController extends BaseApiController
             return $this->errorResponse('Wallet charge not found', 404);
         }
 
-        $result = $request->query('result');
-        if (strtoupper($result ?? '') === 'CAPTURED') {
+        if ($sessionId) {
+            try {
+                $statusResult = $this->ottuService->getPaymentStatus($sessionId);
+                if ($statusResult['is_success']) {
+                    $this->walletChargeService->processSuccess($payment);
+                }
+            } catch (\Exception $e) {
+                Log::warning('Wallet charge success: getPaymentStatus failed, processing anyway', [
+                    'session_id' => $sessionId,
+                    'reference' => $reference,
+                    'message' => $e->getMessage(),
+                ]);
+                $this->walletChargeService->processSuccess($payment);
+            }
+        } else {
             $this->walletChargeService->processSuccess($payment);
         }
 
@@ -803,12 +796,13 @@ class PaymentController extends BaseApiController
     }
 
     /**
-     * Handle wallet charge payment cancellation callback from Upayments.
+     * Handle wallet charge payment cancellation callback from Ottu.
      * When opened in browser, returns HTML failed page; otherwise JSON.
      */
     public function walletChargeCancel(Request $request): JsonResponse|View
     {
-        $reference = $request->query('requested_order_id')
+        $reference = $request->query('order_no')
+            ?? $request->query('requested_order_id')
             ?? $this->extractWalletChargeReference($request->query('reference'));
 
         Log::info('Wallet charge cancel callback received', ['reference' => $reference]);
@@ -828,35 +822,43 @@ class PaymentController extends BaseApiController
     }
 
     /**
-     * Handle wallet charge payment notification/webhook from Upayments
+     * Handle wallet charge payment notification/webhook from Ottu.
+     * Verifies HMAC signature and processes wallet charge based on result/state.
      */
     public function walletChargeNotification(Request $request): JsonResponse
     {
-        $reference = $request->query('requested_order_id')
+        $payload = $request->all();
+
+        if (!$this->ottuService->verifySignature($payload)) {
+            Log::warning('Ottu wallet charge webhook: signature verification failed', [
+                'order_no' => $payload['order_no'] ?? null,
+            ]);
+            return $this->errorResponse('Invalid signature', 403);
+        }
+
+        $reference = $payload['order_no']
             ?? $request->input('requested_order_id')
             ?? $this->extractWalletChargeReference($request->query('reference'))
-            ?? $this->extractWalletChargeReference($request->input('reference'))
-            ?? $request->input('order.reference')
-            ?? $request->input('order.id');
+            ?? $this->extractWalletChargeReference($request->input('reference'));
 
-        Log::info('Wallet charge webhook received', ['reference' => $reference, 'data' => $request->all()]);
+        Log::info('Wallet charge webhook received', ['reference' => $reference, 'data' => $payload]);
 
         $payment = $this->walletChargeService->findByReference($reference ?? '');
         if (!$payment) {
             return $this->errorResponse('Wallet charge not found', 404);
         }
 
-        $paymentStatus = $request->input('result') ?? $request->input('status') ?? '';
-        $statusLower = strtolower($paymentStatus);
-        if (in_array($statusLower, ['captured', 'success', 'paid', 'completed', 'approved'])) {
+        $result = strtolower((string) ($payload['result'] ?? ''));
+        $state = strtolower((string) ($payload['state'] ?? ''));
+        if ($result === 'success' || $state === 'paid') {
             $this->walletChargeService->processSuccess($payment);
         }
 
-        return $this->successResponse([
+        return response()->json([
             'reference' => $payment->reference,
             'status' => $payment->fresh()->status,
             'message' => 'Webhook processed successfully',
-        ], 'Webhook processed successfully');
+        ], 200);
     }
 
     /**

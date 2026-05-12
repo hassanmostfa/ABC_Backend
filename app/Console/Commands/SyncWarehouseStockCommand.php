@@ -63,8 +63,8 @@ class SyncWarehouseStockCommand extends Command
         $this->line("[i] Unique SKUs aggregated: " . count($quantityByItemCode));
         $this->line("[~] Matching with product variants in database...");
 
-        $skus = array_keys($quantityByItemCode);
-        $variants = ProductVariant::whereIn('sku', $skus)->get();
+        $apiSkus = array_keys($quantityByItemCode);
+        $variants = ProductVariant::whereIn('sku', $apiSkus)->get();
 
         $this->line("[i] Variants matched in DB: " . $variants->count());
 
@@ -89,12 +89,31 @@ class SyncWarehouseStockCommand extends Command
             }
         }
 
+        $zeroed = 0;
+        if ($apiSkus !== []) {
+            $this->line("[~] Zeroing variants not present in ERP stock response...");
+            ProductVariant::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->whereNotIn('sku', $apiSkus)
+                ->where('quantity', '!=', 0)
+                ->chunkById(500, function ($chunk) use (&$zeroed): void {
+                    foreach ($chunk as $variant) {
+                        $oldQty = $variant->quantity;
+                        $variant->update(['quantity' => 0]);
+                        $this->line("  [0] {$variant->sku}: {$oldQty} -> 0 (not in ERP)");
+                        $zeroed++;
+                    }
+                });
+        }
+
         $notFound = count($quantityByItemCode) - $variants->count();
 
         $this->line('');
         $this->info("[=] Sync Summary:");
         $this->line("  [+] Updated:    {$updated}");
         $this->line("  [-] Unchanged:  {$skipped}");
+        $this->line("  [0] Zeroed:     {$zeroed} (in DB, not in ERP)");
         $this->line("  [?] Not in DB:  {$notFound}");
         $this->info("[*] Warehouse Stock Sync Completed");
         $this->line('');
@@ -106,6 +125,7 @@ class SyncWarehouseStockCommand extends Command
             'variants_found' => $variants->count(),
             'updated' => $updated,
             'skipped' => $skipped,
+            'zeroed_not_in_erp' => $zeroed,
             'not_in_db' => $notFound,
         ]);
 

@@ -357,7 +357,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
 
 });
 
-// Payment Callback Routes (Public - called by Upayments)
+// Payment Callback Routes (Public - called by Ottu)
 Route::controller(PaymentController::class)->prefix('payments/callback')->group(function () {
    Route::get('/success', 'success')->name('payments.success');
    Route::get('/cancel', 'cancel')->name('payments.cancel');

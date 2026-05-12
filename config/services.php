@@ -89,5 +89,19 @@ return [
         'website_cancel_url' => env('UPAYMENTS_WEBSITE_CANCEL_URL', 'https://abc-website-enhanced-wiys.vercel.app/en/payment/failed'),
     ],
 
+    'ottu' => [
+        'api_key' => env('OTTU_API_KEY'),
+        /** Empty OTTU_URL in .env would otherwise bypass env() default; ?: forces a real base URL. */
+        'url' => rtrim((string) (env('OTTU_URL') ?: 'https://sandbox.ottu.net'), '/'),
+        'hmac_key' => env('OTTU_HMAC_KEY'),
+        'pg_code' => env('OTTU_PG_CODE', 'credit-card'),
+        'type' => env('OTTU_TYPE', 'payment_request'),
+        'currency' => env('OTTU_CURRENCY', 'KWD'),
+        'timeout' => (int) env('OTTU_TIMEOUT', 60),
+        'connect_timeout' => (int) env('OTTU_CONNECT_TIMEOUT', 15),
+        'website_return_url' => env('OTTU_WEBSITE_RETURN_URL', 'https://abc-website-enhanced-wiys.vercel.app/en/payment/success'),
+        'website_cancel_url' => env('OTTU_WEBSITE_CANCEL_URL', 'https://abc-website-enhanced-wiys.vercel.app/en/payment/failed'),
+    ],
+
 
 ];
