@@ -94,6 +94,8 @@ return [
         /** Empty OTTU_URL in .env would otherwise bypass env() default; ?: forces a real base URL. */
         'url' => rtrim((string) (env('OTTU_URL') ?: 'https://sandbox.ottu.net'), '/'),
         'hmac_key' => env('OTTU_HMAC_KEY'),
+        /** Local debugging only — never enable in production. */
+        'skip_signature_verify' => (bool) env('OTTU_SKIP_SIGNATURE_VERIFY', false),
         'pg_code' => env('OTTU_PG_CODE', 'credit-card'),
         'type' => env('OTTU_TYPE', 'payment_request'),
         'currency' => env('OTTU_CURRENCY', 'KWD'),

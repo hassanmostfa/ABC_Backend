@@ -274,6 +274,49 @@ class OrderController extends BaseApiController
         ], $result['message']);
     }
 
+    /**
+     * After Ottu checkout success, sync payment status from Ottu API (required when webhook URL is not public).
+     */
+    public function syncPayment(Request $request, int $id): JsonResponse
+    {
+        $customer = Auth::guard('sanctum')->user();
+
+        if (!$customer) {
+            return $this->unauthorizedResponse('No authenticated customer found');
+        }
+
+        $validated = $request->validate([
+            'session_id' => 'nullable|string|max:128',
+        ]);
+
+        $order = $this->orderRepository->findById($id);
+
+        if (!$order) {
+            return $this->notFoundResponse('Order not found');
+        }
+
+        if ((int) $order->customer_id !== (int) $customer->id) {
+            return $this->unauthorizedResponse('You do not have permission to sync payment for this order');
+        }
+
+        $result = $this->orderService->syncOttuPaymentStatus($id, $validated['session_id'] ?? null);
+
+        if (!$result['success']) {
+            $code = str_contains($result['message'], 'not found') ? 404 : 400;
+
+            return $this->errorResponse($result['message'], $code, $result);
+        }
+
+        $order->refresh();
+        $order->load(['invoice', 'items.product', 'items.variant', 'customer']);
+
+        return $this->successResponse([
+            'order' => new OrderResource($order),
+            'invoice_status' => $result['invoice_status'] ?? null,
+            'payment_status' => $result['payment_status'] ?? null,
+        ], $result['message']);
+    }
+
     private function getLocaleFromRequest(Request $request): string
     {
         $raw = strtolower((string) ($request->header('LANG') ?? $request->header('Accept-Language') ?? $request->input('locale', 'ar')));

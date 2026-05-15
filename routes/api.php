@@ -285,6 +285,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::put('/{id}', 'update')->middleware(['admin.permission:orders,edit', 'prevent.update.completed.order']);
          Route::patch('/{id}/cancel', 'cancel')->middleware('admin.permission:orders,edit');
          Route::post('/{id}/regenerate-payment-link', 'regeneratePaymentLink')->middleware('admin.permission:orders,edit');
+         Route::post('/{id}/sync-payment', 'syncPayment')->middleware('admin.permission:orders,edit');
          Route::post('/{id}/switch-to-payment-link', 'switchToPaymentLink')->middleware('admin.permission:orders,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:orders,delete');
       });
@@ -531,6 +532,7 @@ Route::middleware('api.auth')->prefix('mobile/orders')->group(function () {
    Route::get('/{id}', [MobileOrderController::class, 'show']);
    Route::patch('/{id}/cancel', [MobileOrderController::class, 'cancel']);
    Route::post('/{id}/regenerate-payment-link', [MobileOrderController::class, 'regeneratePaymentLink']);
+   Route::post('/{id}/sync-payment', [MobileOrderController::class, 'syncPayment']);
 });
 
 // Website customer orders (same contract as mobile; order numbers use WEB- prefix; Upayments return/cancel URLs point at the marketing site)
@@ -540,6 +542,7 @@ Route::middleware('api.auth')->prefix('web/orders')->group(function () {
    Route::get('/{id}', [WebOrderController::class, 'show']);
    Route::patch('/{id}/cancel', [WebOrderController::class, 'cancel']);
    Route::post('/{id}/regenerate-payment-link', [WebOrderController::class, 'regeneratePaymentLink']);
+   Route::post('/{id}/sync-payment', [WebOrderController::class, 'syncPayment']);
 });
 
 Route::middleware('api.auth')->prefix('mobile/customer-addresses')->group(function () {

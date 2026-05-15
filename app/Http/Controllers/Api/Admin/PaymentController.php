@@ -14,6 +14,7 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentGatewayEvent;
 use App\Models\Wallet;
+use App\Services\OttuPaymentProcessor;
 use App\Services\OttuService;
 use App\Services\WalletChargeService;
 use Illuminate\Http\Request;
@@ -29,19 +30,22 @@ class PaymentController extends BaseApiController
     protected $orderRepository;
     protected $walletChargeService;
     protected $ottuService;
+    protected $ottuPaymentProcessor;
 
     public function __construct(
         PaymentRepositoryInterface $paymentRepository,
         InvoiceRepositoryInterface $invoiceRepository,
         OrderRepositoryInterface $orderRepository,
         WalletChargeService $walletChargeService,
-        OttuService $ottuService
+        OttuService $ottuService,
+        OttuPaymentProcessor $ottuPaymentProcessor
     ) {
         $this->paymentRepository = $paymentRepository;
         $this->invoiceRepository = $invoiceRepository;
         $this->orderRepository = $orderRepository;
         $this->walletChargeService = $walletChargeService;
         $this->ottuService = $ottuService;
+        $this->ottuPaymentProcessor = $ottuPaymentProcessor;
     }
 
     /**
@@ -415,10 +419,16 @@ class PaymentController extends BaseApiController
         $sessionId = $request->query('session_id') ?? $request->input('session_id');
         $orderNo = $request->query('order_no') ?? $request->input('order_no');
 
+        Log::info('Ottu success callback received', [
+            'session_id' => $sessionId,
+            'order_no' => $orderNo,
+            'query' => $request->query(),
+        ]);
+
         if ($sessionId) {
             $statusResult = null;
             try {
-                $statusResult = $this->ottuService->getPaymentStatus($sessionId);
+                $statusResult = $this->ottuService->getPaymentStatusWithRetries($sessionId);
             } catch (\Exception $e) {
                 Log::warning('Ottu success callback: getPaymentStatus failed', [
                     'session_id' => $sessionId,
@@ -430,7 +440,7 @@ class PaymentController extends BaseApiController
             if ($statusResult !== null && $statusResult['is_success']) {
                 try {
                     $effectiveOrderNo = $statusResult['requested_order_id'] ?? $orderNo;
-                    $this->processVerifiedPayment($sessionId, $statusResult, null, $effectiveOrderNo);
+                    $this->ottuPaymentProcessor->processVerifiedPayment($sessionId, $statusResult, null, $effectiveOrderNo);
                 } catch (\Exception $e) {
                     Log::warning('Ottu success callback: processVerifiedPayment failed', [
                         'session_id' => $sessionId,
@@ -438,6 +448,13 @@ class PaymentController extends BaseApiController
                         'message' => $e->getMessage(),
                     ]);
                 }
+            } elseif ($statusResult !== null) {
+                Log::info('Ottu success callback: payment not successful yet', [
+                    'session_id' => $sessionId,
+                    'order_no' => $orderNo,
+                    'gateway_status_raw' => $statusResult['gateway_status_raw'] ?? null,
+                    'is_failed' => $statusResult['is_failed'] ?? false,
+                ]);
             }
         }
 
@@ -529,26 +546,35 @@ class PaymentController extends BaseApiController
             'received_at' => now(),
         ]);
 
-        $statusResult = [
-            'gateway_status_raw' => $result ?? $state,
-            'is_success' => strtolower((string) $result) === 'success' || strtolower((string) $state) === 'paid',
-            'is_failed' => in_array(strtolower((string) ($result ?? '')), ['failed', 'canceled', 'error'], true),
-            'amount' => isset($payload['amount']) ? (float) $payload['amount'] : null,
-            'currency' => $payload['currency_code'] ?? null,
-            'track_id' => $sessionId,
-            'receipt_id' => $pgParams['receipt_no'] ?? null,
-            'payment_id' => $pgParams['payment_id'] ?? null,
-            'tran_id' => $pgParams['transaction_id'] ?? $pgParams['ref'] ?? null,
-            'requested_order_id' => $orderNo,
-        ];
+        $statusResult = $this->ottuService->buildStatusResultFromWebhook($payload, $sessionId);
+        if ($statusResult['requested_order_id'] === null && $orderNo !== null) {
+            $statusResult['requested_order_id'] = $orderNo;
+        }
 
-        $processResult = $this->processVerifiedPayment($sessionId, $statusResult, $pgParams['receipt_no'] ?? null, $orderNo);
+        try {
+            $processResult = $this->ottuPaymentProcessor->processVerifiedPayment(
+                $sessionId,
+                $statusResult,
+                $pgParams['receipt_no'] ?? null,
+                $orderNo
+            );
+        } catch (\Exception $e) {
+            Log::error('Ottu webhook: processVerifiedPayment exception', [
+                'session_id' => $sessionId,
+                'order_no' => $orderNo,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json(['message' => 'Webhook received'], 200);
+        }
+
         if (!$processResult['processed']) {
             Log::info('Ottu webhook: not processed', [
                 'session_id' => $sessionId,
                 'order_no' => $orderNo,
                 'outcome' => $processResult['reason'] ?? 'order_or_invoice_not_found',
             ]);
+
             return response()->json(['message' => 'Webhook received'], 200);
         }
         if ($processResult['idempotent'] ?? false) {
@@ -559,156 +585,12 @@ class PaymentController extends BaseApiController
             'order_no' => $orderNo,
             'outcome' => $processResult['payment_status'],
         ]);
+
         return response()->json([
             'order_number' => $processResult['order']->order_number,
             'payment_status' => $processResult['payment_status'],
             'message' => 'Webhook processed successfully',
         ], 200);
-    }
-
-    /**
-     * Verify and apply payment status: updateOrCreate Payment by (gateway, track_id), mark invoice paid if completed.
-     * Used by both webhook and success-callback fallback. Caller must have verified via getPaymentStatus first.
-     *
-     * @param string|null $fallbackOrderNumber Optional order number if status API does not return requested_order_id
-     * @return array{processed: bool, idempotent?: bool, order?: \App\Models\Order, payment_status?: string, reason?: string}
-     */
-    protected function processVerifiedPayment(string $trackId, array $statusResult, ?string $receiptId = null, ?string $fallbackOrderNumber = null): array
-    {
-        $orderNumber = $statusResult['requested_order_id'] ?? $fallbackOrderNumber;
-        $order = $orderNumber ? $this->orderRepository->findByOrderNumber($orderNumber) : null;
-        if (!$order) {
-            return ['processed' => false, 'reason' => 'order_not_found'];
-        }
-        $order->load('invoice');
-        $invoice = $order->invoice;
-        if (!$invoice) {
-            return ['processed' => false, 'reason' => 'invoice_not_found'];
-        }
-
-        $gateway = 'ottu';
-        $newStatus = $statusResult['is_success'] ? 'completed' : ($statusResult['is_failed'] ? 'failed' : 'pending');
-        $amount = $statusResult['amount'] ?? (float) $invoice->amount_due;
-
-        DB::beginTransaction();
-        try {
-            $payment = Payment::where('gateway', $gateway)->where('track_id', $trackId)->first();
-            if ($payment) {
-                if ($payment->status === 'completed') {
-                    DB::commit();
-                    return [
-                        'processed' => true,
-                        'idempotent' => true,
-                        'order' => $order,
-                        'payment_status' => 'completed',
-                    ];
-                }
-                $payment->update([
-                    'status' => $newStatus,
-                    'amount' => $amount,
-                    'tran_id' => $statusResult['tran_id'] ?? $payment->tran_id,
-                    'payment_id' => $statusResult['payment_id'] ?? $payment->payment_id,
-                    'receipt_id' => $statusResult['receipt_id'] ?? $payment->receipt_id ?? $receiptId,
-                    'paid_at' => $newStatus === 'completed' ? now('Asia/Kuwait') : null,
-                    'payment_gateway_src' => $payment->payment_gateway_src ?? $order->payment_gateway_src,
-                ]);
-            } else {
-                $payment = Payment::create([
-                    'invoice_id' => $invoice->id,
-                    'payment_number' => $this->generatePaymentNumber(),
-                    'gateway' => $gateway,
-                    'payment_gateway_src' => $order->payment_gateway_src,
-                    'track_id' => $trackId,
-                    'tran_id' => $statusResult['tran_id'] ?? null,
-                    'payment_id' => $statusResult['payment_id'] ?? null,
-                    'receipt_id' => $statusResult['receipt_id'] ?? $receiptId,
-                    'amount' => $amount,
-                    'method' => 'online',
-                    'status' => $newStatus,
-                    'paid_at' => $newStatus === 'completed' ? now('Asia/Kuwait') : null,
-                ]);
-            }
-
-            if ($newStatus === 'completed') {
-                $invoiceLocked = Invoice::where('id', $invoice->id)->lockForUpdate()->first();
-                if ($invoiceLocked && $invoiceLocked->status !== 'paid') {
-                    $totalPaid = (float) Payment::where('invoice_id', $invoice->id)->where('status', 'completed')->sum('amount');
-                    if ($totalPaid >= (float) $invoiceLocked->amount_due) {
-                        $invoiceLocked->update([
-                            'paid_at' => now('Asia/Kuwait'),
-                            'status' => 'paid',
-                        ]);
-                    }
-                }
-            }
-
-            DB::commit();
-
-            // ERP: online_link orders after gateway confirms payment and invoice is (or becomes) paid
-            if ($newStatus === 'completed') {
-                $order->refresh();
-                $order->load('invoice');
-                DispatchErpOrderJob::dispatchAfterResponse($order->id);
-            }
-
-            try {
-                if ($newStatus === 'completed' && $order->customer_id) {
-                    sendNotification(
-                        null,
-                        $order->customer_id,
-                        'Payment Successful',
-                        "Payment for order {$order->order_number} was completed successfully.",
-                        'payment',
-                        [
-                            'order_id' => $order->id,
-                            'order_number' => $order->order_number,
-                            'invoice_id' => $invoice->id,
-                            'payment_id' => $payment->id,
-                            'status' => $newStatus,
-                        ],
-                        'تم الدفع بنجاح',
-                        "تمت عملية الدفع للطلب {$order->order_number} بنجاح."
-                    );
-                } elseif ($newStatus === 'failed' && $order->customer_id) {
-                    sendNotification(
-                        null,
-                        $order->customer_id,
-                        'Payment Failed',
-                        "Payment for order {$order->order_number} failed. Please try again.",
-                        'payment',
-                        [
-                            'order_id' => $order->id,
-                            'order_number' => $order->order_number,
-                            'invoice_id' => $invoice->id,
-                            'payment_id' => $payment->id,
-                            'status' => $newStatus,
-                        ],
-                        'فشل الدفع',
-                        "فشلت عملية الدفع للطلب {$order->order_number}. يرجى المحاولة مرة أخرى."
-                    );
-                }
-            } catch (\Exception $e) {
-                Log::warning('Failed to dispatch verified payment notification', [
-                    'track_id' => $trackId,
-                    'order_number' => $orderNumber,
-                    'message' => $e->getMessage(),
-                ]);
-            }
-
-            return [
-                'processed' => true,
-                'order' => $order->fresh(),
-                'payment_status' => $newStatus,
-            ];
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Ottu processVerifiedPayment: exception', [
-                'track_id' => $trackId,
-                'requested_order_id' => $orderNumber,
-                'message' => $e->getMessage(),
-            ]);
-            throw $e;
-        }
     }
 
     /**
@@ -848,9 +730,7 @@ class PaymentController extends BaseApiController
             return $this->errorResponse('Wallet charge not found', 404);
         }
 
-        $result = strtolower((string) ($payload['result'] ?? ''));
-        $state = strtolower((string) ($payload['state'] ?? ''));
-        if ($result === 'success' || $state === 'paid') {
+        if ($this->ottuService->isSuccessfulPayment($payload['result'] ?? null, $payload['state'] ?? null, $payload)) {
             $this->walletChargeService->processSuccess($payment);
         }
 

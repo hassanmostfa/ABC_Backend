@@ -223,6 +223,17 @@ class OctopusOrderService
                     $paymentLink = $this->ottuService->createPayment($order, $amountDue, 25, $paymentGatewaySrc);
                     if ($paymentLink && $invoice) {
                         $this->invoiceRepository->update($invoice->id, ['payment_link' => $paymentLink]);
+                        $sessionId = $this->ottuService->getLastCheckoutSessionId();
+                        if ($sessionId) {
+                            $this->ottuService->ensurePendingOrderPayment(
+                                $invoice,
+                                $order,
+                                $sessionId,
+                                $amountDue,
+                                $paymentGatewaySrc,
+                                $paymentLink
+                            );
+                        }
                     }
                     $response['payment_link'] = $paymentLink;
                 } catch (\Throwable $e) {

@@ -1,0 +1,337 @@
+<?php
+
+namespace App\Services;
+
+use App\Jobs\DispatchErpOrderJob;
+use App\Models\Invoice;
+use App\Models\Order;
+use App\Models\Payment;
+use App\Repositories\OrderRepositoryInterface;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+class OttuPaymentProcessor
+{
+    public function __construct(
+        protected OrderRepositoryInterface $orderRepository,
+        protected OttuService $ottuService,
+    ) {}
+
+    /**
+     * Poll Ottu and apply payment + invoice updates for an order (use when webhook cannot reach the server).
+     *
+     * @return array{success: bool, message: string, invoice_status?: string, payment_status?: string, gateway_status_raw?: mixed}
+     */
+    public function syncOrderPayment(Order $order, ?string $sessionIdOverride = null): array
+    {
+        $order->load(['invoice.payments']);
+
+        if ($order->payment_method !== 'online_link') {
+            return ['success' => false, 'message' => 'Order is not an online payment order.'];
+        }
+
+        $invoice = $order->invoice;
+        if (!$invoice) {
+            return ['success' => false, 'message' => 'Order has no invoice.'];
+        }
+
+        if ($invoice->status === 'paid') {
+            return [
+                'success' => true,
+                'message' => 'Invoice is already paid.',
+                'invoice_status' => 'paid',
+                'payment_status' => 'completed',
+            ];
+        }
+
+        $sessionId = $sessionIdOverride ?? $this->resolveSessionIdForOrder($order);
+        if ($sessionId === null || $sessionId === '') {
+            return ['success' => false, 'message' => 'No Ottu session found for this order. Regenerate the payment link and try again.'];
+        }
+
+        try {
+            $statusResult = $this->ottuService->getPaymentStatusWithRetries($sessionId);
+        } catch (\Exception $e) {
+            Log::warning('Ottu syncOrderPayment: getPaymentStatus failed', [
+                'order_id' => $order->id,
+                'session_id' => $sessionId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => 'Could not verify payment with Ottu: ' . $e->getMessage()];
+        }
+
+        if (!$statusResult['is_success']) {
+            return [
+                'success' => false,
+                'message' => 'Payment is not completed at Ottu yet.',
+                'gateway_status_raw' => $statusResult['gateway_status_raw'] ?? null,
+                'invoice_status' => $invoice->status,
+                'payment_status' => $statusResult['is_failed'] ? 'failed' : 'pending',
+            ];
+        }
+
+        try {
+            $processResult = $this->processVerifiedPayment(
+                $sessionId,
+                $statusResult,
+                null,
+                $order->order_number
+            );
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => 'Failed to record payment: ' . $e->getMessage()];
+        }
+
+        if (!$processResult['processed']) {
+            return [
+                'success' => false,
+                'message' => 'Payment verified at Ottu but could not be applied: ' . ($processResult['reason'] ?? 'unknown'),
+            ];
+        }
+
+        $order->refresh();
+        $order->load('invoice');
+
+        return [
+            'success' => true,
+            'message' => 'Payment synced successfully.',
+            'invoice_status' => $order->invoice?->status ?? 'pending',
+            'payment_status' => $processResult['payment_status'] ?? 'completed',
+            'gateway_status_raw' => $statusResult['gateway_status_raw'] ?? null,
+        ];
+    }
+
+    public function resolveSessionIdForOrder(Order $order): ?string
+    {
+        $invoice = $order->invoice;
+        if (!$invoice) {
+            return null;
+        }
+
+        if (!$order->relationLoaded('payments')) {
+            $order->load('invoice.payments');
+        }
+
+        $pending = Payment::query()
+            ->where('gateway', 'ottu')
+            ->where('invoice_id', $invoice->id)
+            ->where('status', 'pending')
+            ->whereNotNull('track_id')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($pending?->track_id) {
+            return (string) $pending->track_id;
+        }
+
+        $completed = Payment::query()
+            ->where('gateway', 'ottu')
+            ->where('invoice_id', $invoice->id)
+            ->whereNotNull('track_id')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($completed?->track_id) {
+            return (string) $completed->track_id;
+        }
+
+        if (is_string($invoice->payment_link) && $invoice->payment_link !== '') {
+            return $this->ottuService->extractSessionIdFromUrl($invoice->payment_link);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{processed: bool, idempotent?: bool, order?: Order, payment_status?: string, reason?: string}
+     */
+    public function processVerifiedPayment(
+        string $trackId,
+        array $statusResult,
+        ?string $receiptId = null,
+        ?string $fallbackOrderNumber = null
+    ): array {
+        $orderNumber = $statusResult['requested_order_id'] ?? $fallbackOrderNumber;
+        $order = $orderNumber ? $this->orderRepository->findByOrderNumber($orderNumber) : null;
+        if (!$order) {
+            return ['processed' => false, 'reason' => 'order_not_found'];
+        }
+        $order->load('invoice');
+        $invoice = $order->invoice;
+        if (!$invoice) {
+            return ['processed' => false, 'reason' => 'invoice_not_found'];
+        }
+
+        $gateway = 'ottu';
+        $newStatus = $statusResult['is_success'] ? 'completed' : ($statusResult['is_failed'] ? 'failed' : 'pending');
+        $amount = $statusResult['amount'] ?? (float) $invoice->amount_due;
+        $orderFields = $this->orderPaymentFields($order, $invoice, $amount, $statusResult, $receiptId);
+
+        DB::beginTransaction();
+        try {
+            $payment = Payment::where('gateway', $gateway)->where('track_id', $trackId)->first();
+            if ($payment) {
+                if ($payment->status === 'completed') {
+                    DB::commit();
+
+                    return [
+                        'processed' => true,
+                        'idempotent' => true,
+                        'order' => $order,
+                        'payment_status' => 'completed',
+                    ];
+                }
+                $payment->update(array_merge($orderFields, [
+                    'status' => $newStatus,
+                    'paid_at' => $newStatus === 'completed' ? now('Asia/Kuwait') : null,
+                    'tran_id' => $statusResult['tran_id'] ?? $payment->tran_id,
+                    'payment_id' => $statusResult['payment_id'] ?? $payment->payment_id,
+                    'receipt_id' => $statusResult['receipt_id'] ?? $payment->receipt_id ?? $receiptId,
+                    'payment_link' => $payment->payment_link ?? $orderFields['payment_link'],
+                ]));
+            } else {
+                $payment = Payment::create(array_merge($orderFields, [
+                    'payment_number' => $this->generatePaymentNumber(),
+                    'gateway' => $gateway,
+                    'track_id' => $trackId,
+                    'status' => $newStatus,
+                    'paid_at' => $newStatus === 'completed' ? now('Asia/Kuwait') : null,
+                ]));
+            }
+
+            if ($newStatus === 'completed') {
+                $invoiceLocked = Invoice::where('id', $invoice->id)->lockForUpdate()->first();
+                if ($invoiceLocked && $invoiceLocked->status !== 'paid') {
+                    $totalPaid = (float) Payment::where('invoice_id', $invoice->id)->where('status', 'completed')->sum('amount');
+                    if ($totalPaid >= (float) $invoiceLocked->amount_due) {
+                        $invoiceLocked->update([
+                            'paid_at' => now('Asia/Kuwait'),
+                            'status' => 'paid',
+                        ]);
+                    }
+                }
+            }
+
+            DB::commit();
+
+            if ($newStatus === 'completed') {
+                try {
+                    $order->refresh();
+                    $order->load('invoice');
+                    DispatchErpOrderJob::dispatchAfterResponse($order->id);
+                } catch (\Exception $e) {
+                    Log::warning('Ottu payment recorded but post-payment dispatch failed', [
+                        'track_id' => $trackId,
+                        'order_id' => $order->id,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            try {
+                if ($newStatus === 'completed' && $order->customer_id) {
+                    sendNotification(
+                        null,
+                        $order->customer_id,
+                        'Payment Successful',
+                        "Payment for order {$order->order_number} was completed successfully.",
+                        'payment',
+                        [
+                            'order_id' => $order->id,
+                            'order_number' => $order->order_number,
+                            'invoice_id' => $invoice->id,
+                            'payment_id' => $payment->id,
+                            'status' => $newStatus,
+                        ],
+                        'تم الدفع بنجاح',
+                        "تمت عملية الدفع للطلب {$order->order_number} بنجاح."
+                    );
+                } elseif ($newStatus === 'failed' && $order->customer_id) {
+                    sendNotification(
+                        null,
+                        $order->customer_id,
+                        'Payment Failed',
+                        "Payment for order {$order->order_number} failed. Please try again.",
+                        'payment',
+                        [
+                            'order_id' => $order->id,
+                            'order_number' => $order->order_number,
+                            'invoice_id' => $invoice->id,
+                            'payment_id' => $payment->id,
+                            'status' => $newStatus,
+                        ],
+                        'فشل الدفع',
+                        "فشلت عملية الدفع للطلب {$order->order_number}. يرجى المحاولة مرة أخرى."
+                    );
+                }
+            } catch (\Exception $e) {
+                Log::warning('Failed to dispatch verified payment notification', [
+                    'track_id' => $trackId,
+                    'order_number' => $orderNumber,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+
+            return [
+                'processed' => true,
+                'order' => $order->fresh(),
+                'payment_status' => $newStatus,
+            ];
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Ottu processVerifiedPayment: exception', [
+                'track_id' => $trackId,
+                'requested_order_id' => $orderNumber,
+                'message' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function orderPaymentFields(
+        Order $order,
+        Invoice $invoice,
+        float $amount,
+        array $statusResult,
+        ?string $receiptId
+    ): array {
+        return [
+            'invoice_id' => $invoice->id,
+            'customer_id' => $order->customer_id,
+            'reference' => $order->order_number,
+            'type' => Payment::TYPE_ORDER,
+            'payment_gateway_src' => $order->payment_gateway_src,
+            'amount' => $amount,
+            'bonus_amount' => 0,
+            'total_amount' => $amount,
+            'method' => 'online',
+            'payment_link' => $invoice->payment_link,
+            'tran_id' => $statusResult['tran_id'] ?? null,
+            'payment_id' => $statusResult['payment_id'] ?? null,
+            'receipt_id' => $statusResult['receipt_id'] ?? $receiptId,
+        ];
+    }
+
+    protected function generatePaymentNumber(): string
+    {
+        $year = date('Y');
+        $pattern = 'PAY-' . $year . '-%';
+
+        $lastPayment = Payment::where('payment_number', 'LIKE', $pattern)
+            ->orderBy('payment_number', 'desc')
+            ->first();
+
+        $sequence = 1;
+        if ($lastPayment) {
+            $parts = explode('-', $lastPayment->payment_number);
+            if (count($parts) === 3 && isset($parts[2])) {
+                $sequence = (int) $parts[2] + 1;
+            }
+        }
+
+        return sprintf('PAY-%s-%06d', $year, $sequence);
+    }
+}

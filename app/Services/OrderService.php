@@ -12,6 +12,7 @@ use App\Models\Offer;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Services\OttuPaymentProcessor;
 use App\Services\OttuService;
 use App\Jobs\DispatchErpOrderJob;
 use App\Jobs\SendOrderCreatedNotificationsJob;
@@ -27,6 +28,7 @@ class OrderService
     protected $pointsService;
     protected $customerRepository;
     protected $ottuService;
+    protected $ottuPaymentProcessor;
 
     public function __construct(
         OrderRepositoryInterface $orderRepository,
@@ -37,7 +39,8 @@ class OrderService
         WalletService $walletService,
         PointsService $pointsService,
         CustomerRepositoryInterface $customerRepository,
-        OttuService $ottuService
+        OttuService $ottuService,
+        OttuPaymentProcessor $ottuPaymentProcessor
     ) {
         $this->orderRepository = $orderRepository;
         $this->invoiceRepository = $invoiceRepository;
@@ -48,6 +51,7 @@ class OrderService
         $this->pointsService = $pointsService;
         $this->customerRepository = $customerRepository;
         $this->ottuService = $ottuService;
+        $this->ottuPaymentProcessor = $ottuPaymentProcessor;
     }
 
     /**
@@ -337,6 +341,7 @@ class OrderService
                         $this->invoiceRepository->update($invoice->id, [
                             'payment_link' => $paymentLink
                         ]);
+                        $this->recordOttuPendingPayment($invoice, $order, $amountDue, $paymentGatewaySrc, $paymentLink);
                         Log::info('Payment link stored in invoice ' . $invoice->id . ' for order ' . $order->id);
                     }
                 } catch (\Throwable $e) {
@@ -679,7 +684,7 @@ class OrderService
 
     /**
      * @param int $timeoutSeconds Timeout for payment API (default from config). Use lower value (e.g. 12) when creating order to avoid long waits.
-     * @param string|null $pgCode Ottu pg_code (e.g. credit-card, knet); null uses config fallback.
+     * @param string|null $pgCode Ottu pg_code (e.g. cyber-source-nbk for cc, knet); null uses config fallback.
      */
     protected function generatePaymentLink(Order $order, Invoice $invoice, float $amount, ?int $timeoutSeconds = null, ?string $pgCode = null): ?string
     {
@@ -690,6 +695,43 @@ class OrderService
         } catch (\Exception $e) {
             throw $e;
         }
+    }
+
+    /**
+     * Poll Ottu and mark invoice paid when the gateway shows success (for when webhook cannot reach the server).
+     *
+     * @return array{success: bool, message: string, invoice_status?: string, payment_status?: string, gateway_status_raw?: mixed}
+     */
+    public function syncOttuPaymentStatus(int $orderId, ?string $sessionId = null): array
+    {
+        $order = $this->orderRepository->findById($orderId);
+        if (!$order) {
+            return ['success' => false, 'message' => 'Order not found.'];
+        }
+
+        return $this->ottuPaymentProcessor->syncOrderPayment($order, $sessionId);
+    }
+
+    protected function recordOttuPendingPayment(
+        Invoice $invoice,
+        Order $order,
+        float $amount,
+        ?string $paymentGatewaySrc = null,
+        ?string $paymentLink = null
+    ): void {
+        $sessionId = $this->ottuService->getLastCheckoutSessionId();
+        if ($sessionId === null) {
+            return;
+        }
+
+        $this->ottuService->ensurePendingOrderPayment(
+            $invoice,
+            $order,
+            $sessionId,
+            $amount,
+            $paymentGatewaySrc,
+            $paymentLink
+        );
     }
 
     /**
@@ -737,6 +779,7 @@ class OrderService
             $paymentLink = $this->generatePaymentLink($order, $invoice, $remainingAmount, null, $effectiveSrc);
             if ($paymentLink) {
                 $this->invoiceRepository->update($invoice->id, ['payment_link' => $paymentLink]);
+                $this->recordOttuPendingPayment($invoice, $order, $remainingAmount, $effectiveSrc, $paymentLink);
                 if ($paymentGatewaySrc !== null && $paymentGatewaySrc !== '') {
                     $this->orderRepository->update($order->id, ['payment_gateway_src' => $paymentGatewaySrc]);
                 }
@@ -804,6 +847,7 @@ class OrderService
             }
 
             $this->invoiceRepository->update($invoice->id, ['payment_link' => $paymentLink]);
+            $this->recordOttuPendingPayment($invoice, $order, $remainingAmount, $paymentGatewaySrc, $paymentLink);
 
             DB::commit();
 

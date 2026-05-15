@@ -266,6 +266,37 @@ class OrderController extends BaseApiController
     }
 
     /**
+     * Poll Ottu and apply payment when webhook cannot reach this server (e.g. local dev).
+     */
+    public function syncPayment(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'session_id' => 'nullable|string|max:128',
+        ]);
+
+        $result = $this->orderService->syncOttuPaymentStatus($id, $validated['session_id'] ?? null);
+
+        if (!$result['success']) {
+            $code = in_array($result['message'], ['Order not found.'], true) ? 404 : 400;
+
+            return $this->errorResponse($result['message'], $code, $result);
+        }
+
+        logAdminActivity('synced ottu payment', 'Order', $id);
+
+        $order = $this->orderRepository->findById($id);
+        if ($order) {
+            $order->load(['invoice', 'items.product', 'items.variant', 'customer', 'invoice.payments']);
+        }
+
+        return $this->successResponse([
+            'order' => $order ? new OrderResource($order) : null,
+            'invoice_status' => $result['invoice_status'] ?? null,
+            'payment_status' => $result['payment_status'] ?? null,
+        ], $result['message']);
+    }
+
+    /**
      * Switch cash-on-delivery order to online payment and return a new payment link.
      */
     public function switchToPaymentLink(Request $request, int $id): JsonResponse

@@ -4,11 +4,59 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Payment;
 
 class OttuService
 {
+    protected ?string $lastCheckoutSessionId = null;
+
+    /** @var list<string> */
+    protected const SIGNATURE_FIELD_NAMES = [
+        'amount',
+        'currency_code',
+        'customer_address_city',
+        'customer_address_country',
+        'customer_address_line1',
+        'customer_address_line2',
+        'customer_address_postal_code',
+        'customer_address_state',
+        'customer_email',
+        'customer_first_name',
+        'customer_last_name',
+        'customer_phone',
+        'gateway_account',
+        'gateway_name',
+        'order_no',
+        'reference_number',
+        'result',
+        'state',
+    ];
+
+    /** @var list<string> */
+    protected const SUCCESS_STATUS_VALUES = [
+        'success',
+        'paid',
+        'captured',
+        'completed',
+        'approved',
+    ];
+
+    /** @var list<string> */
+    protected const FAILED_STATUS_VALUES = [
+        'failed',
+        'canceled',
+        'cancelled',
+        'error',
+        'declined',
+        'rejected',
+    ];
+
+    public function getLastCheckoutSessionId(): ?string
+    {
+        return $this->lastCheckoutSessionId;
+    }
     protected function baseUrl(): string
     {
         $url = config('services.ottu.url');
@@ -37,7 +85,7 @@ class OttuService
     /**
      * Create a payment transaction via Ottu Checkout API.
      *
-     * @param string|null $pgCodeOverride  Request `src` / Ottu pg_code (e.g. "cc" → credit-card, "knet"). Falls back to config.
+     * @param string|null $pgCodeOverride  Request `src` / Ottu pg_code (e.g. "cc" → cyber-source-nbk, "knet"). Falls back to config.
      */
     public function createPayment(Order $order, float $amount, ?int $timeoutSeconds = null, ?string $pgCodeOverride = null): string
     {
@@ -112,6 +160,10 @@ class OttuService
             throw new \Exception('Payment URL not found in Ottu response');
         }
 
+        $this->lastCheckoutSessionId = isset($data['session_id'])
+            ? (string) $data['session_id']
+            : $this->extractSessionIdFromUrl($paymentUrl);
+
         return $paymentUrl;
     }
 
@@ -182,7 +234,67 @@ class OttuService
             throw new \Exception('Payment URL not found in Ottu response');
         }
 
+        $this->lastCheckoutSessionId = isset($data['session_id'])
+            ? (string) $data['session_id']
+            : $this->extractSessionIdFromUrl($paymentUrl);
+
         return $paymentUrl;
+    }
+
+    /**
+     * Store a pending payment row when checkout is created so callbacks can resolve the order by session_id.
+     */
+    public function ensurePendingOrderPayment(
+        Invoice $invoice,
+        Order $order,
+        string $sessionId,
+        float $amount,
+        ?string $paymentGatewaySrc = null,
+        ?string $paymentLink = null
+    ): Payment {
+        $link = $paymentLink ?? $invoice->payment_link;
+
+        $attributes = [
+            'invoice_id' => $invoice->id,
+            'customer_id' => $order->customer_id,
+            'reference' => $order->order_number,
+            'type' => Payment::TYPE_ORDER,
+            'payment_gateway_src' => $paymentGatewaySrc ?? $order->payment_gateway_src,
+            'amount' => $amount,
+            'bonus_amount' => 0,
+            'total_amount' => $amount,
+            'method' => 'online',
+            'payment_link' => $link,
+        ];
+
+        $payment = Payment::firstOrCreate(
+            ['gateway' => 'ottu', 'track_id' => $sessionId],
+            array_merge($attributes, [
+                'payment_number' => $this->generatePaymentNumber(),
+                'status' => 'pending',
+            ])
+        );
+
+        if (!$payment->wasRecentlyCreated) {
+            $payment->fill($attributes);
+            $payment->save();
+        }
+
+        return $payment->fresh();
+    }
+
+    public function extractSessionIdFromUrl(string $paymentUrl): ?string
+    {
+        $query = parse_url($paymentUrl, PHP_URL_QUERY);
+        if (!is_string($query) || $query === '') {
+            return null;
+        }
+
+        parse_str($query, $params);
+
+        $sessionId = $params['session_id'] ?? null;
+
+        return is_string($sessionId) && $sessionId !== '' ? $sessionId : null;
     }
 
     /**
@@ -205,33 +317,17 @@ class OttuService
                     'Accept' => 'application/json',
                 ])->timeout($timeout)->get($url);
 
-                $body = $response->json();
+                $body = is_array($response->json()) ? $response->json() : [];
 
-                $result = $body['result'] ?? null;
-                $state = $body['state'] ?? null;
-                $resultLower = is_string($result) ? strtolower($result) : '';
-                $stateLower = is_string($state) ? strtolower($state) : '';
+                if (!$response->successful()) {
+                    Log::warning('Ottu getPaymentStatus non-success HTTP response', [
+                        'session_id' => $sessionId,
+                        'status' => $response->status(),
+                        'body' => $body,
+                    ]);
+                }
 
-                $isSuccess = $resultLower === 'success' || $stateLower === 'paid';
-                $isFailed = in_array($resultLower, ['failed', 'canceled', 'error'], true);
-
-                $amount = isset($body['amount']) ? (float) $body['amount'] : null;
-                $currency = $body['currency_code'] ?? null;
-
-                $pgParams = $body['pg_params'] ?? [];
-
-                return [
-                    'gateway_status_raw' => $result ?? $state,
-                    'is_success' => $isSuccess,
-                    'is_failed' => $isFailed,
-                    'amount' => $amount,
-                    'currency' => $currency ? (string) $currency : null,
-                    'track_id' => $sessionId,
-                    'receipt_id' => $pgParams['receipt_no'] ?? null,
-                    'payment_id' => $pgParams['payment_id'] ?? null,
-                    'tran_id' => $pgParams['transaction_id'] ?? $pgParams['ref'] ?? null,
-                    'requested_order_id' => $body['order_no'] ?? null,
-                ];
+                return $this->buildStatusResultFromCheckoutBody($body, $sessionId);
             } catch (\Exception $e) {
                 $lastException = $e;
                 Log::warning('Ottu getPaymentStatus attempt failed', [
@@ -249,14 +345,110 @@ class OttuService
     }
 
     /**
+     * Poll Ottu until the transaction reaches a terminal state or attempts are exhausted.
+     *
+     * @return array{gateway_status_raw: mixed, is_success: bool, is_failed: bool, amount: float|null, currency: string|null, track_id: string, receipt_id: string|null, payment_id: string|null, tran_id: string|null, requested_order_id: string|null}
+     */
+    public function getPaymentStatusWithRetries(string $sessionId, int $maxAttempts = 6, int $delaySeconds = 1): array
+    {
+        $last = null;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $last = $this->getPaymentStatus($sessionId);
+            if ($last['is_success'] || $last['is_failed']) {
+                return $last;
+            }
+
+            if ($attempt < $maxAttempts) {
+                sleep(max(1, $delaySeconds));
+            }
+        }
+
+        return $last ?? $this->getPaymentStatus($sessionId);
+    }
+
+    /**
+     * @return array{gateway_status_raw: mixed, is_success: bool, is_failed: bool, amount: float|null, currency: string|null, track_id: string, receipt_id: string|null, payment_id: string|null, tran_id: string|null, requested_order_id: string|null}
+     */
+    public function buildStatusResultFromWebhook(array $payload, string $sessionId): array
+    {
+        return $this->buildStatusResultFromCheckoutBody($payload, $sessionId);
+    }
+
+    /**
+     * @return array{gateway_status_raw: mixed, is_success: bool, is_failed: bool, amount: float|null, currency: string|null, track_id: string, receipt_id: string|null, payment_id: string|null, tran_id: string|null, requested_order_id: string|null}
+     */
+    protected function buildStatusResultFromCheckoutBody(array $body, string $sessionId): array
+    {
+        $result = $body['result'] ?? null;
+        $state = $body['state'] ?? null;
+        $pgParams = is_array($body['pg_params'] ?? null) ? $body['pg_params'] : [];
+
+        return [
+            'gateway_status_raw' => $result ?? $state,
+            'is_success' => $this->isSuccessfulPayment($result, $state, $body),
+            'is_failed' => $this->isFailedPayment($result, $state),
+            'amount' => isset($body['amount']) ? (float) $body['amount'] : null,
+            'currency' => isset($body['currency_code']) ? (string) $body['currency_code'] : null,
+            'track_id' => $sessionId,
+            'receipt_id' => $pgParams['receipt_no'] ?? $pgParams['receipt_id'] ?? null,
+            'payment_id' => $pgParams['payment_id']
+                ?? (isset($body['reference_number']) ? (string) $body['reference_number'] : null),
+            'tran_id' => $pgParams['transaction_id']
+                ?? $pgParams['tran_id']
+                ?? $pgParams['ref']
+                ?? $pgParams['track_id']
+                ?? null,
+            'requested_order_id' => $body['order_no'] ?? null,
+        ];
+    }
+
+    public function isSuccessfulPayment(mixed $result, mixed $state, ?array $body = null): bool
+    {
+        $resultLower = is_string($result) ? strtolower(trim($result)) : '';
+        $stateLower = is_string($state) ? strtolower(trim($state)) : '';
+
+        if (in_array($resultLower, self::SUCCESS_STATUS_VALUES, true)
+            || in_array($stateLower, self::SUCCESS_STATUS_VALUES, true)) {
+            return true;
+        }
+
+        if ($body !== null) {
+            $pgParams = is_array($body['pg_params'] ?? null) ? $body['pg_params'] : [];
+            $pgResult = isset($pgParams['result']) ? strtolower(trim((string) $pgParams['result'])) : '';
+            if (in_array($pgResult, ['captured', 'approved', 'success', 'paid'], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function isFailedPayment(mixed $result, mixed $state): bool
+    {
+        $resultLower = is_string($result) ? strtolower(trim($result)) : '';
+        $stateLower = is_string($state) ? strtolower(trim($state)) : '';
+
+        return in_array($resultLower, self::FAILED_STATUS_VALUES, true)
+            || in_array($stateLower, self::FAILED_STATUS_VALUES, true);
+    }
+
+    /**
      * Verify webhook signature using HMAC-SHA256.
      * Returns true if the computed signature matches the one in the payload.
      */
     public function verifySignature(array $payload): bool
     {
+        if (config('services.ottu.skip_signature_verify', false)) {
+            Log::warning('Ottu webhook signature verification skipped (OTTU_SKIP_SIGNATURE_VERIFY)');
+
+            return true;
+        }
+
         $hmacKey = config('services.ottu.hmac_key');
         if (empty($hmacKey)) {
             Log::warning('Ottu HMAC key not configured, skipping signature verification');
+
             return true;
         }
 
@@ -265,44 +457,36 @@ class OttuService
             return false;
         }
 
-        $signatureFields = [
-            'amount',
-            'currency_code',
-            'customer_first_name',
-            'customer_last_name',
-            'customer_email',
-            'customer_phone',
-            'customer_address_line1',
-            'customer_address_line2',
-            'customer_address_city',
-            'customer_address_state',
-            'customer_address_country',
-            'customer_address_postal_code',
-            'gateway_name',
-            'gateway_account',
-            'order_no',
-            'reference_number',
-            'result',
-            'state',
-        ];
-
-        $filtered = [];
-        foreach ($signatureFields as $key) {
+        $message = '';
+        foreach (self::SIGNATURE_FIELD_NAMES as $key) {
             if (isset($payload[$key]) && $payload[$key] !== '') {
-                $filtered[$key] = $payload[$key];
+                $message .= $key . $payload[$key];
             }
         }
 
-        ksort($filtered);
+        $computed = hash_hmac('sha256', $message, (string) $hmacKey);
 
-        $message = '';
-        foreach ($filtered as $k => $v) {
-            $message .= $k . $v;
+        return hash_equals($computed, (string) $receivedSignature);
+    }
+
+    protected function generatePaymentNumber(): string
+    {
+        $year = date('Y');
+        $pattern = 'PAY-' . $year . '-%';
+
+        $lastPayment = Payment::where('payment_number', 'LIKE', $pattern)
+            ->orderBy('payment_number', 'desc')
+            ->first();
+
+        $sequence = 1;
+        if ($lastPayment) {
+            $parts = explode('-', $lastPayment->payment_number);
+            if (count($parts) === 3 && isset($parts[2])) {
+                $sequence = (int) $parts[2] + 1;
+            }
         }
 
-        $computed = hash_hmac('sha256', $message, $hmacKey);
-
-        return hash_equals($computed, $receivedSignature);
+        return sprintf('PAY-%s-%06d', $year, $sequence);
     }
 
     /**
@@ -378,7 +562,7 @@ class OttuService
             'credit',
             'creditcard',
             'credit_card',
-            'credit-card' => 'credit-card',
+            'credit-card' => 'cyber-source-nbk',
             'knet' => 'knet',
             default => $s,
         };
