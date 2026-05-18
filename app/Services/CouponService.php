@@ -169,15 +169,70 @@ class CouponService
                 }
             }
 
-            $coupon->increment('used_count');
-            $coupon->refresh();
-
+            // Note: used_count is NOT incremented here - it will be incremented when order is successfully created
             return [
                 'success' => true,
                 'message' => 'Coupon is valid.',
                 'coupon' => $coupon,
             ];
         });
+    }
+
+    /**
+     * Validate coupon and compute discount for order placement (never trust client coupons_discount).
+     *
+     * @param  array{variant_ids?: int[]}  $orderContext
+     * @return array{coupons_discount: float, coupon: Coupon, coupon_code: string}
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function resolveDiscountForOrder(
+        string $couponCode,
+        float $orderAmountAfterOffers,
+        ?int $customerId = null,
+        array $orderContext = []
+    ): array {
+        if ($orderAmountAfterOffers <= 0) {
+            throw new \InvalidArgumentException('Order amount must be greater than zero to apply a coupon.');
+        }
+
+        $validation = $this->validateForApplyCode(
+            $couponCode,
+            $customerId,
+            $orderAmountAfterOffers,
+            $orderContext
+        );
+
+        if (!$validation['success']) {
+            throw new \InvalidArgumentException($validation['message']);
+        }
+
+        $coupon = $validation['coupon'];
+        $discount = $this->calculateDiscount($coupon, $orderAmountAfterOffers);
+        $discount = min($discount, $orderAmountAfterOffers);
+
+        return [
+            'coupons_discount' => round($discount, 3),
+            'coupon' => $coupon,
+            'coupon_code' => $coupon->code,
+        ];
+    }
+
+    /**
+     * Increment coupon usage count (call within order creation transaction after order is successfully created)
+     */
+    public function incrementCouponUsage(string $code): bool
+    {
+        $coupon = Coupon::where('code', strtoupper(trim($code)))
+            ->lockForUpdate()
+            ->first();
+
+        if (!$coupon) {
+            return false;
+        }
+
+        $coupon->increment('used_count');
+        return true;
     }
 
     /**

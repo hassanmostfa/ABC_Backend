@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\OctopusApiToken;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -18,10 +19,10 @@ class VerifyOctopusApiToken
     {
         $expected = config('services.octopus.access_token');
 
-        if (!is_string($expected) || $expected === '' || !str_starts_with($expected, 'abc_')) {
+        if (!OctopusApiToken::isConfiguredSecurely($expected)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Octopus API is not configured. Set OCTOPUS_API_TOKEN in .env (must start with abc_).',
+                'message' => 'Octopus API is not configured. Set OCTOPUS_API_TOKEN in .env (abc_ prefix, 32+ random bytes).',
             ], 503);
         }
 

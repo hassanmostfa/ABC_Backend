@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Support\OctopusApiToken;
 use Illuminate\Support\ServiceProvider;
 use App\Repositories\CustomerRepositoryInterface;
 use App\Repositories\CustomerRepository;
@@ -95,6 +96,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        OctopusApiToken::assertSafeForBoot(config('services.octopus.access_token'));
     }
 }

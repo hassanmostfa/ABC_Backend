@@ -29,6 +29,7 @@ class OrderService
     protected $customerRepository;
     protected $ottuService;
     protected $ottuPaymentProcessor;
+    protected $couponService;
 
     public function __construct(
         OrderRepositoryInterface $orderRepository,
@@ -40,7 +41,8 @@ class OrderService
         PointsService $pointsService,
         CustomerRepositoryInterface $customerRepository,
         OttuService $ottuService,
-        OttuPaymentProcessor $ottuPaymentProcessor
+        OttuPaymentProcessor $ottuPaymentProcessor,
+        CouponService $couponService
     ) {
         $this->orderRepository = $orderRepository;
         $this->invoiceRepository = $invoiceRepository;
@@ -52,6 +54,7 @@ class OrderService
         $this->customerRepository = $customerRepository;
         $this->ottuService = $ottuService;
         $this->ottuPaymentProcessor = $ottuPaymentProcessor;
+        $this->couponService = $couponService;
     }
 
     /**
@@ -128,7 +131,9 @@ class OrderService
                 $offerDiscount += $offerResult['offerDiscount']; // Accumulate discounts from all offers
             }
 
-            $couponsDiscount = (float) ($data['coupons_discount'] ?? 0);
+            $couponResolution = $this->resolveCouponsDiscountForOrder($data, $totalAmount, $offerDiscount, $orderItemsData);
+            $couponsDiscount = $couponResolution['coupons_discount'];
+            $appliedCouponCode = $couponResolution['coupon_code'];
             $this->orderItemService->applyCouponDiscountToLines($orderItemsData, $couponsDiscount, $totalAmount, $offerDiscount);
 
             $this->orderItemService->applyLineTax($orderItemsData);
@@ -235,7 +240,7 @@ class OrderService
             $orderNumber = $this->generateOrderNumber($source);
             
             // Create the order
-            $orderData = Arr::except($data, ['items', 'source', 'offer_ids', 'offers', 'src']); // Remove offer_ids and offers from order data
+            $orderData = Arr::except($data, ['items', 'source', 'offer_ids', 'offers', 'src', 'coupons_discount', 'coupon_code']);
             
             // Remove delivery_type if it's "delivery" - it will be auto-determined
             if (isset($orderData['delivery_type']) && $orderData['delivery_type'] === 'delivery') {
@@ -284,6 +289,11 @@ class OrderService
             // Deduct points from customer after order is created
             if ($usedPoints > 0 && $order->customer_id) {
                 $this->pointsService->deductPoints($order->customer_id, $usedPoints);
+            }
+
+            // Increment coupon usage if coupon was applied (only increments when order successfully created)
+            if ($appliedCouponCode) {
+                $this->couponService->incrementCouponUsage($appliedCouponCode);
             }
 
             // Create invoice (as paid if wallet payment)
@@ -480,10 +490,15 @@ class OrderService
             $usedPoints = $pointsResult['usedPoints'];
             $pointsDiscount = $pointsResult['pointsDiscount'];
             $offerDiscount = $calculatedOfferDiscount ?? ($currentInvoice ? ($currentInvoice->offer_discount ?? 0.00) : 0.00);
-            $couponsDiscount = isset($data['coupons_discount'])
-                ? (float) $data['coupons_discount']
-                : (float) ($currentInvoice ? ($currentInvoice->coupons_discount ?? 0.00) : 0.00);
             $currentTotalAmount = $recalculatedTotalAmount ?? ($order->total_amount ?? 0);
+            $couponsDiscount = $this->resolveCouponsDiscountForOrderUpdate(
+                $id,
+                $data,
+                $order,
+                $currentTotalAmount,
+                $offerDiscount,
+                $currentInvoice
+            );
 
             // Validate minimum order amount based on order type (charity vs customer)
             $charityId = $data['charity_id'] ?? $order->charity_id;
@@ -870,6 +885,86 @@ class OrderService
             ]);
             return ['success' => false, 'message' => 'Failed to generate payment link: ' . $e->getMessage()];
         }
+    }
+
+    /**
+     * Resolve coupon discount from coupon_code only (never trust client coupons_discount).
+     *
+     * @return array{coupons_discount: float, coupon_code: ?string}
+     */
+    protected function resolveCouponsDiscountForOrder(
+        array $data,
+        float $totalAmount,
+        float $offerDiscount,
+        array $orderItemsData
+    ): array {
+        $couponCode = isset($data['coupon_code']) ? trim((string) $data['coupon_code']) : '';
+        if ($couponCode === '') {
+            return ['coupons_discount' => 0.0, 'coupon_code' => null];
+        }
+
+        $variantIds = [];
+        foreach ($orderItemsData as $row) {
+            if (!empty($row['variant_id'])) {
+                $variantIds[] = (int) $row['variant_id'];
+            }
+        }
+
+        $orderAmountAfterOffers = max(0, $totalAmount - $offerDiscount);
+
+        $resolved = $this->couponService->resolveDiscountForOrder(
+            $couponCode,
+            $orderAmountAfterOffers,
+            isset($data['customer_id']) ? (int) $data['customer_id'] : null,
+            ['variant_ids' => array_values(array_unique($variantIds))]
+        );
+
+        return [
+            'coupons_discount' => $resolved['coupons_discount'],
+            'coupon_code' => $resolved['coupon_code'],
+        ];
+    }
+
+    /**
+     * Resolve coupon discount on order update (ignore client coupons_discount).
+     */
+    protected function resolveCouponsDiscountForOrderUpdate(
+        int $orderId,
+        array $data,
+        Order $order,
+        float $totalAmount,
+        float $offerDiscount,
+        ?Invoice $currentInvoice
+    ): float {
+        if (array_key_exists('coupon_code', $data)) {
+            $couponCode = trim((string) ($data['coupon_code'] ?? ''));
+            if ($couponCode === '') {
+                return 0.0;
+            }
+
+            $order->load('items');
+            $orderItemsData = $order->items
+                ->map(fn ($item) => ['variant_id' => $item->variant_id])
+                ->all();
+
+            $resolution = $this->resolveCouponsDiscountForOrder(
+                [
+                    'coupon_code' => $couponCode,
+                    'customer_id' => $data['customer_id'] ?? $order->customer_id,
+                ],
+                $totalAmount,
+                $offerDiscount,
+                $orderItemsData
+            );
+
+            return $resolution['coupons_discount'];
+        }
+
+        if (isset($data['items']) || isset($data['offer_ids']) || isset($data['offers'])) {
+            return 0.0;
+        }
+
+        return (float) ($currentInvoice->coupons_discount ?? 0.00);
     }
 
     /**

@@ -35,9 +35,9 @@ return [
         ],
     ],
     'erp' => [
-        'url'             => env('ERP_URL', 'http://31.214.1.139:61402'),
-        'username'        => env('ERP_USERNAME', 'SONIC'),
-        'password'        => env('ERP_PASSWORD', 'S0n!c@AP!'),
+        'url'             => env('ERP_URL'),
+        'username'        => env('ERP_USERNAME'),
+        'password'        => env('ERP_PASSWORD'),
         'timeout'         => (int) env('ERP_TIMEOUT', 30),
         'connect_timeout' => (int) env('ERP_CONNECT_TIMEOUT', 10),
         'retries'         => (int) env('ERP_RETRIES', 2),
@@ -46,9 +46,9 @@ return [
     ],
 
     'warehouse_stock' => [
-        'url'             => env('WAREHOUSE_STOCK_URL', 'http://31.214.1.139:61402'),
-        'username'        => env('WAREHOUSE_STOCK_USERNAME', 'SONIC'),
-        'password'        => env('WAREHOUSE_STOCK_PASSWORD', 'S0n!c@AP!'),
+        'url'             => env('WAREHOUSE_STOCK_URL'),
+        'username'        => env('WAREHOUSE_STOCK_USERNAME'),
+        'password'        => env('WAREHOUSE_STOCK_PASSWORD'),
         'endpoint'        => env('WAREHOUSE_STOCK_ENDPOINT', '/API/order/GetWHStock'),
         'default_code'    => env('WAREHOUSE_STOCK_DEFAULT_CODE', 'FGW1'),
         'driver'          => env('WAREHOUSE_STOCK_DRIVER', 'stream'),

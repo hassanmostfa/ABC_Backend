@@ -18,9 +18,10 @@ class FileService
         $this->disk = 'public';
         $this->path = 'files';
         // Allow all file types by default, but you can restrict if needed
+        // SECURITY: SVG removed from allowed types to prevent stored XSS attacks
         $this->allowedMimes = [
-            // Images
-            'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+            // Images (SVG explicitly excluded - can contain malicious scripts)
+            'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
             // Documents
             'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -179,14 +180,18 @@ class FileService
     }
 
     /**
-     * Generate unique filename
+     * Generate unique filename with server-validated extension
+     * SECURITY: Uses guessExtension() from MIME type instead of client-supplied extension
      *
      * @param UploadedFile $file
      * @return string
      */
     protected function generateFilename(UploadedFile $file): string
     {
-        $extension = $file->getClientOriginalExtension();
+        // SECURITY: Get extension from server-side MIME detection, NOT from client filename
+        $extension = $file->guessExtension() ?? $file->getClientOriginalExtension();
+        
+        // Sanitize the base filename (without extension)
         $name = Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME));
         $timestamp = now()->format('Y-m-d_H-i-s');
         $random = Str::random(8);

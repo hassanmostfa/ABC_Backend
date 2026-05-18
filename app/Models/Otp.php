@@ -19,6 +19,8 @@ class Otp extends Model
         'phone',
         'expires_at',
         'is_used',
+        'failed_attempts',
+        'is_locked',
         'generated_by_ip',
         'user_agent',
     ];
@@ -26,6 +28,8 @@ class Otp extends Model
     protected $casts = [
         'expires_at' => 'datetime',
         'is_used' => 'boolean',
+        'is_locked' => 'boolean',
+        'failed_attempts' => 'integer',
     ];
 
     /**
@@ -37,11 +41,23 @@ class Otp extends Model
     }
 
     /**
-     * Check if OTP is valid (not used and not expired)
+     * Check if OTP is valid (not used, not expired, and not locked)
      */
     public function isValid(): bool
     {
-        return !$this->is_used && !$this->isExpired();
+        return !$this->is_used && !$this->isExpired() && !$this->is_locked;
+    }
+
+    /**
+     * Increment failed attempts and lock if threshold reached
+     */
+    public function incrementFailedAttempts(int $lockThreshold = 5): void
+    {
+        $this->increment('failed_attempts');
+        
+        if ($this->failed_attempts >= $lockThreshold) {
+            $this->update(['is_locked' => true]);
+        }
     }
 }
 

@@ -18,11 +18,12 @@ class ImageController extends BaseApiController
 
     /**
      * Upload a file and return its URL
+     * SECURITY: Validates image type and restricts MIME types to prevent XSS
      */
     public function upload(Request $request): JsonResponse
     {
         $request->validate([
-            'file' => 'required|file|max:51200', // 50MB max
+            'file' => 'required|image|mimes:jpeg,jpg,png,gif,webp|max:5120', // 5MB max, image types only
         ]);
 
         $file = $request->file('file');

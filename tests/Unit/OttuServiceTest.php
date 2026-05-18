@@ -62,4 +62,28 @@ class OttuServiceTest extends TestCase
 
         $this->assertTrue($service->verifySignature($payload));
     }
+
+    public function test_verify_redirect_params_without_signature_allows_api_follow_up(): void
+    {
+        $service = new OttuService();
+
+        $this->assertTrue($service->verifyRedirectParams([
+            'session_id' => 'sess-1',
+            'order_no' => 'APP-2026-000001',
+        ]));
+    }
+
+    public function test_verify_redirect_params_rejects_tampered_signature(): void
+    {
+        config(['services.ottu.skip_signature_verify' => false]);
+        config(['services.ottu.hmac_key' => 'pu9MpX3yPR']);
+
+        $service = new OttuService();
+
+        $this->assertFalse($service->verifyRedirectParams([
+            'amount' => '86.000',
+            'currency_code' => 'KWD',
+            'signature' => 'invalid',
+        ]));
+    }
 }

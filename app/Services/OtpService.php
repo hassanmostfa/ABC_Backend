@@ -27,6 +27,19 @@ class OtpService
      */
     public function sendOtp(string $phone, string $phoneCode = '+965', string $otpType = 'login'): array
     {
+        $locale = $this->getLocale();
+
+        // Check rate limiting before sending
+        if (!$this->canRequestOtp($phone, $phoneCode)) {
+            return [
+                'success' => false,
+                'message' => $locale === 'ar' 
+                    ? 'يرجى الانتظار 30 ثانية قبل طلب رمز تحقق جديد.' 
+                    : 'Please wait 30 seconds before requesting a new OTP.',
+                'status_code' => 429
+            ];
+        }
+
         // Combine phone_code and phone for lookup
         $fullPhone = $phoneCode . $phone;
         // Remove + from phone_code if present for lookup
@@ -84,9 +97,9 @@ class OtpService
         // Generate OTP code based on production mode
         $otpCode = $isProduction ? $this->generateOtpCode() : $testCode;
 
-        // Create OTP record (store plain OTP code)
+        // Create OTP record (store hashed OTP code for security)
         $otp = Otp::create([
-            'otp_code' => $otpCode, // Store plain OTP code without hashing
+            'otp_code' => hash('sha256', $otpCode), // Store SHA-256 hash of OTP
             'otp_type' => $otpType,
             'otp_mode' => 'sms',
             'user_identifier' => $phone,
@@ -94,6 +107,8 @@ class OtpService
             'phone' => $phone,
             'expires_at' => now()->addMinutes($otpExpiry),
             'is_used' => false,
+            'failed_attempts' => 0,
+            'is_locked' => false,
             'generated_by_ip' => request()->ip(),
             'user_agent' => request()->userAgent()
         ]);
@@ -153,11 +168,40 @@ class OtpService
             ];
         }
 
-        // Verify OTP code (compare plain text)
-        if ($otp->otp_code !== $otpCode) {
+        // Check if OTP is locked due to too many failed attempts
+        if ($otp->is_locked) {
             return [
                 'success' => false,
-                'message' => $locale === 'ar' ? 'رمز التحقق غير صحيح.' : 'Invalid OTP code.'
+                'message' => $locale === 'ar' 
+                    ? 'تم قفل رمز التحقق بسبب عدة محاولات فاشلة. يرجى طلب رمز جديد.' 
+                    : 'OTP locked due to too many failed attempts. Please request a new one.'
+            ];
+        }
+
+        // Verify OTP code (hash and compare using timing-safe comparison)
+        $hashedInputOtp = hash('sha256', $otpCode);
+        if (!hash_equals($otp->otp_code, $hashedInputOtp)) {
+            // Increment failed attempts and potentially lock the OTP
+            $otp->incrementFailedAttempts(5);
+            
+            $remainingAttempts = max(0, 5 - $otp->failed_attempts);
+            $message = $locale === 'ar' 
+                ? 'رمز التحقق غير صحيح.' 
+                : 'Invalid OTP code.';
+            
+            if ($remainingAttempts > 0 && $remainingAttempts <= 2) {
+                $message .= $locale === 'ar' 
+                    ? " المحاولات المتبقية: {$remainingAttempts}" 
+                    : " Attempts remaining: {$remainingAttempts}";
+            } elseif ($remainingAttempts === 0) {
+                $message = $locale === 'ar' 
+                    ? 'تم قفل رمز التحقق. يرجى طلب رمز جديد.' 
+                    : 'OTP locked. Please request a new one.';
+            }
+            
+            return [
+                'success' => false,
+                'message' => $message
             ];
         }
 
@@ -246,6 +290,19 @@ class OtpService
      */
     public function resendOtp(string $phone, string $phoneCode = '+966', string $otpType = 'login'): array
     {
+        $locale = $this->getLocale();
+
+        // Check rate limiting before resending
+        if (!$this->canRequestOtp($phone, $phoneCode)) {
+            return [
+                'success' => false,
+                'message' => $locale === 'ar' 
+                    ? 'يرجى الانتظار 30 ثانية قبل طلب رمز تحقق جديد.' 
+                    : 'Please wait 30 seconds before requesting a new OTP.',
+                'status_code' => 429
+            ];
+        }
+
         // Delete any existing unused OTPs for this phone
         Otp::where('phone', $phone)
             ->where('phone_code', $phoneCode)

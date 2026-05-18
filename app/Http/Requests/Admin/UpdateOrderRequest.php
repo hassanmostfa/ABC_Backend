@@ -57,7 +57,7 @@ class UpdateOrderRequest extends FormRequest
             'offers.*.offer_id' => 'required_with:offers|integer|exists:offers,id',
             'offers.*.quantity' => 'required_with:offers.*.offer_id|integer|min:1',
             'offer_snapshot' => 'sometimes|nullable|array',
-            'coupons_discount' => 'sometimes|nullable|numeric|min:0',
+            'coupon_code' => 'sometimes|nullable|string|max:50',
             'delivery_type' => 'sometimes|nullable|in:pickup,delivery',
             // Omit both when e.g. only cancelling; if one is sent, the other is required (same as create).
             'delivery_date' => 'nullable|date|required_with:delivery_time',
@@ -153,8 +153,6 @@ class UpdateOrderRequest extends FormRequest
             'offer_ids.*.integer' => 'Each offer ID must be a valid integer.',
             'offer_ids.*.exists' => 'One or more selected offers do not exist.',
             'offer_snapshot.array' => 'The offer snapshot must be an array.',
-            'coupons_discount.numeric' => 'Coupons discount must be a valid number.',
-            'coupons_discount.min' => 'Coupons discount cannot be negative.',
             'items.array' => 'The items must be an array.',
             'items.min' => 'At least one order item is required when items are provided.',
             'items.*.id.integer' => 'The item ID must be a valid integer.',

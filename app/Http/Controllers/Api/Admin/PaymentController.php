@@ -411,74 +411,103 @@ class PaymentController extends BaseApiController
     }
 
     /**
-     * Handle payment success callback (redirect) from Ottu.
-     * Ottu redirects the customer here after payment. Uses session_id to verify via API, then updates Payment/Invoice.
+     * Handle payment success redirect from Ottu (browser callback).
+     * Never trust redirect alone: verify HMAC when present, confirm with Ottu API, show success UI only if invoice is paid.
      */
     public function success(Request $request): JsonResponse|View
     {
-        $sessionId = $request->query('session_id') ?? $request->input('session_id');
+        $sessionId = trim((string) ($request->query('session_id') ?? $request->input('session_id') ?? ''));
         $orderNo = $request->query('order_no') ?? $request->input('order_no');
+        $redirectParams = $request->query();
 
-        Log::info('Ottu success callback received', [
+        Log::info('Ottu success redirect received', [
             'session_id' => $sessionId,
             'order_no' => $orderNo,
-            'query' => $request->query(),
+            'has_signature' => array_key_exists('signature', $redirectParams),
         ]);
 
-        if ($sessionId) {
-            $statusResult = null;
-            try {
-                $statusResult = $this->ottuService->getPaymentStatusWithRetries($sessionId);
-            } catch (\Exception $e) {
-                Log::warning('Ottu success callback: getPaymentStatus failed', [
-                    'session_id' => $sessionId,
-                    'order_no' => $orderNo,
-                    'message' => $e->getMessage(),
-                ]);
-            }
+        if ($sessionId === '') {
+            Log::warning('Ottu success redirect: missing session_id');
 
-            if ($statusResult !== null && $statusResult['is_success']) {
-                try {
-                    $effectiveOrderNo = $statusResult['requested_order_id'] ?? $orderNo;
-                    $this->ottuPaymentProcessor->processVerifiedPayment($sessionId, $statusResult, null, $effectiveOrderNo);
-                } catch (\Exception $e) {
-                    Log::warning('Ottu success callback: processVerifiedPayment failed', [
-                        'session_id' => $sessionId,
-                        'order_no' => $orderNo,
-                        'message' => $e->getMessage(),
-                    ]);
-                }
-            } elseif ($statusResult !== null) {
-                Log::info('Ottu success callback: payment not successful yet', [
+            return $this->renderPaymentCallbackResponse($request, null, false);
+        }
+
+        if (!$this->ottuService->verifyRedirectParams($redirectParams)) {
+            Log::warning('Ottu success redirect: invalid HMAC signature', [
+                'session_id' => $sessionId,
+                'order_no' => $orderNo,
+            ]);
+
+            return $this->renderPaymentCallbackResponse($request, null, false);
+        }
+
+        try {
+            $statusResult = $this->ottuService->getPaymentStatusWithRetries($sessionId);
+            if ($statusResult['is_success']) {
+                $effectiveOrderNo = $statusResult['requested_order_id'] ?? $orderNo;
+                $receiptId = is_array($redirectParams['pg_params'] ?? null)
+                    ? ($redirectParams['pg_params']['receipt_no'] ?? null)
+                    : null;
+                $this->ottuPaymentProcessor->processVerifiedPayment(
+                    $sessionId,
+                    $statusResult,
+                    $receiptId,
+                    $effectiveOrderNo
+                );
+            } else {
+                Log::info('Ottu success redirect: payment not successful at gateway', [
                     'session_id' => $sessionId,
                     'order_no' => $orderNo,
                     'gateway_status_raw' => $statusResult['gateway_status_raw'] ?? null,
                     'is_failed' => $statusResult['is_failed'] ?? false,
                 ]);
             }
+        } catch (\Exception $e) {
+            Log::warning('Ottu success redirect: payment verification failed', [
+                'session_id' => $sessionId,
+                'order_no' => $orderNo,
+                'message' => $e->getMessage(),
+            ]);
         }
 
         $order = $this->resolveOrderFromCallback($request);
         if (!$order) {
-            if (!$request->expectsJson()) {
-                return view('payment-failed', ['order_number' => null]);
+            if ($request->expectsJson()) {
+                return $this->errorResponse('Order not found', 404);
             }
-            return $this->errorResponse('Order not found', 404);
+
+            return $this->renderPaymentCallbackResponse($request, null, false);
         }
+
         $order->load('invoice');
-        $invoice = $order->invoice;
-        $invoiceStatus = $invoice ? $invoice->status : 'pending';
-        $status = $invoiceStatus === 'paid' ? 'paid' : 'pending';
+        $isPaid = $order->invoice && $order->invoice->status === 'paid';
+
+        return $this->renderPaymentCallbackResponse($request, $order, $isPaid);
+    }
+
+    /**
+     * Render payment redirect UI/JSON from invoice state (webhook + API are source of truth).
+     */
+    protected function renderPaymentCallbackResponse(Request $request, ?\App\Models\Order $order, bool $showSuccess): JsonResponse|View
+    {
+        $orderNumber = $order?->order_number;
+        $invoiceStatus = $order?->invoice?->status ?? 'pending';
 
         if (!$request->expectsJson()) {
-            return view('payment-success', ['order_number' => $order->order_number]);
+            return $showSuccess
+                ? view('payment-success', ['order_number' => $orderNumber])
+                : view('payment-failed', ['order_number' => $orderNumber]);
         }
-        return $this->successResponse([
-            'success' => true,
-            'status' => $status,
-            'order_number' => $order->order_number,
+
+        return response()->json([
+            'success' => $showSuccess,
+            'status' => $showSuccess ? 'paid' : 'pending',
+            'order_number' => $orderNumber,
             'invoice_status' => $invoiceStatus,
-        ]);
+            'message' => $showSuccess
+                ? 'Payment completed successfully.'
+                : 'Payment not confirmed. Please wait or contact support if you were charged.',
+        ], $showSuccess ? 200 : 200);
     }
 
     /**
@@ -630,6 +659,7 @@ class PaymentController extends BaseApiController
     /**
      * Handle wallet charge payment success callback from Ottu.
      * When opened in browser, returns HTML success page; otherwise JSON.
+     * SECURITY: Requires session_id and verifies payment status before crediting wallet.
      */
     public function walletChargeSuccess(Request $request): JsonResponse|View
     {
@@ -641,6 +671,15 @@ class PaymentController extends BaseApiController
 
         Log::info('Wallet charge success callback received', ['reference' => $reference, 'session_id' => $sessionId, 'all_params' => $request->query()]);
 
+        // SECURITY: Require session_id to prevent unauthorized wallet top-ups
+        if (!$sessionId) {
+            Log::warning('Wallet charge success: missing session_id - rejecting request', ['reference' => $reference]);
+            if (!$request->expectsJson()) {
+                return view('payment-failed', ['order_number' => null]);
+            }
+            return $this->errorResponse('Payment verification failed: missing session_id', 400);
+        }
+
         $payment = $this->walletChargeService->findByReference($reference ?? '');
         if (!$payment) {
             if (!$request->expectsJson()) {
@@ -649,22 +688,32 @@ class PaymentController extends BaseApiController
             return $this->errorResponse('Wallet charge not found', 404);
         }
 
-        if ($sessionId) {
-            try {
-                $statusResult = $this->ottuService->getPaymentStatus($sessionId);
-                if ($statusResult['is_success']) {
-                    $this->walletChargeService->processSuccess($payment);
-                }
-            } catch (\Exception $e) {
-                Log::warning('Wallet charge success: getPaymentStatus failed, processing anyway', [
+        // SECURITY: Always verify payment status with gateway before crediting wallet
+        try {
+            $statusResult = $this->ottuService->getPaymentStatus($sessionId);
+            if ($statusResult['is_success']) {
+                $this->walletChargeService->processSuccess($payment);
+            } else {
+                Log::warning('Wallet charge success: payment not successful according to gateway', [
                     'session_id' => $sessionId,
                     'reference' => $reference,
-                    'message' => $e->getMessage(),
+                    'gateway_status' => $statusResult['gateway_status_raw'] ?? null,
                 ]);
-                $this->walletChargeService->processSuccess($payment);
+                if (!$request->expectsJson()) {
+                    return view('payment-failed', ['order_number' => $payment->reference]);
+                }
+                return $this->errorResponse('Payment was not successful', 400);
             }
-        } else {
-            $this->walletChargeService->processSuccess($payment);
+        } catch (\Exception $e) {
+            Log::error('Wallet charge success: payment verification failed - NOT crediting wallet', [
+                'session_id' => $sessionId,
+                'reference' => $reference,
+                'message' => $e->getMessage(),
+            ]);
+            if (!$request->expectsJson()) {
+                return view('payment-failed', ['order_number' => $payment->reference]);
+            }
+            return $this->errorResponse('Payment verification failed: ' . $e->getMessage(), 500);
         }
 
         if (!$request->expectsJson()) {

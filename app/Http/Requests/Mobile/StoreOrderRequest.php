@@ -34,7 +34,7 @@ class StoreOrderRequest extends MobileFormRequest
             'offers.*.offer_id' => 'required_with:offers|integer|exists:offers,id',
             'offers.*.quantity' => 'required_with:offers.*.offer_id|integer|min:1',
             'offer_snapshot' => 'nullable|array',
-            'coupons_discount' => 'nullable|numeric|min:0',
+            'coupon_code' => 'nullable|string|max:50',
             'used_points' => [
                 'nullable',
                 'integer',
@@ -122,8 +122,6 @@ class StoreOrderRequest extends MobileFormRequest
             'offers.*.quantity.integer' => $this->msg('The quantity must be a valid integer.', 'الكمية يجب أن تكون رقماً صحيحاً.'),
             'offers.*.quantity.min' => $this->msg('The quantity must be at least 1.', 'الكمية يجب أن تكون 1 على الأقل.'),
             'offer_snapshot.array' => $this->msg('The offer snapshot must be an array.', 'لقطة العرض يجب أن تكون مصفوفة.'),
-            'coupons_discount.numeric' => $this->msg('Coupons discount must be a valid number.', 'خصم الكوبونات يجب أن يكون رقماً.'),
-            'coupons_discount.min' => $this->msg('Coupons discount cannot be negative.', 'خصم الكوبونات لا يمكن أن يكون سلبياً.'),
             'items.required' => $this->msg('At least one order item is required.', 'مطلوب منتج واحد على الأقل.'),
             'items.array' => $this->msg('The items must be an array.', 'المنتجات يجب أن تكون مصفوفة.'),
             'items.min' => $this->msg('At least one order item is required.', 'مطلوب منتج واحد على الأقل.'),

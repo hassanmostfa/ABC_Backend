@@ -434,6 +434,19 @@ class OttuService
     }
 
     /**
+     * Verify browser redirect query params when Ottu includes a signature.
+     * If no signature is sent, returns true (caller must still verify via getPaymentStatus API).
+     */
+    public function verifyRedirectParams(array $params): bool
+    {
+        if (!isset($params['signature']) || $params['signature'] === '') {
+            return true;
+        }
+
+        return $this->verifySignature($params);
+    }
+
+    /**
      * Verify webhook signature using HMAC-SHA256.
      * Returns true if the computed signature matches the one in the payload.
      */

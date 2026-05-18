@@ -77,7 +77,8 @@ use App\Http\Controllers\Api\WarehouseStockController;
 
    // Admin Authentication Routes (Public)
 Route::prefix('admin')->group(function () {
-   Route::post('/login', [AdminController::class, 'login']);
+   Route::post('/login', [AdminController::class, 'login'])
+      ->middleware('throttle:5,1'); // Strict rate limit: 5 attempts per minute
 });
 
 // Admin Management Routes (Protected)
@@ -106,7 +107,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
       Route::get('/', 'index')->middleware('admin.permission:roles,view');
       Route::post('/', 'store')->middleware('admin.permission:roles,add');
       Route::get('/permissions-structure', 'getPermissionsStructure')->middleware('admin.permission:roles,view');
-      Route::get('/{id}', 'show');
+      Route::get('/{id}', 'show')->middleware('admin.permission:roles,view');
       Route::put('/{id}', 'update')->middleware('admin.permission:roles,edit');
       Route::delete('/{id}', 'destroy')->middleware('admin.permission:roles,delete');
    });
@@ -394,12 +395,16 @@ Route::controller(CareerController::class)->prefix('careers')->group(function ()
    Route::post('/', 'store');
 });
 
-// Public ERP endpoint (no middleware): send order payload and return ERP response.
-Route::post('/erp/orders/send', [PublicErpOrderController::class, 'sendOrder']);
+// Protected ERP endpoint: send order payload and return ERP response.
+// Requires octopus.token middleware (Authorization: Bearer abc_... or X-Access-Token header)
+Route::post('/erp/orders/send', [PublicErpOrderController::class, 'sendOrder'])
+    ->middleware('octopus.token');
 
-// Public Warehouse Stock endpoint (no middleware): fetch warehouse stock data.
-Route::get('/warehouse/stock', [WarehouseStockController::class, 'getStock']);
-Route::get('/warehouse/test-connection', [WarehouseStockController::class, 'testConnection']);
+// Protected Warehouse Stock endpoints: require admin authentication with product view permission.
+Route::middleware('admin.permission:products,view')->group(function () {
+    Route::get('/warehouse/stock', [WarehouseStockController::class, 'getStock']);
+    Route::get('/warehouse/test-connection', [WarehouseStockController::class, 'testConnection']);
+});
 
 // Web Product Routes (Public)
 Route::controller(WebProductController::class)->prefix('products')->group(function () {
@@ -484,9 +489,14 @@ Route::middleware('api.auth')->controller(CustomerNotificationController::class)
 // ================== Mobile Authentication Routes ======================================================
 // =====================================================================================================
 Route::prefix('mobile/auth')->group(function () {
-   Route::post('/send-otp', [MobileAuthController::class, 'sendOtp']);
-   Route::post('/verify-otp', [MobileAuthController::class, 'verifyOtp']);
-   Route::post('/resend-otp', [MobileAuthController::class, 'resendOtp']);
+   // OTP routes with aggressive rate limiting to prevent brute force
+   Route::post('/send-otp', [MobileAuthController::class, 'sendOtp'])
+      ->middleware('throttle:6,1'); // 6 requests per minute
+   Route::post('/verify-otp', [MobileAuthController::class, 'verifyOtp'])
+      ->middleware('throttle:6,1'); // 6 requests per minute to prevent brute force
+   Route::post('/resend-otp', [MobileAuthController::class, 'resendOtp'])
+      ->middleware('throttle:3,1'); // 3 requests per minute (more restrictive for resend)
+   
    Route::post('/complete-registration', [MobileAuthController::class, 'completeRegistration'])->middleware('api.auth');
    Route::post('/logout', [MobileAuthController::class, 'logout'])->middleware('api.auth');
    Route::delete('/account', [MobileAuthController::class, 'deleteAccount'])->middleware('api.auth');

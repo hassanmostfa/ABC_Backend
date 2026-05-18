@@ -41,9 +41,18 @@ class WarehouseStockController extends BaseApiController
 
     /**
      * Test warehouse API connection.
+     * Disabled in production to prevent internal network reconnaissance.
      */
     public function testConnection(): JsonResponse
     {
+        // Block test endpoint in production
+        if (app()->environment('production')) {
+            return $this->errorResponse(
+                'Test endpoint is disabled in production.',
+                403
+            );
+        }
+
         $config = config('services.warehouse_stock');
         
         $startTime = microtime(true);
