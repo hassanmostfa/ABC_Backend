@@ -13,6 +13,8 @@ class OttuService
 {
     protected ?string $lastCheckoutSessionId = null;
 
+    protected const CHECKOUT_TXN_PATH = '/b/checkout/v1/pymt-txn';
+
     /** @var list<string> */
     protected const SIGNATURE_FIELD_NAMES = [
         'amount',
@@ -64,7 +66,7 @@ class OttuService
         $url = is_string($url) ? trim($url) : '';
         if ($url === '') {
             throw new \RuntimeException(
-                'Ottu base URL is empty. Set OTTU_URL in .env (e.g. https://sandbox.ottu.net for sandbox).'
+                'Ottu base URL is empty. Set OTTU_TEST_URL / OTTU_LIVE_URL (or legacy OTTU_URL) and PAYMENTS_MODE in .env.'
             );
         }
 
@@ -76,17 +78,70 @@ class OttuService
         $key = config('services.ottu.api_key');
         if (!is_string($key) || trim($key) === '') {
             throw new \RuntimeException(
-                'Ottu API key is missing. Set OTTU_API_KEY in your .env file (Ottu dashboard → API keys).'
+                'Ottu API key is missing. Set OTTU_TEST_API_KEY / OTTU_LIVE_API_KEY (or legacy OTTU_API_KEY) and PAYMENTS_MODE in .env.'
             );
         }
 
         return trim($key);
     }
 
+    protected function checkoutCreateEndpoint(): string
+    {
+        return $this->checkoutTxnEndpoint();
+    }
+
+    protected function checkoutStatusEndpoint(string $sessionId): string
+    {
+        return $this->checkoutTxnEndpoint(urlencode($sessionId) . '/');
+    }
+
+    /**
+     * Build checkout API URL. Accepts either a domain base (sandbox/live)
+     * or a full URL that already includes /b/checkout/v1/pymt-txn.
+     */
+    protected function checkoutTxnEndpoint(string $suffix = ''): string
+    {
+        $base = $this->baseUrl();
+
+        if (preg_match('#(/b/checkout/v1/pymt-txn)/?$#', $base, $matches) === 1) {
+            $root = preg_replace('#(/b/checkout/v1/pymt-txn)/?$#', $matches[1], $base);
+
+            return rtrim($root, '/') . '/' . ltrim($suffix, '/');
+        }
+
+        return rtrim($base, '/') . self::CHECKOUT_TXN_PATH . '/' . ltrim($suffix, '/');
+    }
+
+    protected function resolveOttuErrorMessage(\Illuminate\Http\Client\Response $response): string
+    {
+        $body = $response->json();
+
+        if (!is_array($body)) {
+            $raw = trim((string) $response->body());
+
+            return $raw !== ''
+                ? mb_substr($raw, 0, 500)
+                : 'Ottu request failed (HTTP ' . $response->status() . ')';
+        }
+
+        foreach (['message', 'detail', 'error'] as $key) {
+            $value = $body[$key] ?? null;
+            if (is_string($value) && trim($value) !== '') {
+                return trim($value);
+            }
+        }
+
+        $encoded = json_encode($body);
+
+        return ($encoded !== false && $encoded !== 'null' && $encoded !== '[]')
+            ? $encoded
+            : 'Ottu request failed (HTTP ' . $response->status() . ')';
+    }
+
     /**
      * Create a payment transaction via Ottu Checkout API.
      *
-     * @param string|null $pgCodeOverride  Request `src` / Ottu pg_code (e.g. "cc" → cyber-source-nbk, "knet"). Falls back to config.
+     * @param string|null $pgCodeOverride  Request `src` / Ottu pg_code (e.g. "cc" → credit-card live / cyber-source-nbk test, "knet" → knet). Falls back to config.
      */
     public function createPayment(Order $order, float $amount, ?int $timeoutSeconds = null, ?string $pgCodeOverride = null): string
     {
@@ -102,7 +157,7 @@ class OttuService
             throw new \Exception('Customer is required for online payment');
         }
 
-        $endpoint = $this->baseUrl() . '/b/checkout/v1/pymt-txn/';
+        $endpoint = $this->checkoutCreateEndpoint();
 
         $pgCode = $this->resolvePgCode($pgCodeOverride);
 
@@ -129,6 +184,8 @@ class OttuService
             $payload['extra'] = $extra;
         }
 
+        $this->applyLiveCheckoutFields($payload, $customer, $order->order_number, $amount);
+
         Log::info('Ottu checkout request', [
             'endpoint' => $endpoint,
             'payload' => $payload,
@@ -149,7 +206,7 @@ class OttuService
 
         if (!$response->successful()) {
             $body = $response->json();
-            $message = $body['message'] ?? $body['detail'] ?? json_encode($body) ?: 'Ottu request failed';
+            $message = $this->resolveOttuErrorMessage($response);
             throw new \Exception($message);
         }
 
@@ -185,7 +242,7 @@ class OttuService
             throw new \Exception('Customer is required for online payment');
         }
 
-        $endpoint = $this->baseUrl() . '/b/checkout/v1/pymt-txn/';
+        $endpoint = $this->checkoutCreateEndpoint();
         $pgCode = $this->resolvePgCode($pgCodeOverride);
 
         $payload = [
@@ -215,6 +272,14 @@ class OttuService
             $payload['extra']['products'] = $products;
         }
 
+        $this->applyLiveCheckoutFields(
+            $payload,
+            $customer,
+            $checkout->order_number,
+            $amount,
+            Payment::TYPE_ORDER_CHECKOUT
+        );
+
         Log::info('Ottu checkout payment request', [
             'endpoint' => $endpoint,
             'checkout_id' => $checkout->id,
@@ -231,8 +296,11 @@ class OttuService
 
         if (!$response->successful()) {
             $body = $response->json();
-            $message = $body['message'] ?? $body['detail'] ?? json_encode($body) ?: 'Ottu request failed';
-            throw new \Exception($message);
+            Log::warning('Ottu checkout response failed', [
+                'status' => $response->status(),
+                'body' => $body,
+            ]);
+            throw new \Exception($this->resolveOttuErrorMessage($response));
         }
 
         $data = $response->json();
@@ -322,7 +390,7 @@ class OttuService
             throw new \Exception('Customer is required for wallet charge payment');
         }
 
-        $endpoint = $this->baseUrl() . '/b/checkout/v1/pymt-txn/';
+        $endpoint = $this->checkoutCreateEndpoint();
 
         $pgCode = $this->resolvePgCode($pgCodeOverride);
 
@@ -344,6 +412,14 @@ class OttuService
             ],
         ];
 
+        $this->applyLiveCheckoutFields(
+            $payload,
+            $customer,
+            (string) $payment->reference,
+            $amount,
+            'wallet_charge'
+        );
+
         Log::info('Ottu wallet charge request', [
             'endpoint' => $endpoint,
             'wallet_charge_reference' => $payment->reference,
@@ -364,7 +440,7 @@ class OttuService
 
         if (!$response->successful()) {
             $body = $response->json();
-            $message = $body['message'] ?? $body['detail'] ?? json_encode($body) ?: 'Ottu request failed';
+            $message = $this->resolveOttuErrorMessage($response);
             throw new \Exception($message);
         }
 
@@ -446,7 +522,7 @@ class OttuService
      */
     public function getPaymentStatus(string $sessionId): array
     {
-        $url = $this->baseUrl() . '/b/checkout/v1/pymt-txn/' . urlencode($sessionId) . '/';
+        $url = $this->checkoutStatusEndpoint($sessionId);
 
         $timeout = 20;
         $maxAttempts = 3;
@@ -717,9 +793,76 @@ class OttuService
             'credit',
             'creditcard',
             'credit_card',
-            'credit-card' => 'cyber-source-nbk',
+            'credit-card' => $this->creditCardPgCode(),
             'knet' => 'knet',
             default => $s,
+        };
+    }
+
+    protected function creditCardPgCode(): string
+    {
+        return config('payments.mode') === 'live' ? 'credit-card' : 'cyber-source-nbk';
+    }
+
+    protected function isLiveMode(): bool
+    {
+        return config('payments.mode') === 'live';
+    }
+
+    /**
+     * Ottu live checkout requires customer_last_name and extra.payment_description.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    protected function applyLiveCheckoutFields(
+        array &$payload,
+        object $customer,
+        string $reference,
+        float $amount,
+        ?string $paymentType = null
+    ): void {
+        if (!$this->isLiveMode()) {
+            return;
+        }
+
+        $name = $this->splitCustomerName($customer->name ?? null);
+        $payload['customer_first_name'] = $name['first'];
+        $payload['customer_last_name'] = $name['last'];
+
+        $payload['extra'] = array_merge(
+            is_array($payload['extra'] ?? null) ? $payload['extra'] : [],
+            [
+                'payment_description' => $this->paymentDescription($reference, $amount, $paymentType),
+            ]
+        );
+    }
+
+    /**
+     * @return array{first: string, last: string}
+     */
+    protected function splitCustomerName(?string $fullName): array
+    {
+        $fullName = trim((string) $fullName);
+        if ($fullName === '') {
+            return ['first' => 'Customer', 'last' => 'Customer'];
+        }
+
+        $parts = preg_split('/\s+/', $fullName, 2);
+        $first = $parts[0] ?? 'Customer';
+        $last = $parts[1] ?? $first;
+
+        return ['first' => $first, 'last' => $last];
+    }
+
+    protected function paymentDescription(string $reference, float $amount, ?string $paymentType = null): string
+    {
+        $currency = config('services.ottu.currency', 'KWD');
+        $formattedAmount = number_format($amount, 3, '.', '');
+
+        return match ($paymentType) {
+            'wallet_charge' => "Wallet top-up {$reference} ({$formattedAmount} {$currency})",
+            Payment::TYPE_ORDER_CHECKOUT => "Order payment {$reference} ({$formattedAmount} {$currency})",
+            default => "Payment for {$reference} ({$formattedAmount} {$currency})",
         };
     }
 
@@ -733,7 +876,7 @@ class OttuService
             : trim((string) config('services.ottu.pg_code', ''));
 
         if ($raw === '') {
-            return 'credit-card';
+            return $this->creditCardPgCode();
         }
 
         return $this->normalizeSrcToPgCode($raw);

@@ -180,6 +180,7 @@ class AdminController extends Controller
         try {
             $request->validate([
                 'name' => 'required|string|max:255',
+                'employee_code' => 'required|string|max:50|unique:admins,employee_code',
                 'email' => 'required|email|unique:admins,email',
                 'phone' => 'nullable|string|max:20',
                 'password' => 'required|string|min:6',
@@ -188,6 +189,7 @@ class AdminController extends Controller
 
             $admin = Admin::create([
                 'name' => $request->name,
+                'employee_code' => $request->employee_code,
                 'email' => $request->email,
                 'phone' => $request->phone,
                 'password' => Hash::make($request->password),

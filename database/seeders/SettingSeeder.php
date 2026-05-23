@@ -69,6 +69,14 @@ class SettingSeeder extends Seeder
                 'value' => '7', // Delivery days
             ],
             [
+                'key' => 'same_day_delivery_enabled',
+                'value' => '1', // 1 = today is bookable, 0 = earliest bookable date is tomorrow
+            ],
+            [
+                'key' => 'erp_stock_sync_enabled',
+                'value' => '1', // 1 = sync stock from ERP, 0 = skip ERP stock sync
+            ],
+            [
                 'key' => 'slot_interval',
                 'value' => '720', // Slot interval (in minutes)
             ],

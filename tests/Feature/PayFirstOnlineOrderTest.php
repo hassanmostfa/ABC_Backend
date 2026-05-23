@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\SendPaymentLinkSmsJob;
 use App\Models\Area;
 use App\Models\Category;
 use App\Models\Country;
@@ -17,7 +18,9 @@ use App\Models\Setting;
 use App\Services\OrderCheckoutService;
 use App\Services\OrderService;
 use App\Services\OttuService;
+use App\Services\SmsBoxService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Laravel\Sanctum\Sanctum;
 use Mockery;
 use Tests\TestCase;
@@ -209,6 +212,72 @@ class PayFirstOnlineOrderTest extends TestCase
         $response->assertJsonPath('data.invoice.status', 'pending');
         $response->assertJsonPath('data.invoice.payment_link', 'https://pay.example/checkout?session_id=api-session-001');
         $this->assertDatabaseCount('orders', 0);
+    }
+
+    public function test_call_center_checkout_dispatches_payment_link_sms_job(): void
+    {
+        [$customer, $address, $variant] = $this->seedOrderPrerequisites();
+
+        $partial = Mockery::mock(OttuService::class)->makePartial();
+        $partial->shouldReceive('createCheckoutPayment')->once()->andReturn('https://pay.example/checkout?session_id=cals-session');
+        $partial->shouldReceive('getLastCheckoutSessionId')->andReturn('cals-session');
+        $partial->shouldReceive('ensurePendingCheckoutPayment')->once();
+        $this->instance(OttuService::class, $partial);
+
+        Bus::fake();
+
+        app(OrderService::class)->createOrder([
+            'customer_id' => $customer->id,
+            'customer_address_id' => $address->id,
+            'delivery_date' => now()->addDay()->toDateString(),
+            'delivery_time' => '10:00',
+            'payment_method' => 'online_link',
+            'src' => 'knet',
+            'source' => 'call_center',
+            'items' => [
+                ['variant_id' => $variant->id, 'quantity' => 1],
+            ],
+        ]);
+
+        Bus::assertDispatched(SendPaymentLinkSmsJob::class);
+    }
+
+    public function test_send_payment_link_sms_job_sends_message_to_customer(): void
+    {
+        [$customer, $address, $variant] = $this->seedOrderPrerequisites();
+        Setting::query()->updateOrCreate(['key' => 'is_production'], ['value' => '1']);
+
+        $partial = Mockery::mock(OttuService::class)->makePartial();
+        $partial->shouldReceive('createCheckoutPayment')->once()->andReturn('https://pay.example/checkout?session_id=cals-session');
+        $partial->shouldReceive('getLastCheckoutSessionId')->andReturn('cals-session');
+        $partial->shouldReceive('ensurePendingCheckoutPayment')->once();
+        $this->instance(OttuService::class, $partial);
+
+        $result = app(OrderService::class)->createOrder([
+            'customer_id' => $customer->id,
+            'customer_address_id' => $address->id,
+            'delivery_date' => now()->addDay()->toDateString(),
+            'delivery_time' => '10:00',
+            'payment_method' => 'online_link',
+            'src' => 'knet',
+            'source' => 'call_center',
+            'items' => [
+                ['variant_id' => $variant->id, 'quantity' => 1],
+            ],
+        ]);
+
+        $smsMock = Mockery::mock(SmsBoxService::class);
+        $smsMock->shouldReceive('send')
+            ->once()
+            ->withArgs(function (string $phone, string $message) use ($customer, $result) {
+                return $phone === $customer->phone
+                    && str_contains($message, $result['checkout']->order_number)
+                    && str_contains($message, 'https://pay.example/checkout?session_id=cals-session');
+            })
+            ->andReturn(['success' => true, 'message_id' => '1', 'net_points' => null, 'rejected_numbers' => []]);
+        $this->instance(SmsBoxService::class, $smsMock);
+
+        (new SendPaymentLinkSmsJob($result['checkout']->id))->handle($smsMock);
     }
 
     /**

@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Resources\Admin\CustomerResource;
+use App\Jobs\DispatchErpCustomerJob;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Repositories\CustomerRepositoryInterface;
+use App\Services\ErpCustomerService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -125,6 +127,8 @@ class CustomerController extends BaseApiController
 
         // Log activity
         logAdminActivity('created', 'Customer', $customer->id);
+
+        DispatchErpCustomerJob::dispatchAfterResponse($customer->id, ErpCustomerService::SOURCE_CALS);
 
         return $this->createdResponse(new CustomerResource($customer), 'Customer created successfully');
     }

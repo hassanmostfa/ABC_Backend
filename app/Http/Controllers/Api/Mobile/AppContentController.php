@@ -8,13 +8,15 @@ use App\Http\Resources\Web\WebSocialMediaLinkResource;
 use App\Models\Faq;
 use App\Models\Setting;
 use App\Repositories\SocialMediaLinkRepositoryInterface;
+use App\Services\DeliverySlotService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 class AppContentController extends BaseApiController
 {
     public function __construct(
-        protected SocialMediaLinkRepositoryInterface $socialMediaLinkRepository
+        protected SocialMediaLinkRepositoryInterface $socialMediaLinkRepository,
+        protected DeliverySlotService $deliverySlotService,
     ) {}
 
     /**
@@ -119,6 +121,7 @@ class AppContentController extends BaseApiController
                 'minimum_home_order' => $minimumHomeOrder,
                 'ordering_enabled' => $orderingEnabled,
                 'ordering_disabled_message' => $orderingDisabledMessage,
+                'delivery_schedule' => $this->deliverySlotService->getScheduleSettings(),
             ],
             'Order settings retrieved successfully'
         );

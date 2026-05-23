@@ -1,5 +1,7 @@
 <?php
 
+$payments = require __DIR__ . '/payments.php';
+
 return [
 
     /*
@@ -68,43 +70,9 @@ return [
         'access_token' => env('OCTOPUS_API_TOKEN'),
     ],
 
-    'upayments' => [
-        'key' => env('UPAYMENTS_API_KEY'),
-        'url' => env('UPAYMENTS_API_URL'),
-        'status_endpoint' => env('UPAYMENTS_STATUS_ENDPOINT', '/api/v1/getpaymentstatus'),
-        /** Fallback when no per-request src is passed. Empty = no paymentGateway in payload. "create-invoice" = invoice link + notificationType. Orders/wallet use request body src (knet|cc). */
-        'payment_gateway_src' => env('UPAYMENTS_PAYMENT_GATEWAY_SRC', ''),
-        /** Required when payment_gateway_src is create-invoice: "link" (return URL), "email", "sms", or "all". */
-        'notification_type' => env('UPAYMENTS_NOTIFICATION_TYPE', 'link'),
-        /** When false (e.g. local), success callback updates payment/invoice from redirect params only. Set true in production. */
-        'verify_via_status_api' => env('UPAYMENTS_VERIFY_VIA_STATUS_API', true),
-        'logging_channel' => env('UPAYMENTS_LOGGING_CHANNEL'),
-        'logging_enabled' => env('UPAYMENTS_LOGGING_ENABLED'),
-        /** Request timeout in seconds (default 60). Increase if sandbox is slow; if timeouts persist, check network/firewall. */
-        'timeout' => (int) env('UPAYMENTS_TIMEOUT', 60),
-        /** Connection timeout in seconds (default 15). */
-        'connect_timeout' => (int) env('UPAYMENTS_CONNECT_TIMEOUT', 15),
-        /** Browser redirects after Upayments for orders with number prefix WEB- (website checkout). */
-        'website_return_url' => env('UPAYMENTS_WEBSITE_RETURN_URL', 'https://abc-website-enhanced-wiys.vercel.app/en/payment/success'),
-        'website_cancel_url' => env('UPAYMENTS_WEBSITE_CANCEL_URL', 'https://abc-website-enhanced-wiys.vercel.app/en/payment/failed'),
-    ],
+    'upayments' => $payments['upayments'],
 
-    'ottu' => [
-        'api_key' => env('OTTU_API_KEY'),
-        /** Empty OTTU_URL in .env would otherwise bypass env() default; ?: forces a real base URL. */
-        'url' => rtrim((string) (env('OTTU_URL') ?: 'https://sandbox.ottu.net'), '/'),
-        'hmac_key' => env('OTTU_HMAC_KEY'),
-        /** Local debugging only — never enable in production. */
-        'skip_signature_verify' => (bool) env('OTTU_SKIP_SIGNATURE_VERIFY', false),
-        'pg_code' => env('OTTU_PG_CODE', 'credit-card'),
-        'type' => env('OTTU_TYPE', 'payment_request'),
-        'currency' => env('OTTU_CURRENCY', 'KWD'),
-        'timeout' => (int) env('OTTU_TIMEOUT', 60),
-        'connect_timeout' => (int) env('OTTU_CONNECT_TIMEOUT', 15),
-        'website_return_url' => env('OTTU_WEBSITE_RETURN_URL', 'https://abc-website-enhanced-wiys.vercel.app/en/payment/success'),
-        'website_cancel_url' => env('OTTU_WEBSITE_CANCEL_URL', 'https://abc-website-enhanced-wiys.vercel.app/en/payment/failed'),
-        'checkout_ttl_minutes' => (int) env('OTTU_CHECKOUT_TTL_MINUTES', 60),
-    ],
+    'ottu' => $payments['ottu'],
 
 
 ];

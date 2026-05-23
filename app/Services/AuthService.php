@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Customer;
+use App\Jobs\DispatchErpCustomerJob;
+use App\Services\ErpCustomerService;
 use Illuminate\Support\Facades\Auth;
 use App\Services\CouponService;
 use Illuminate\Support\Facades\Hash;
@@ -45,6 +47,8 @@ class AuthService
 
         // Assign welcome coupon (valid for one month) for first registration
         app(CouponService::class)->createWelcomeCouponForCustomer($customer);
+
+        DispatchErpCustomerJob::dispatchAfterResponse($customer->id, ErpCustomerService::SOURCE_WEB);
 
         // Generate token
         $token = $customer->createToken('auth_token')->plainTextToken;

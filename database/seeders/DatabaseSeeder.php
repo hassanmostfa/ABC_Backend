@@ -29,6 +29,7 @@ class DatabaseSeeder extends Seeder
         
         Admin::factory()->create([
             'name' => 'Super Admin',
+            'employee_code' => 'EMP-0001',
             'email' => 'admin@example.com',
             'phone' => '01717171717',
             'role_id' => $superAdminRole->id,

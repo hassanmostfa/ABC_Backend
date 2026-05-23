@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\DispatchErpOrderJob;
 use App\Jobs\SendOrderCreatedNotificationsJob;
+use App\Jobs\SendPaymentLinkSmsJob;
 use App\Models\Order;
 use App\Models\OrderCheckout;
 use App\Models\Payment;
@@ -78,6 +79,10 @@ class OrderCheckoutService
 
         $checkout->load(['customer']);
 
+        if ($source === 'call_center' && $paymentLink) {
+            SendPaymentLinkSmsJob::dispatch($checkout->id)->afterResponse();
+        }
+
         return [
             'success' => true,
             'checkout' => $checkout,
@@ -140,6 +145,10 @@ class OrderCheckoutService
                 );
             }
 
+            if ($checkout->source === 'call_center' && $paymentLink) {
+                SendPaymentLinkSmsJob::dispatch($checkout->id)->afterResponse();
+            }
+
             return [
                 'success' => true,
                 'message' => 'Payment link regenerated successfully.',
@@ -191,9 +200,11 @@ class OrderCheckoutService
         if (!$statusResult['is_success']) {
             return [
                 'success' => false,
-                'message' => 'Payment is not completed at Ottu yet.',
+                'message' => ($statusResult['is_failed'] ?? false)
+                    ? 'Payment was not completed. You can try again using the same or a new payment link.'
+                    : 'Payment is not completed at Ottu yet.',
                 'gateway_status_raw' => $statusResult['gateway_status_raw'] ?? null,
-                'payment_status' => $statusResult['is_failed'] ? 'failed' : 'pending',
+                'payment_status' => 'pending',
             ];
         }
 

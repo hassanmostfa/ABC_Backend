@@ -10,6 +10,33 @@ use Illuminate\Support\Facades\Log;
 class DeliverySlotService
 {
     /**
+     * Delivery scheduling settings for clients (date picker + slot config).
+     *
+     * @return array<string, mixed>
+     */
+    public function getScheduleSettings(): array
+    {
+        $window = $this->getBookableWindow();
+        $todayPayload = $this->getAvailableSlotsForDate($window['min_bookable_date']);
+
+        return [
+            'same_day_delivery_enabled' => $this->isSameDayDeliveryEnabled(),
+            'today_available' => !$todayPayload['out_of_range']
+                && !$todayPayload['is_day_off']
+                && count($todayPayload['slots']) > 0,
+            'min_bookable_date' => $window['min_bookable_date'],
+            'max_bookable_date' => $window['max_bookable_date'],
+            'delivery_days' => $window['delivery_days'],
+            'day_offs' => $this->parseDayOffs(),
+            'opening_time' => (string) Setting::getValue('opening_time', '10:00 am'),
+            'closing_time' => (string) Setting::getValue('closing_time', '10:00 pm'),
+            'slot_interval_minutes' => max(1, (int) Setting::getValue('slot_interval', 60)),
+            'max_delivery_per_slot' => max(0, (int) Setting::getValue('max_delivery_per_slot', 999)),
+            'timezone' => config('app.timezone', 'Asia/Kuwait'),
+        ];
+    }
+
+    /**
      * Build available delivery slots for a calendar date using settings (opening/closing, interval, max per slot).
      * Full slots are omitted from the list.
      *
@@ -26,15 +53,27 @@ class DeliverySlotService
             return $this->emptyPayload($dateYmd, false, true, 'Invalid date format. Use Y-m-d.');
         }
 
-        $deliveryDays = max(1, (int) Setting::getValue('delivery_days', 7));
-        $today = $now->copy()->startOfDay();
-        $maxBookable = $today->copy()->addDays($deliveryDays - 1);
+        $window = $this->getBookableWindow();
+        $minBookable = Carbon::createFromFormat('Y-m-d', $window['min_bookable_date'], $tz)->startOfDay();
+        $maxBookable = Carbon::createFromFormat('Y-m-d', $window['max_bookable_date'], $tz)->startOfDay();
 
-        if ($date->lt($today)) {
-            return $this->emptyPayload($dateYmd, false, true, 'Date cannot be in the past.');
+        if ($date->lt($minBookable)) {
+            return $this->emptyPayload(
+                $dateYmd,
+                false,
+                true,
+                $this->isSameDayDeliveryEnabled()
+                    ? 'Date cannot be in the past.'
+                    : 'Same-day delivery is disabled. Choose a date from tomorrow.'
+            );
         }
         if ($date->gt($maxBookable)) {
-            return $this->emptyPayload($dateYmd, false, true, "Date must be within the next {$deliveryDays} day(s).");
+            return $this->emptyPayload(
+                $dateYmd,
+                false,
+                true,
+                "Date must be within the next {$window['delivery_days']} day(s)."
+            );
         }
 
         $dayOffs = $this->parseDayOffs();
@@ -70,7 +109,7 @@ class DeliverySlotService
                 break;
             }
 
-            if ($date->isSameDay($now) && $current->lt($now)) {
+            if ($date->isSameDay($now) && $slotEnd->lte($now)) {
                 $current->addMinutes($intervalMinutes);
                 continue;
             }
@@ -99,14 +138,42 @@ class DeliverySlotService
             'out_of_range' => false,
             'message' => null,
             'slots' => $slots,
-            'meta' => [
+            'meta' => array_merge([
                 'opening_time' => $openingRaw,
                 'closing_time' => $closingRaw,
                 'slot_interval_minutes' => $intervalMinutes,
                 'max_delivery_per_slot' => $maxPerSlot,
                 'timezone' => $tz,
-            ],
+                'same_day_delivery_enabled' => $this->isSameDayDeliveryEnabled(),
+            ], $this->getBookableWindow()),
         ];
+    }
+
+    /**
+     * @return array{min_bookable_date: string, max_bookable_date: string, delivery_days: int}
+     */
+    private function getBookableWindow(): array
+    {
+        $tz = config('app.timezone', 'Asia/Kuwait');
+        $today = Carbon::now($tz)->startOfDay();
+        $deliveryDays = max(1, (int) Setting::getValue('delivery_days', 7));
+        $minBookable = $this->isSameDayDeliveryEnabled()
+            ? $today
+            : $today->copy()->addDay();
+        $maxBookable = $minBookable->copy()->addDays($deliveryDays - 1);
+
+        return [
+            'min_bookable_date' => $minBookable->toDateString(),
+            'max_bookable_date' => $maxBookable->toDateString(),
+            'delivery_days' => $deliveryDays,
+        ];
+    }
+
+    private function isSameDayDeliveryEnabled(): bool
+    {
+        $value = Setting::getValue('same_day_delivery_enabled', '1');
+
+        return $value === '1' || $value === 1 || $value === true || $value === 'true';
     }
 
     /**

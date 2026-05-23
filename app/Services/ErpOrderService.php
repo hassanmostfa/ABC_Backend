@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Admin;
 use App\Models\Order;
 use App\Models\Setting;
 use GuzzleHttp\TransferStats;
@@ -62,6 +63,7 @@ class ErpOrderService
             'customerAddress.country',
             'customerAddress.governorate',
             'customerAddress.area',
+            'createdBy',
         ]);
 
         $payload  = $this->buildPayload($order);
@@ -347,6 +349,7 @@ class ErpOrderService
             'DeliveryDate'  => $deliveryDate,
             'DeliveryValue' => round($deliveryFee, 3),
             'CustomerCode'  => $this->resolveCustomerCode($order),
+            'EmployeeCode'  => $this->resolveEmployeeCode($order),
             'LPO'           => $this->resolveLpo($order),
             'Notes'         => $this->resolveNotes($order),
             'allItems'      => $this->buildItems($order),
@@ -386,19 +389,41 @@ class ErpOrderService
     }
 
     /**
-     * ERP Notes: order.address text, or full customer-address detail for ERP.
+     * ERP EmployeeCode: admin employee_code when order was created by an admin, otherwise default.
+     */
+    private function resolveEmployeeCode(Order $order): string
+    {
+        $defaultCode = '200992';
+
+        $order->loadMissing('createdBy');
+        $creator = $order->createdBy;
+
+        if (!$creator instanceof Admin) {
+            return $defaultCode;
+        }
+
+        $employeeCode = trim((string) ($creator->employee_code ?? ''));
+
+        return $employeeCode !== '' ? $employeeCode : $defaultCode;
+    }
+
+    /**
+     * ERP Notes: customer name plus address text (order.address or customer-address detail).
      */
     private function resolveNotes(Order $order): string
     {
+        $order->loadMissing('customer');
+        $customerName = trim((string) ($order->customer?->name ?? ''));
+
         $direct = trim((string) ($order->address ?? ''));
         if ($direct !== '') {
-            return $direct;
+            return $this->formatNotes($customerName, $direct);
         }
 
         $order->loadMissing('customerAddress.country', 'customerAddress.governorate', 'customerAddress.area');
         $addr = $order->customerAddress;
         if (!$addr) {
-            return '';
+            return $customerName;
         }
 
         $parts = [];
@@ -431,16 +456,29 @@ class ErpOrderService
             $parts[] = 'Block ' . $addr->block;
         }
 
-        $addressText = implode(' ', array_filter($parts));
-        
-        $customerPhone = $order->customer?->phone ?? '';
-        
-        $notes = 'address : ' . $addressText;
-        if (!empty($customerPhone)) {
-            $notes .= ' - Phone: ' . $customerPhone;
+        $addressText = implode(' | ', array_filter($parts));
+
+        $customerPhone = trim((string) ($order->customer?->phone ?? ''));
+        if ($customerPhone !== '') {
+            $addressText = $addressText !== ''
+                ? $addressText . ' | Phone: ' . $customerPhone
+                : 'Phone: ' . $customerPhone;
         }
 
-        return $notes;
+        return $this->formatNotes($customerName, $addressText);
+    }
+
+    private function formatNotes(string $customerName, string $addressText): string
+    {
+        if ($customerName === '') {
+            return $addressText;
+        }
+
+        if ($addressText === '') {
+            return $customerName;
+        }
+
+        return $customerName . ' | ' . $addressText;
     }
 
     /**

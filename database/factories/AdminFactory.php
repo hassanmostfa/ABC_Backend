@@ -20,6 +20,7 @@ class AdminFactory extends Factory
     {
         return [
             'name' => fake()->name(),
+            'employee_code' => fake()->unique()->bothify('EMP-####'),
             'email' => fake()->unique()->safeEmail(),
             'phone' => fake()->phoneNumber(),
             'password' => Hash::make('password'), // password

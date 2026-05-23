@@ -208,14 +208,10 @@ class OttuPaymentProcessor
         }
 
         if ($statusResult['is_failed'] ?? false) {
-            $payment->update(['status' => 'failed']);
-            if ($checkout->isPending()) {
-                $checkout->update(['status' => OrderCheckout::STATUS_FAILED]);
-            }
-
+            // Keep checkout/payment pending so the customer can retry with the same or a new link.
             return [
                 'processed' => true,
-                'payment_status' => 'failed',
+                'payment_status' => 'pending',
             ];
         }
 

@@ -15,6 +15,16 @@ class SyncWarehouseStockCommand extends Command
 
     public function handle(WarehouseStockService $warehouseStockService): int
     {
+        if (getSetting('erp_stock_sync_enabled', '1') !== '1') {
+            $this->line('');
+            $this->warn('[!] ERP stock sync is disabled in settings (erp_stock_sync_enabled = 0). Skipping sync.');
+            $this->line('');
+
+            Log::channel('erp')->info('Warehouse stock sync skipped (disabled in settings)');
+
+            return self::SUCCESS;
+        }
+
         $warehouseCode = $this->option('wh_code')
             ?: config('services.warehouse_stock.default_code', 'FGW1');
 
@@ -89,31 +99,12 @@ class SyncWarehouseStockCommand extends Command
             }
         }
 
-        $zeroed = 0;
-        if ($apiSkus !== []) {
-            $this->line("[~] Zeroing variants not present in ERP stock response...");
-            ProductVariant::query()
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->whereNotIn('sku', $apiSkus)
-                ->where('quantity', '!=', 0)
-                ->chunkById(500, function ($chunk) use (&$zeroed): void {
-                    foreach ($chunk as $variant) {
-                        $oldQty = $variant->quantity;
-                        $variant->update(['quantity' => 0]);
-                        $this->line("  [0] {$variant->sku}: {$oldQty} -> 0 (not in ERP)");
-                        $zeroed++;
-                    }
-                });
-        }
-
         $notFound = count($quantityByItemCode) - $variants->count();
 
         $this->line('');
         $this->info("[=] Sync Summary:");
         $this->line("  [+] Updated:    {$updated}");
         $this->line("  [-] Unchanged:  {$skipped}");
-        $this->line("  [0] Zeroed:     {$zeroed} (in DB, not in ERP)");
         $this->line("  [?] Not in DB:  {$notFound}");
         $this->info("[*] Warehouse Stock Sync Completed");
         $this->line('');
@@ -125,7 +116,6 @@ class SyncWarehouseStockCommand extends Command
             'variants_found' => $variants->count(),
             'updated' => $updated,
             'skipped' => $skipped,
-            'zeroed_not_in_erp' => $zeroed,
             'not_in_db' => $notFound,
         ]);
 
