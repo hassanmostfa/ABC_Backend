@@ -262,6 +262,7 @@ class AdminController extends Controller
 
         $request->validate([
             'name' => 'required|string|max:255',
+            'employee_code' => ['required', 'string', 'max:50', Rule::unique('admins', 'employee_code')->ignore($admin->id)],
             'email' => ['required', 'email', Rule::unique('admins')->ignore($admin->id)],
             'phone' => 'nullable|string|max:20',
             'password' => 'nullable|string|min:6',
@@ -271,6 +272,7 @@ class AdminController extends Controller
 
         $updateData = [
             'name' => $request->name,
+            'employee_code' => $request->employee_code,
             'email' => $request->email,
             'phone' => $request->phone,
             'role_id' => $request->role_id,

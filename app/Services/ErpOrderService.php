@@ -389,22 +389,33 @@ class ErpOrderService
     }
 
     /**
-     * ERP EmployeeCode: admin employee_code when order was created by an admin, otherwise default.
+     * ERP EmployeeCode: admin employee_code when order was created by an admin;
+     * app orders use 1000; website orders use 2000.
      */
     private function resolveEmployeeCode(Order $order): string
     {
-        $defaultCode = '200992';
+        $fallbackCode = '200992';
 
         $order->loadMissing('createdBy');
         $creator = $order->createdBy;
 
-        if (!$creator instanceof Admin) {
-            return $defaultCode;
+        if ($creator instanceof Admin) {
+            $employeeCode = trim((string) ($creator->employee_code ?? ''));
+
+            return $employeeCode !== '' ? $employeeCode : $fallbackCode;
         }
 
-        $employeeCode = trim((string) ($creator->employee_code ?? ''));
+        $orderNumber = strtoupper(trim((string) ($order->order_number ?? '')));
 
-        return $employeeCode !== '' ? $employeeCode : $defaultCode;
+        if (str_starts_with($orderNumber, 'APP-')) {
+            return '1000';
+        }
+
+        if (str_starts_with($orderNumber, 'WEB-')) {
+            return '2000';
+        }
+
+        return $fallbackCode;
     }
 
     /**
