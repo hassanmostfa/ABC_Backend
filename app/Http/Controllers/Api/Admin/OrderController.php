@@ -4,12 +4,15 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Exceptions\PendingOnlineInvoiceException;
 use App\Http\Controllers\Api\BaseApiController;
+use App\Http\Controllers\Concerns\HandlesOrderCheckouts;
 use App\Http\Requests\Admin\BulkUpdateOrderStatusRequest;
 use App\Http\Requests\Admin\StoreOrderRequest;
 use App\Http\Requests\Admin\UpdateOrderRequest;
 use App\Http\Resources\Admin\OrderResource;
 use App\Http\Resources\Admin\RefundRequestResource;
+use App\Http\Resources\CheckoutAsOrderResource;
 use App\Models\Order;
+use App\Models\OrderCheckout;
 use App\Repositories\OrderRepositoryInterface;
 use App\Services\OrderCancellationService;
 use App\Services\OrderService;
@@ -19,6 +22,8 @@ use Illuminate\Support\Facades\Log;
 
 class OrderController extends BaseApiController
 {
+    use HandlesOrderCheckouts;
+
     protected $orderRepository;
     protected $orderService;
     protected $orderCancellationService;
@@ -98,26 +103,31 @@ class OrderController extends BaseApiController
     public function store(StoreOrderRequest $request): JsonResponse
     {
         try {
-            $result = $this->orderService->createOrder($request->validated());
-            
-            // Log activity
+            $orderData = $request->validated();
+            $orderData['source'] = $orderData['source'] ?? 'call_center';
+
+            $result = $this->orderService->createOrder($orderData);
+
+            if (!empty($result['is_checkout'])) {
+                $checkout = $result['checkout'];
+                $checkout->load('customer');
+                logAdminActivity('created', 'OrderCheckout', $checkout->id);
+
+                return $this->createdResponse(new CheckoutAsOrderResource($checkout), 'Order created successfully');
+            }
+
             logAdminActivity('created', 'Order', $result['order']->id);
-            
-            // Set payment_link as a temporary attribute on the order if available
+
             if (isset($result['payment_link'])) {
                 Log::info('Payment link found in result for order ' . $result['order']->id . ': ' . $result['payment_link']);
                 $result['order']->payment_link = $result['payment_link'];
             } else {
                 Log::info('Payment link NOT found in result for order ' . $result['order']->id . '. Result keys: ' . implode(', ', array_keys($result)));
             }
-            
+
             return $this->createdResponse(new OrderResource($result['order']), 'Order created successfully');
         } catch (PendingOnlineInvoiceException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-                'pending_invoices' => OrderResource::collection($e->pendingOrders)->toArray($request),
-            ], 409);
+            return $this->pendingOnlineInvoiceResponse($e, $request, $e->getMessage());
         } catch (\Exception $e) {
             $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 500;
             return $this->errorResponse($e->getMessage(), $code);
@@ -129,16 +139,21 @@ class OrderController extends BaseApiController
      */
     public function show(int $id): JsonResponse
     {
-        $order = $this->orderRepository->findById($id);
+        $entity = $this->checkoutResolver()->resolveCheckoutOrOrder($id);
 
-        if (!$order) {
+        if (!$entity) {
             return $this->notFoundResponse('Order not found');
         }
 
-        // Load all relationships
-        $order->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice.payments', 'customerAddress', 'createdBy']);
+        if ($entity instanceof OrderCheckout) {
+            $entity->load(['customer']);
 
-        return $this->resourceResponse(new OrderResource($order), 'Order retrieved successfully');
+            return $this->resourceResponse(new CheckoutAsOrderResource($entity), 'Order retrieved successfully');
+        }
+
+        $entity->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice.payments', 'customerAddress', 'createdBy']);
+
+        return $this->resourceResponse(new OrderResource($entity), 'Order retrieved successfully');
     }
 
     /**
@@ -196,6 +211,26 @@ class OrderController extends BaseApiController
      */
     public function cancel(Request $request, int $id): JsonResponse
     {
+        $checkout = $this->checkoutResolver()->findCheckout($id);
+        if ($checkout && !$checkout->order_id) {
+            try {
+                $result = $this->checkoutResolver()->cancel($id, $request->input('reason'));
+                if (!$result['success']) {
+                    return $this->errorResponse($result['message'], 400);
+                }
+
+                logAdminActivity('cancelled', 'OrderCheckout', $id);
+
+                return $this->successResponse([
+                    'success' => true,
+                    'message' => $result['message'],
+                    'order' => new CheckoutAsOrderResource($result['checkout']),
+                ], $result['message']);
+            } catch (\Exception $e) {
+                return $this->errorResponse($e->getMessage(), 500);
+            }
+        }
+
         $order = $this->orderRepository->findById($id);
 
         if (!$order) {
@@ -284,7 +319,14 @@ class OrderController extends BaseApiController
 
         logAdminActivity('synced ottu payment', 'Order', $id);
 
-        $order = $this->orderRepository->findById($id);
+        $order = $result['order'] ?? null;
+        if (!$order instanceof Order) {
+            $resolved = $this->checkoutResolver()->resolveCheckoutOrOrder($id);
+            if ($resolved instanceof Order) {
+                $order = $resolved;
+            }
+        }
+
         if ($order) {
             $order->load(['invoice', 'items.product', 'items.variant', 'customer', 'invoice.payments']);
         }

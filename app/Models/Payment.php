@@ -11,10 +11,12 @@ class Payment extends Model
 
     const TYPE_ORDER = 'order';
     const TYPE_WALLET_CHARGE = 'wallet_charge';
+    const TYPE_ORDER_CHECKOUT = 'order_checkout';
 
     protected $fillable = [
         'invoice_id',
         'customer_id',
+        'order_checkout_id',
         'reference',
         'type',
         'payment_number',
@@ -48,6 +50,11 @@ class Payment extends Model
     public function customer()
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function orderCheckout()
+    {
+        return $this->belongsTo(OrderCheckout::class);
     }
 
     public function scopeWalletCharge($query)

@@ -11,6 +11,8 @@ use App\Repositories\PaymentRepositoryInterface;
 use App\Repositories\InvoiceRepositoryInterface;
 use App\Repositories\OrderRepositoryInterface;
 use App\Models\Invoice;
+use App\Models\Order;
+use App\Models\OrderCheckout;
 use App\Models\Payment;
 use App\Models\PaymentGatewayEvent;
 use App\Models\Wallet;
@@ -433,13 +435,13 @@ class PaymentController extends BaseApiController
         }
 
         if (!$this->ottuService->verifyRedirectParams($redirectParams)) {
-            Log::warning('Ottu success redirect: invalid HMAC signature', [
+            Log::warning('Ottu success redirect: invalid HMAC signature (will still verify via Ottu API)', [
                 'session_id' => $sessionId,
                 'order_no' => $orderNo,
             ]);
-
-            return $this->renderPaymentCallbackResponse($request, null, false);
         }
+
+        $processedOrder = null;
 
         try {
             $statusResult = $this->ottuService->getPaymentStatusWithRetries($sessionId);
@@ -448,12 +450,13 @@ class PaymentController extends BaseApiController
                 $receiptId = is_array($redirectParams['pg_params'] ?? null)
                     ? ($redirectParams['pg_params']['receipt_no'] ?? null)
                     : null;
-                $this->ottuPaymentProcessor->processVerifiedPayment(
+                $processResult = $this->ottuPaymentProcessor->processVerifiedPayment(
                     $sessionId,
                     $statusResult,
                     $receiptId,
                     $effectiveOrderNo
                 );
+                $processedOrder = $processResult['order'] ?? null;
             } else {
                 Log::info('Ottu success redirect: payment not successful at gateway', [
                     'session_id' => $sessionId,
@@ -470,7 +473,7 @@ class PaymentController extends BaseApiController
             ]);
         }
 
-        $order = $this->resolveOrderFromCallback($request);
+        $order = $processedOrder ?? $this->resolveOrderFromCallback($request);
         if (!$order) {
             if ($request->expectsJson()) {
                 return $this->errorResponse('Order not found', 404);
@@ -637,19 +640,41 @@ class PaymentController extends BaseApiController
             if ($order) {
                 return $order;
             }
+
+            $checkout = OrderCheckout::query()
+                ->where('order_number', $orderNumber)
+                ->whereNotNull('order_id')
+                ->first();
+            if ($checkout?->order_id) {
+                return $this->orderRepository->findById((int) $checkout->order_id);
+            }
         }
         if ($orderIdParam && is_numeric($orderIdParam) && (int) $orderIdParam > 0 && (int) $orderIdParam < 100000) {
             $order = $this->orderRepository->findById((int) $orderIdParam);
             if ($order) {
                 return $order;
             }
+
+            $checkout = OrderCheckout::query()->find((int) $orderIdParam);
+            if ($checkout?->order_id) {
+                return $this->orderRepository->findById((int) $checkout->order_id);
+            }
         }
         if ($sessionId) {
             $payment = Payment::where('gateway', 'ottu')->where('track_id', $sessionId)->first();
-            if ($payment && $payment->invoice_id) {
-                $invoice = $this->invoiceRepository->findById($payment->invoice_id);
-                if ($invoice && $invoice->order_id) {
-                    return $this->orderRepository->findById($invoice->order_id);
+            if ($payment) {
+                if ($payment->order_checkout_id) {
+                    $checkout = OrderCheckout::query()->find($payment->order_checkout_id);
+                    if ($checkout?->order_id) {
+                        return $this->orderRepository->findById((int) $checkout->order_id);
+                    }
+                }
+
+                if ($payment->invoice_id) {
+                    $invoice = $this->invoiceRepository->findById($payment->invoice_id);
+                    if ($invoice && $invoice->order_id) {
+                        return $this->orderRepository->findById($invoice->order_id);
+                    }
                 }
             }
         }

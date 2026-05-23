@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Jobs\DispatchErpOrderJob;
 use App\Models\Invoice;
 use App\Models\Order;
+use App\Models\OrderCheckout;
 use App\Models\Payment;
 use App\Repositories\OrderRepositoryInterface;
 use Illuminate\Support\Facades\DB;
@@ -145,13 +146,113 @@ class OttuPaymentProcessor
     /**
      * @return array{processed: bool, idempotent?: bool, order?: Order, payment_status?: string, reason?: string}
      */
+    public function processVerifiedCheckoutPayment(string $trackId, array $statusResult): array
+    {
+        $payment = Payment::query()
+            ->where('gateway', 'ottu')
+            ->where('track_id', $trackId)
+            ->first();
+
+        if (!$payment || $payment->type !== Payment::TYPE_ORDER_CHECKOUT) {
+            $checkout = null;
+            if ($payment?->order_checkout_id) {
+                $checkout = OrderCheckout::query()->find($payment->order_checkout_id);
+            } else {
+                $orderNumber = $statusResult['requested_order_id'] ?? null;
+                if ($orderNumber) {
+                    $checkout = OrderCheckout::query()->where('order_number', $orderNumber)->first();
+                }
+            }
+
+            if (!$checkout) {
+                return ['processed' => false, 'reason' => 'checkout_not_found'];
+            }
+
+            if (!$payment) {
+                $payment = Payment::firstOrCreate(
+                    ['gateway' => 'ottu', 'track_id' => $trackId],
+                    [
+                        'invoice_id' => null,
+                        'order_checkout_id' => $checkout->id,
+                        'customer_id' => $checkout->customer_id,
+                        'reference' => $checkout->order_number . '-' . substr($trackId, 0, 12),
+                        'type' => Payment::TYPE_ORDER_CHECKOUT,
+                        'payment_number' => $this->generatePaymentNumber(),
+                        'payment_gateway_src' => $checkout->payment_gateway_src,
+                        'amount' => $statusResult['amount'] ?? (float) $checkout->amount_due,
+                        'bonus_amount' => 0,
+                        'total_amount' => $statusResult['amount'] ?? (float) $checkout->amount_due,
+                        'method' => 'online',
+                        'payment_link' => $checkout->payment_link,
+                        'status' => 'pending',
+                    ]
+                );
+            }
+        } else {
+            $checkout = OrderCheckout::query()->find($payment->order_checkout_id);
+        }
+
+        if (!$checkout) {
+            return ['processed' => false, 'reason' => 'checkout_not_found'];
+        }
+
+        if ($payment && $payment->status === 'completed' && $checkout->order_id) {
+            $order = Order::query()->with('invoice')->find($checkout->order_id);
+
+            return [
+                'processed' => true,
+                'idempotent' => true,
+                'order' => $order,
+                'payment_status' => 'completed',
+            ];
+        }
+
+        if ($statusResult['is_failed'] ?? false) {
+            $payment->update(['status' => 'failed']);
+            if ($checkout->isPending()) {
+                $checkout->update(['status' => OrderCheckout::STATUS_FAILED]);
+            }
+
+            return [
+                'processed' => true,
+                'payment_status' => 'failed',
+            ];
+        }
+
+        if (!($statusResult['is_success'] ?? false)) {
+            return ['processed' => false, 'reason' => 'payment_not_successful'];
+        }
+
+        return app(OrderCheckoutService::class)->fulfillCheckout($checkout, $payment, $statusResult);
+    }
+
+    /**
+     * @return array{processed: bool, idempotent?: bool, order?: Order, payment_status?: string, reason?: string}
+     */
     public function processVerifiedPayment(
         string $trackId,
         array $statusResult,
         ?string $receiptId = null,
         ?string $fallbackOrderNumber = null
     ): array {
+        $existingPayment = Payment::query()
+            ->where('gateway', 'ottu')
+            ->where('track_id', $trackId)
+            ->first();
+
+        if ($existingPayment && $existingPayment->type === Payment::TYPE_ORDER_CHECKOUT) {
+            return $this->processVerifiedCheckoutPayment($trackId, $statusResult);
+        }
+
         $orderNumber = $statusResult['requested_order_id'] ?? $fallbackOrderNumber;
+        $checkoutByNumber = $orderNumber
+            ? OrderCheckout::query()->where('order_number', $orderNumber)->first()
+            : null;
+
+        if ($checkoutByNumber && !$checkoutByNumber->order_id) {
+            return $this->processVerifiedCheckoutPayment($trackId, $statusResult);
+        }
+
         $order = $orderNumber ? $this->orderRepository->findByOrderNumber($orderNumber) : null;
         if (!$order) {
             return ['processed' => false, 'reason' => 'order_not_found'];

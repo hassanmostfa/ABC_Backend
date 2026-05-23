@@ -5,10 +5,10 @@ namespace App\Services;
 use App\Repositories\OrderRepositoryInterface;
 use App\Repositories\InvoiceRepositoryInterface;
 use App\Repositories\CustomerRepositoryInterface;
-use App\Exceptions\PendingOnlineInvoiceException;
 use App\Models\Order;
 use App\Models\Invoice;
 use App\Models\Offer;
+use App\Models\OrderCheckout;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -66,309 +66,258 @@ class OrderService
      */
     public function createOrder(array $data): array
     {
+        $paymentMethod = $data['payment_method'] ?? null;
+
+        if ($paymentMethod === 'online_link') {
+            return app(OrderCheckoutService::class)->initiateCheckout($data);
+        }
+
+        $draft = $this->prepareOrderDraft($data);
+
         DB::beginTransaction();
 
         try {
-            // Collect offers - support both old format (offer_ids) and new format (offers with quantity)
-            $offersData = [];
-            if (isset($data['offers']) && is_array($data['offers'])) {
-                // New format: [{"offer_id": 10, "quantity": 2}, ...]
-                foreach ($data['offers'] as $offerData) {
-                    if (isset($offerData['offer_id'])) {
-                        $offersData[] = [
-                            'offer_id' => $offerData['offer_id'],
-                            'quantity' => isset($offerData['quantity']) ? (int) $offerData['quantity'] : 1
-                        ];
-                    }
-                }
-            } elseif (isset($data['offer_ids']) && is_array($data['offer_ids'])) {
-                // Old format: [10, 11, 12] - default quantity is 1
-                foreach ($data['offer_ids'] as $offerId) {
-                    $offersData[] = [
-                        'offer_id' => $offerId,
-                        'quantity' => 1
-                    ];
-                }
-            }
-
-            // Validate all offers and prepare for processing
-            $offersToProcess = []; // For processing rewards
-            $offersToAttach = []; // For attaching to order with quantities
-            
-            foreach ($offersData as $offerData) {
-                $offer = $this->offerService->validateOffer($offerData['offer_id'], $data['customer_id'] ?? null);
-                if ($offer) {
-                    $quantity = $offerData['quantity'];
-                    // Add offer multiple times based on quantity for processing
-                    for ($i = 0; $i < $quantity; $i++) {
-                        $offersToProcess[] = $offer;
-                    }
-                    // Store for attaching with quantity
-                    $offersToAttach[$offer->id] = ['quantity' => $quantity];
-                }
-            }
-
-            // Process order items
-            $items = $data['items'] ?? [];
-            $totalAmount = 0;
-            $orderItemsData = [];
-
-            if (!empty($items)) {
-                $result = $this->orderItemService->processItems($items);
-                $orderItemsData = $result['orderItemsData'];
-                $totalAmount = $result['totalAmount'];
-            }
-
-            // Store original total before offers for minimum order validation
-            $originalTotalAmount = $totalAmount;
-
-            // Handle offer rewards for all offers (process sequentially, respecting quantities)
-            $offerDiscount = 0.00;
-            foreach ($offersToProcess as $offer) {
-                $offerResult = $this->offerService->processOfferRewards($offer, $orderItemsData, $totalAmount);
-                $orderItemsData = $offerResult['orderItemsData'];
-                $totalAmount = $offerResult['totalAmount'];
-                $offerDiscount += $offerResult['offerDiscount']; // Accumulate discounts from all offers
-            }
-
-            $couponResolution = $this->resolveCouponsDiscountForOrder($data, $totalAmount, $offerDiscount, $orderItemsData);
-            $couponsDiscount = $couponResolution['coupons_discount'];
-            $appliedCouponCode = $couponResolution['coupon_code'];
-            $this->orderItemService->applyCouponDiscountToLines($orderItemsData, $couponsDiscount, $totalAmount, $offerDiscount);
-
-            $this->orderItemService->applyLineTax($orderItemsData);
-
-            // Calculate final amount after discounts for minimum validation
-            $finalAmountAfterDiscounts = $totalAmount - $offerDiscount;
-
-            // Handle points discount (calculate before creating order)
-            $requestedPoints = $data['used_points'] ?? 0;
-            $pointsResult = $this->pointsService->calculateDiscount($requestedPoints, $totalAmount, $offerDiscount);
-            $usedPoints = $pointsResult['usedPoints'];
-            $pointsDiscount = $pointsResult['pointsDiscount'];
-
-            // Calculate final amount after all discounts for minimum validation
-            $finalAmountAfterAllDiscounts = $totalAmount - $offerDiscount - $couponsDiscount - $pointsDiscount;
-
-            // Determine delivery type for invoice calculation
-            $deliveryType = $data['delivery_type'] ?? null;
-            if (!$deliveryType && isset($data['customer_address_id']) && $data['customer_address_id']) {
-                $deliveryType = 'delivery';
-            } elseif (!$deliveryType) {
-                $deliveryType = 'pickup';
-            }
-
-            // Validate minimum order amount based on order type (charity vs customer)
-            // Check on the final amount after all discounts
-            $charityId = $data['charity_id'] ?? null;
-            $customerId = $data['customer_id'] ?? null;
-            
-            if ($charityId) {
-                // Charity order - check minimum charity order
-                $minimumCharityOrder = (float) \App\Models\Setting::getValue('minimum_charity_order', 13);
-                if ($finalAmountAfterAllDiscounts < $minimumCharityOrder) {
-                    DB::rollBack();
-                    throw new \Exception("Minimum charity order amount is {$minimumCharityOrder}. Current order amount after discounts is {$finalAmountAfterAllDiscounts}.");
-                }
-            } elseif ($customerId) {
-                // Customer/home order - check minimum home order
-                $minimumHomeOrder = (float) \App\Models\Setting::getValue('minimum_home_order', 5);
-                if ($finalAmountAfterAllDiscounts < $minimumHomeOrder) {
-                    DB::rollBack();
-                    throw new \Exception("Minimum home order amount is {$minimumHomeOrder}. Current order amount after discounts is {$finalAmountAfterAllDiscounts}.");
-                }
-            }
-
-            // Calculate invoice amounts (before creating order) - includes delivery fee if delivery
-            $invoiceAmounts = $this->invoiceService->calculateAmounts(
-                $totalAmount,
-                $offerDiscount,
-                $couponsDiscount,
-                $pointsDiscount,
-                $deliveryType
-            );
-            $amountDue = $invoiceAmounts['amountDue'];
-
-            // Get payment method from root level
-            $paymentMethod = $data['payment_method'] ?? null;
-            $paymentGatewaySrc = $data['src'] ?? null;
-            $isWalletPayment = ($paymentMethod === 'wallet');
-            
-            // Validate wallet balance BEFORE creating order if payment method is wallet
-            if ($isWalletPayment) {
-                $customerId = $data['customer_id'] ?? null;
-                if (!$customerId) {
-                    DB::rollBack();
-                    throw new \Exception('Customer ID is required for wallet payment');
-                }
-                $this->walletService->validateBalance($customerId, $amountDue);
-            }
-
-            if ($paymentMethod === 'online_link' && $customerId) {
-                $pendingOrders = Order::query()
-                    ->where('customer_id', $customerId)
-                    ->where('payment_method', 'online_link')
-                    ->where('status', '!=', 'cancelled')
-                    ->whereHas('invoice', function ($q) {
-                        $q->where('status', 'pending');
-                    })
-                    ->with(['invoice'])
-                    ->orderByDesc('id')
-                    ->get();
-
-                if ($pendingOrders->isNotEmpty()) {
-                    DB::rollBack();
-                    $pendingOrders->load([
-                        'customer',
-                        'charity',
-                        'offers',
-                        'items.product',
-                        'items.variant',
-                        'invoice',
-                        'customerAddress',
-                    ]);
-
-                    throw new PendingOnlineInvoiceException(
-                        'You cannot create a new order with online payment until you pay or cancel your existing order with a pending invoice.',
-                        $pendingOrders->values()
-                    );
-                }
-            }
-
-            // Generate order number (source: app = mobile, call_center = admin)
-            $source = $data['source'] ?? 'call_center';
-            $orderNumber = $this->generateOrderNumber($source);
-            
-            // Create the order
-            $orderData = Arr::except($data, ['items', 'source', 'offer_ids', 'offers', 'src', 'coupons_discount', 'coupon_code']);
-            
-            // Remove delivery_type if it's "delivery" - it will be auto-determined
-            if (isset($orderData['delivery_type']) && $orderData['delivery_type'] === 'delivery') {
-                unset($orderData['delivery_type']);
-            }
-            
-            $orderData['total_amount'] = $totalAmount;
-            $orderData['order_number'] = $orderNumber;
-            
-            // Auto-determine delivery_type if not provided
-            // If customer_address_id is provided, it's delivery; otherwise pickup
-            if (!isset($orderData['delivery_type']) || $orderData['delivery_type'] === null) {
-                if (isset($data['customer_address_id']) && $data['customer_address_id']) {
-                    $orderData['delivery_type'] = 'delivery';
-                } else {
-                    $orderData['delivery_type'] = 'pickup';
-                }
-            }
-            
-            // Normalize payment method to allowed values for orders table
-            $paymentMethod = $data['payment_method'] ?? null;
-            if ($paymentMethod && in_array($paymentMethod, ['cash', 'wallet', 'online_link'])) {
-                $orderData['payment_method'] = $paymentMethod;
-            }
-            if ($paymentGatewaySrc !== null && $paymentGatewaySrc !== '') {
-                $orderData['payment_gateway_src'] = $paymentGatewaySrc;
-            }
-            
-            // Capture created_by information from authenticated user
-            $user = auth()->user();
-            if ($user) {
-                $orderData['created_by_id'] = $user->id;
-                $orderData['created_by_type'] = get_class($user);
-            }
-            
-            $order = $this->orderRepository->create($orderData);
-
-            // Attach all offers to the order (many-to-many) with quantities
-            if (!empty($offersToAttach)) {
-                $order->offers()->attach($offersToAttach);
-            }
-
-            // Create order items
-            $this->orderItemService->createOrderItems($order->id, $orderItemsData);
-            
-            // Deduct points from customer after order is created
-            if ($usedPoints > 0 && $order->customer_id) {
-                $this->pointsService->deductPoints($order->customer_id, $usedPoints);
-            }
-
-            // Increment coupon usage if coupon was applied (only increments when order successfully created)
-            if ($appliedCouponCode) {
-                $this->couponService->incrementCouponUsage($appliedCouponCode);
-            }
-
-            // Create invoice (as paid if wallet payment)
-            $invoice = $this->invoiceService->createOrGetInvoice(
-                $order->id,
-                $order->order_number,
-                $invoiceAmounts['amountDue'],
-                $invoiceAmounts['taxAmount'],
-                $invoiceAmounts['deliveryFee'],
-                $offerDiscount,
-                $couponsDiscount,
-                $usedPoints,
-                $pointsDiscount,
-                $invoiceAmounts['totalDiscount'],
-                $isWalletPayment
-            );
-
-            // Process wallet payment deduction if applicable
-            if ($isWalletPayment) {
-                $this->walletService->deductBalance($order->customer_id, $amountDue);
-            }
-
+            $order = $this->createOrderFromDraft($draft, $draft->paymentMethod === 'wallet');
             DB::commit();
-
-            // Reload order with relationships
-            $order->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice', 'customerAddress']);
-
-            // ERP dispatch is moved after response so order creation is not blocked by ERP slowness.
-            if (in_array($order->payment_method, ['cash', 'wallet'], true)) {
-                DispatchErpOrderJob::dispatchAfterResponse($order->id);
-            }
-
-            // Admin (call center) orders: notify customer when paying cash on delivery or wallet (same flow as app/web for non-online)
-            $orderSource = $data['source'] ?? 'call_center';
-            if (
-                $orderSource === 'call_center'
-                && $order->customer_id
-                && in_array($order->payment_method, ['cash', 'wallet'], true)
-            ) {
-                SendOrderCreatedNotificationsJob::dispatch($order->id)->afterResponse();
-            }
-
-            $response = [
-                'success' => true,
-                'order' => $order
-            ];
-
-            // Generate payment link AFTER commit (avoids holding transaction; use reasonable timeout for production API)
-            $paymentLink = null;
-            if ($paymentMethod === 'online_link') {
-                try {
-                    Log::info('Starting payment link generation for order ' . $order->id);
-                    $paymentLink = $this->generatePaymentLink($order, $invoice, $amountDue, 25, $paymentGatewaySrc);
-                    if ($paymentLink && $invoice) {
-                        $this->invoiceRepository->update($invoice->id, [
-                            'payment_link' => $paymentLink
-                        ]);
-                        $this->recordOttuPendingPayment($invoice, $order, $amountDue, $paymentGatewaySrc, $paymentLink);
-                        Log::info('Payment link stored in invoice ' . $invoice->id . ' for order ' . $order->id);
-                    }
-                } catch (\Throwable $e) {
-                    Log::warning('Payment link generation failed for order ' . $order->id . ' (order created; link can be regenerated)', [
-                        'message' => $e->getMessage(),
-                        'code' => $e->getCode(),
-                        'class' => get_class($e),
-                    ]);
-                }
-                $response['payment_link'] = $paymentLink;
-            }
-
-            return $response;
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
         }
+
+        $order->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice', 'customerAddress']);
+
+        if (in_array($order->payment_method, ['cash', 'wallet'], true)) {
+            DispatchErpOrderJob::dispatchAfterResponse($order->id);
+        }
+
+        $orderSource = $draft->source;
+        if (
+            $orderSource === 'call_center'
+            && $order->customer_id
+            && in_array($order->payment_method, ['cash', 'wallet'], true)
+        ) {
+            SendOrderCreatedNotificationsJob::dispatch($order->id)->afterResponse();
+        }
+
+        return [
+            'success' => true,
+            'order' => $order,
+        ];
+    }
+
+    /**
+     * Validate and compute order data without persisting (no stock/points/coupon side effects).
+     *
+     * @throws \Exception
+     */
+    public function prepareOrderDraft(array $data): OrderDraft
+    {
+        $offersData = [];
+        if (isset($data['offers']) && is_array($data['offers'])) {
+            foreach ($data['offers'] as $offerData) {
+                if (isset($offerData['offer_id'])) {
+                    $offersData[] = [
+                        'offer_id' => $offerData['offer_id'],
+                        'quantity' => isset($offerData['quantity']) ? (int) $offerData['quantity'] : 1,
+                    ];
+                }
+            }
+        } elseif (isset($data['offer_ids']) && is_array($data['offer_ids'])) {
+            foreach ($data['offer_ids'] as $offerId) {
+                $offersData[] = [
+                    'offer_id' => $offerId,
+                    'quantity' => 1,
+                ];
+            }
+        }
+
+        $offersToProcess = [];
+        $offersToAttach = [];
+
+        foreach ($offersData as $offerData) {
+            $offer = $this->offerService->validateOffer($offerData['offer_id'], $data['customer_id'] ?? null);
+            if ($offer) {
+                $quantity = $offerData['quantity'];
+                for ($i = 0; $i < $quantity; $i++) {
+                    $offersToProcess[] = $offer;
+                }
+                $offersToAttach[$offer->id] = ['quantity' => $quantity];
+            }
+        }
+
+        $items = $data['items'] ?? [];
+        $totalAmount = 0;
+        $orderItemsData = [];
+
+        if (!empty($items)) {
+            $result = $this->orderItemService->processItems($items);
+            $orderItemsData = $result['orderItemsData'];
+            $totalAmount = $result['totalAmount'];
+        }
+
+        $offerDiscount = 0.00;
+        foreach ($offersToProcess as $offer) {
+            $offerResult = $this->offerService->processOfferRewards($offer, $orderItemsData, $totalAmount);
+            $orderItemsData = $offerResult['orderItemsData'];
+            $totalAmount = $offerResult['totalAmount'];
+            $offerDiscount += $offerResult['offerDiscount'];
+        }
+
+        $couponResolution = $this->resolveCouponsDiscountForOrder($data, $totalAmount, $offerDiscount, $orderItemsData);
+        $couponsDiscount = $couponResolution['coupons_discount'];
+        $appliedCouponCode = $couponResolution['coupon_code'];
+        $this->orderItemService->applyCouponDiscountToLines($orderItemsData, $couponsDiscount, $totalAmount, $offerDiscount);
+        $this->orderItemService->applyLineTax($orderItemsData);
+
+        $requestedPoints = $data['used_points'] ?? 0;
+        $pointsResult = $this->pointsService->calculateDiscount($requestedPoints, $totalAmount, $offerDiscount);
+        $usedPoints = $pointsResult['usedPoints'];
+        $pointsDiscount = $pointsResult['pointsDiscount'];
+
+        $finalAmountAfterAllDiscounts = $totalAmount - $offerDiscount - $couponsDiscount - $pointsDiscount;
+
+        $deliveryType = $data['delivery_type'] ?? null;
+        if (!$deliveryType && isset($data['customer_address_id']) && $data['customer_address_id']) {
+            $deliveryType = 'delivery';
+        } elseif (!$deliveryType) {
+            $deliveryType = 'pickup';
+        }
+
+        $charityId = $data['charity_id'] ?? null;
+        $customerId = $data['customer_id'] ?? null;
+
+        if ($charityId) {
+            $minimumCharityOrder = (float) \App\Models\Setting::getValue('minimum_charity_order', 13);
+            if ($finalAmountAfterAllDiscounts < $minimumCharityOrder) {
+                throw new \Exception("Minimum charity order amount is {$minimumCharityOrder}. Current order amount after discounts is {$finalAmountAfterAllDiscounts}.");
+            }
+        } elseif ($customerId) {
+            $minimumHomeOrder = (float) \App\Models\Setting::getValue('minimum_home_order', 5);
+            if ($finalAmountAfterAllDiscounts < $minimumHomeOrder) {
+                throw new \Exception("Minimum home order amount is {$minimumHomeOrder}. Current order amount after discounts is {$finalAmountAfterAllDiscounts}.");
+            }
+        }
+
+        $invoiceAmounts = $this->invoiceService->calculateAmounts(
+            $totalAmount,
+            $offerDiscount,
+            $couponsDiscount,
+            $pointsDiscount,
+            $deliveryType
+        );
+        $amountDue = $invoiceAmounts['amountDue'];
+
+        $paymentMethod = $data['payment_method'] ?? null;
+        $paymentGatewaySrc = $data['src'] ?? null;
+        $isWalletPayment = ($paymentMethod === 'wallet');
+
+        if ($isWalletPayment) {
+            if (!$customerId) {
+                throw new \Exception('Customer ID is required for wallet payment');
+            }
+            $this->walletService->validateBalance($customerId, $amountDue);
+        }
+
+        $source = $data['source'] ?? 'call_center';
+        $orderData = Arr::except($data, ['items', 'source', 'offer_ids', 'offers', 'src', 'coupons_discount', 'coupon_code']);
+
+        if (isset($orderData['delivery_type']) && $orderData['delivery_type'] === 'delivery') {
+            unset($orderData['delivery_type']);
+        }
+
+        $orderData['total_amount'] = $totalAmount;
+
+        if (!isset($orderData['delivery_type']) || $orderData['delivery_type'] === null) {
+            if (isset($data['customer_address_id']) && $data['customer_address_id']) {
+                $orderData['delivery_type'] = 'delivery';
+            } else {
+                $orderData['delivery_type'] = 'pickup';
+            }
+        }
+
+        if ($paymentMethod && in_array($paymentMethod, ['cash', 'wallet', 'online_link'])) {
+            $orderData['payment_method'] = $paymentMethod;
+        }
+        if ($paymentGatewaySrc !== null && $paymentGatewaySrc !== '') {
+            $orderData['payment_gateway_src'] = $paymentGatewaySrc;
+        }
+
+        $user = auth()->user();
+        if ($user) {
+            $orderData['created_by_id'] = $user->id;
+            $orderData['created_by_type'] = get_class($user);
+        }
+
+        return new OrderDraft(
+            requestData: $data,
+            offersData: $offersData,
+            offersToProcess: $offersToProcess,
+            offersToAttach: $offersToAttach,
+            orderItemsData: $orderItemsData,
+            totalAmount: $totalAmount,
+            offerDiscount: $offerDiscount,
+            couponsDiscount: $couponsDiscount,
+            appliedCouponCode: $appliedCouponCode,
+            usedPoints: $usedPoints,
+            pointsDiscount: $pointsDiscount,
+            deliveryType: $deliveryType,
+            invoiceAmounts: $invoiceAmounts,
+            orderData: $orderData,
+            source: $source,
+            paymentMethod: $paymentMethod,
+            paymentGatewaySrc: $paymentGatewaySrc,
+        );
+    }
+
+    /**
+     * Persist order, items, invoice, and side effects from a prepared draft.
+     *
+     * @throws \Exception
+     */
+    public function createOrderFromDraft(OrderDraft $draft, bool $markInvoicePaid = false, ?string $reservedOrderNumber = null): Order
+    {
+        $orderNumber = $reservedOrderNumber ?? $this->generateOrderNumber($draft->source);
+        $orderData = $draft->orderData;
+        $orderData['order_number'] = $orderNumber;
+
+        $order = $this->orderRepository->create($orderData);
+
+        if (!empty($draft->offersToAttach)) {
+            $order->offers()->attach($draft->offersToAttach);
+        }
+
+        $this->orderItemService->createOrderItems($order->id, $draft->orderItemsData);
+
+        if ($draft->usedPoints > 0 && $order->customer_id) {
+            $this->pointsService->deductPoints($order->customer_id, $draft->usedPoints);
+        }
+
+        if ($draft->appliedCouponCode) {
+            $this->couponService->incrementCouponUsage($draft->appliedCouponCode);
+        }
+
+        $invoiceAmounts = $draft->invoiceAmounts;
+        $isWalletPayment = ($draft->paymentMethod === 'wallet');
+
+        $this->invoiceService->createOrGetInvoice(
+            $order->id,
+            $order->order_number,
+            $invoiceAmounts['amountDue'],
+            $invoiceAmounts['taxAmount'],
+            $invoiceAmounts['deliveryFee'],
+            $draft->offerDiscount,
+            $draft->couponsDiscount,
+            $draft->usedPoints,
+            $draft->pointsDiscount,
+            $invoiceAmounts['totalDiscount'],
+            $markInvoicePaid || $isWalletPayment
+        );
+
+        if ($isWalletPayment) {
+            $this->walletService->deductBalance($order->customer_id, $draft->amountDue());
+        }
+
+        return $order;
     }
 
     /**
@@ -719,6 +668,11 @@ class OrderService
      */
     public function syncOttuPaymentStatus(int $orderId, ?string $sessionId = null): array
     {
+        $checkout = OrderCheckout::query()->find($orderId);
+        if ($checkout) {
+            return app(OrderCheckoutService::class)->syncCheckoutPayment($checkout, $sessionId);
+        }
+
         $order = $this->orderRepository->findById($orderId);
         if (!$order) {
             return ['success' => false, 'message' => 'Order not found.'];
@@ -756,6 +710,11 @@ class OrderService
      */
     public function regeneratePaymentLink(int $orderId, ?string $paymentGatewaySrc = null): array
     {
+        $checkout = OrderCheckout::query()->find($orderId);
+        if ($checkout) {
+            return app(OrderCheckoutService::class)->regeneratePaymentLink($checkout, $paymentGatewaySrc);
+        }
+
         $order = $this->orderRepository->findById($orderId);
         if (!$order) {
             return ['success' => false, 'message' => 'Order not found.'];
@@ -970,35 +929,37 @@ class OrderService
     /**
      * Generate unique order number based on source
      */
-    protected function generateOrderNumber(string $source): string
+    public function generateOrderNumber(string $source): string
     {
-        // Map source to prefix (APP = mobile app, CALS = call center/admin only)
         $prefixes = [
             'app' => 'APP',
             'web' => 'WEB',
             'call_center' => 'CALS',
         ];
-        
+
         $prefix = $prefixes[$source] ?? 'CALS';
         $year = date('Y');
         $pattern = $prefix . '-' . $year . '-%';
-        
-        // Find the last order number with this prefix and year
+
         $lastOrder = Order::where('order_number', 'LIKE', $pattern)
             ->orderBy('order_number', 'desc')
             ->first();
-        
-        // Extract sequence number from last order
+
+        $lastCheckout = OrderCheckout::where('order_number', 'LIKE', $pattern)
+            ->orderBy('order_number', 'desc')
+            ->first();
+
         $sequence = 1;
-        if ($lastOrder) {
-            // Extract the sequence part (last 6 digits after the year)
-            $parts = explode('-', $lastOrder->order_number);
+        foreach ([$lastOrder?->order_number, $lastCheckout?->order_number] as $orderNumber) {
+            if (!$orderNumber) {
+                continue;
+            }
+            $parts = explode('-', $orderNumber);
             if (count($parts) === 3 && isset($parts[2])) {
-                $sequence = (int) $parts[2] + 1;
+                $sequence = max($sequence, (int) $parts[2] + 1);
             }
         }
-        
-        // Format: PREFIX-YEAR-000001 (6 digits with leading zeros)
+
         return sprintf('%s-%s-%06d', $prefix, $year, $sequence);
     }
 }

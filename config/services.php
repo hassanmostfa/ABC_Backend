@@ -103,6 +103,7 @@ return [
         'connect_timeout' => (int) env('OTTU_CONNECT_TIMEOUT', 15),
         'website_return_url' => env('OTTU_WEBSITE_RETURN_URL', 'https://abc-website-enhanced-wiys.vercel.app/en/payment/success'),
         'website_cancel_url' => env('OTTU_WEBSITE_CANCEL_URL', 'https://abc-website-enhanced-wiys.vercel.app/en/payment/failed'),
+        'checkout_ttl_minutes' => (int) env('OTTU_CHECKOUT_TTL_MINUTES', 60),
     ],
 
 

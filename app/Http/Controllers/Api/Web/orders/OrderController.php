@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api\Web\orders;
 
 use App\Exceptions\PendingOnlineInvoiceException;
 use App\Http\Controllers\Api\BaseApiController;
+use App\Http\Controllers\Concerns\HandlesOrderCheckouts;
 use App\Http\Requests\Web\StoreOrderRequest;
 use App\Http\Resources\Admin\OrderResource;
+use App\Http\Resources\CheckoutAsOrderResource;
 use App\Http\Resources\Admin\RefundRequestResource;
 use App\Models\Setting;
 use App\Repositories\OrderRepositoryInterface;
@@ -18,6 +20,8 @@ use Illuminate\Support\Facades\Auth;
 
 class OrderController extends BaseApiController
 {
+    use HandlesOrderCheckouts;
+
     public function __construct(
         protected OrderRepositoryInterface $orderRepository,
         protected OrderService $orderService,
@@ -53,6 +57,13 @@ class OrderController extends BaseApiController
 
             $result = $this->orderService->createOrder($orderData);
 
+            if (!empty($result['is_checkout'])) {
+                $checkout = $result['checkout'];
+                $checkout->load('customer');
+
+                return $this->createdResponse(new CheckoutAsOrderResource($checkout), 'Order created successfully');
+            }
+
             if (isset($result['payment_link'])) {
                 $result['order']->payment_link = $result['payment_link'];
             }
@@ -68,11 +79,7 @@ class OrderController extends BaseApiController
                 ? 'لا يمكنك إنشاء طلب جديد بالدفع الإلكتروني قبل سداد الفاتورة المعلقة أو إلغاء الطلب الحالي.'
                 : $e->getMessage();
 
-            return response()->json([
-                'success' => false,
-                'message' => $message,
-                'pending_invoices' => OrderResource::collection($e->pendingOrders)->toArray($request),
-            ], 409);
+            return $this->pendingOnlineInvoiceResponse($e, $request, $message);
         } catch (\Exception $e) {
             $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 500;
             return $this->errorResponse($e->getMessage(), $code);
@@ -86,17 +93,17 @@ class OrderController extends BaseApiController
             return $this->unauthorizedResponse('No authenticated customer found');
         }
 
-        $order = $this->orderRepository->findById($id);
-        if (!$order) {
-            return $this->notFoundResponse('Order not found');
-        }
-        if ($order->customer_id !== $customer->id) {
+        $entity = $this->authorizeCheckoutOrOrder($id, $customer->id);
+        if (!$entity) {
+            $checkout = $this->checkoutResolver()->findCheckout($id);
+            $order = $this->checkoutResolver()->findOrder($id);
+            if (!$checkout && !$order) {
+                return $this->notFoundResponse('Order not found');
+            }
             return $this->unauthorizedResponse('You do not have permission to view this order');
         }
 
-        $order->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice', 'customerAddress']);
-
-        return $this->resourceResponse(new OrderResource($order), 'Order retrieved successfully');
+        return $this->resourceResponse($this->orderResponseFromEntity($entity), 'Order retrieved successfully');
     }
 
     public function index(Request $request): JsonResponse
@@ -157,15 +164,30 @@ class OrderController extends BaseApiController
             return $this->unauthorizedResponse('No authenticated customer found');
         }
 
-        $order = $this->orderRepository->findById($id);
-        if (!$order) {
-            return $this->notFoundResponse('Order not found');
-        }
-        if ($order->customer_id !== $customer->id) {
+        $entity = $this->authorizeCheckoutOrOrder($id, $customer->id);
+        if (!$entity) {
+            $checkout = $this->checkoutResolver()->findCheckout($id);
+            $order = $this->checkoutResolver()->findOrder($id);
+            if (!$checkout && !$order) {
+                return $this->notFoundResponse('Order not found');
+            }
             return $this->unauthorizedResponse('You do not have permission to cancel this order');
         }
 
         try {
+            if ($entity instanceof \App\Models\OrderCheckout) {
+                $result = $this->checkoutResolver()->cancel($id, $request->input('reason'));
+                if (!$result['success']) {
+                    return $this->errorResponse($result['message'], 400);
+                }
+
+                return $this->successResponse([
+                    'success' => true,
+                    'message' => $result['message'],
+                    'order' => new CheckoutAsOrderResource($result['checkout']),
+                ], $result['message']);
+            }
+
             $result = $this->orderCancellationService->cancelOrder($id, $request->input('reason'));
             if (!$result['success']) {
                 return $this->errorResponse($result['message'], 400);
@@ -196,11 +218,13 @@ class OrderController extends BaseApiController
             'src' => 'nullable|string|in:knet,cc',
         ]);
 
-        $order = $this->orderRepository->findById($id);
-        if (!$order) {
-            return $this->notFoundResponse('Order not found');
-        }
-        if ((int) $order->customer_id !== (int) $customer->id) {
+        $entity = $this->authorizeCheckoutOrOrder($id, $customer->id);
+        if (!$entity) {
+            $checkout = $this->checkoutResolver()->findCheckout($id);
+            $order = $this->checkoutResolver()->findOrder($id);
+            if (!$checkout && !$order) {
+                return $this->notFoundResponse('Order not found');
+            }
             return $this->unauthorizedResponse('You do not have permission to regenerate link for this order');
         }
 
@@ -226,11 +250,13 @@ class OrderController extends BaseApiController
             'session_id' => 'nullable|string|max:128',
         ]);
 
-        $order = $this->orderRepository->findById($id);
-        if (!$order) {
-            return $this->notFoundResponse('Order not found');
-        }
-        if ((int) $order->customer_id !== (int) $customer->id) {
+        $entity = $this->authorizeCheckoutOrOrder($id, $customer->id);
+        if (!$entity) {
+            $checkout = $this->checkoutResolver()->findCheckout($id);
+            $order = $this->checkoutResolver()->findOrder($id);
+            if (!$checkout && !$order) {
+                return $this->notFoundResponse('Order not found');
+            }
             return $this->unauthorizedResponse('You do not have permission to sync payment for this order');
         }
 
@@ -241,7 +267,18 @@ class OrderController extends BaseApiController
             return $this->errorResponse($result['message'], $code, $result);
         }
 
-        $order->refresh();
+        $order = $result['order'] ?? null;
+        if (!$order instanceof \App\Models\Order) {
+            $resolved = $this->checkoutResolver()->resolveCheckoutOrOrder($id);
+            if ($resolved instanceof \App\Models\Order) {
+                $order = $resolved;
+            }
+        }
+
+        if (!$order) {
+            return $this->errorResponse('Order not found after payment sync.', 404);
+        }
+
         $order->load(['invoice', 'items.product', 'items.variant', 'customer']);
 
         return $this->successResponse([

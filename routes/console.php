@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('warehouse:sync-stock')->everyFiveMinutes()->withoutOverlapping();
+Schedule::command('orders:expire-checkouts')->hourly()->withoutOverlapping();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());

@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Invoice;
 use App\Models\Order;
+use App\Models\OrderCheckout;
 use App\Models\Payment;
 
 class OttuService
@@ -165,6 +166,147 @@ class OttuService
             : $this->extractSessionIdFromUrl($paymentUrl);
 
         return $paymentUrl;
+    }
+
+    /**
+     * Create a payment transaction for an order checkout (pay-first flow).
+     *
+     * @param string|null $pgCodeOverride Request `src` / Ottu pg_code.
+     */
+    public function createCheckoutPayment(
+        OrderCheckout $checkout,
+        float $amount,
+        ?int $timeoutSeconds = null,
+        ?string $pgCodeOverride = null
+    ): string {
+        $checkout->load('customer');
+        $customer = $checkout->customer;
+        if (!$customer) {
+            throw new \Exception('Customer is required for online payment');
+        }
+
+        $endpoint = $this->baseUrl() . '/b/checkout/v1/pymt-txn/';
+        $pgCode = $this->resolvePgCode($pgCodeOverride);
+
+        $payload = [
+            'type' => config('services.ottu.type', 'payment_request'),
+            'pg_codes' => [$pgCode],
+            'amount' => number_format($amount, 3, '.', ''),
+            'currency_code' => config('services.ottu.currency', 'KWD'),
+            'order_no' => $checkout->order_number,
+            'customer_id' => (string) $customer->id,
+            'customer_first_name' => $customer->name,
+            'customer_email' => $customer->email ?? $customer->phone . '@example.com',
+            'customer_phone' => $customer->phone,
+            'webhook_url' => route('payments.notification'),
+            'redirect_url' => route('payments.success'),
+            'extra' => [
+                'payment_type' => Payment::TYPE_ORDER_CHECKOUT,
+                'checkout_id' => (string) $checkout->id,
+            ],
+        ];
+
+        if (str_starts_with((string) $checkout->order_number, 'WEB-')) {
+            $payload['redirect_url'] = config('services.ottu.website_return_url');
+        }
+
+        $products = $this->buildCheckoutProducts($checkout);
+        if (!empty($products)) {
+            $payload['extra']['products'] = $products;
+        }
+
+        Log::info('Ottu checkout payment request', [
+            'endpoint' => $endpoint,
+            'checkout_id' => $checkout->id,
+            'order_no' => $checkout->order_number,
+        ]);
+
+        $timeout = $timeoutSeconds ?? config('services.ottu.timeout', 60);
+        $connectTimeout = min(10, (int) config('services.ottu.connect_timeout', 15));
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Api-Key ' . $this->apiKey(),
+            'Content-Type' => 'application/json',
+        ])->connectTimeout($connectTimeout)->timeout($timeout)->post($endpoint, $payload);
+
+        if (!$response->successful()) {
+            $body = $response->json();
+            $message = $body['message'] ?? $body['detail'] ?? json_encode($body) ?: 'Ottu request failed';
+            throw new \Exception($message);
+        }
+
+        $data = $response->json();
+        $paymentUrl = $this->extractCheckoutLinkFromResponse($data, $pgCode);
+        if ($paymentUrl === null) {
+            throw new \Exception('Payment URL not found in Ottu response');
+        }
+
+        $this->lastCheckoutSessionId = isset($data['session_id'])
+            ? (string) $data['session_id']
+            : $this->extractSessionIdFromUrl($paymentUrl);
+
+        return $paymentUrl;
+    }
+
+    /**
+     * Store a pending payment row for a checkout session.
+     */
+    public function ensurePendingCheckoutPayment(
+        OrderCheckout $checkout,
+        string $sessionId,
+        float $amount,
+        ?string $paymentGatewaySrc = null,
+        ?string $paymentLink = null
+    ): Payment {
+        $reference = $checkout->order_number . '-' . substr($sessionId, 0, 12);
+
+        $attributes = [
+            'invoice_id' => null,
+            'order_checkout_id' => $checkout->id,
+            'customer_id' => $checkout->customer_id,
+            'reference' => $reference,
+            'type' => Payment::TYPE_ORDER_CHECKOUT,
+            'payment_gateway_src' => $paymentGatewaySrc ?? $checkout->payment_gateway_src,
+            'amount' => $amount,
+            'bonus_amount' => 0,
+            'total_amount' => $amount,
+            'method' => 'online',
+            'payment_link' => $paymentLink ?? $checkout->payment_link,
+        ];
+
+        $payment = Payment::firstOrCreate(
+            ['gateway' => 'ottu', 'track_id' => $sessionId],
+            array_merge($attributes, [
+                'payment_number' => $this->generatePaymentNumber(),
+                'status' => 'pending',
+            ])
+        );
+
+        if (!$payment->wasRecentlyCreated) {
+            $payment->fill($attributes);
+            $payment->save();
+        }
+
+        return $payment->fresh();
+    }
+
+    /**
+     * @return list<array{name: string, price: float, quantity: int}>
+     */
+    protected function buildCheckoutProducts(OrderCheckout $checkout): array
+    {
+        $draft = OrderDraft::fromPayloadArray($checkout->draft());
+        $products = [];
+
+        foreach ($draft->orderItemsData as $item) {
+            $products[] = [
+                'name' => (string) ($item['name'] ?? 'Item'),
+                'price' => (float) ($item['unit_price'] ?? 0),
+                'quantity' => (int) ($item['quantity'] ?? 1),
+            ];
+        }
+
+        return $products;
     }
 
     /**
