@@ -12,6 +12,7 @@ use App\Models\OrderItem;
 use App\Repositories\OrderRepositoryInterface;
 use App\Repositories\InvoiceRepositoryInterface;
 use App\Repositories\OrderItemRepositoryInterface;
+use App\Support\PaymentCreatorResolver;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -163,11 +164,10 @@ class OctopusOrderService
                 'payment_gateway_src' => $paymentGatewaySrc,
             ];
             
-            // Capture created_by information from authenticated user
-            $user = auth()->user();
-            if ($user) {
-                $orderData['created_by_id'] = $user->id;
-                $orderData['created_by_type'] = get_class($user);
+            $creator = PaymentCreatorResolver::resolve($customer->id);
+            if ($creator['creator_id'] !== null && $creator['creator_type'] !== null) {
+                $orderData['created_by_id'] = $creator['creator_id'];
+                $orderData['created_by_type'] = $creator['creator_type'];
             }
 
             $order = $this->orderRepository->create($orderData);
@@ -398,7 +398,7 @@ class OctopusOrderService
             ? \Carbon\Carbon::parse($paymentInfo['paid_at'])->setTimezone('Asia/Kuwait')
             : now('Asia/Kuwait');
 
-        return Payment::create([
+        return Payment::create(array_merge([
             'invoice_id' => $invoice->id,
             'customer_id' => $customer->id,
             'reference' => $order->order_number,
@@ -414,7 +414,7 @@ class OctopusOrderService
             'method' => 'online',
             'status' => 'completed',
             'paid_at' => $paidAt,
-        ]);
+        ], PaymentCreatorResolver::fromOrder($order)));
     }
 
     /**

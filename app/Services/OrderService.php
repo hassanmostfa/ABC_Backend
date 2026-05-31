@@ -16,6 +16,7 @@ use App\Services\OttuPaymentProcessor;
 use App\Services\OttuService;
 use App\Jobs\DispatchErpOrderJob;
 use App\Jobs\SendOrderCreatedNotificationsJob;
+use App\Support\PaymentCreatorResolver;
 
 class OrderService
 {
@@ -242,10 +243,10 @@ class OrderService
             $orderData['payment_gateway_src'] = $paymentGatewaySrc;
         }
 
-        $user = auth()->user();
-        if ($user) {
-            $orderData['created_by_id'] = $user->id;
-            $orderData['created_by_type'] = get_class($user);
+        $creator = PaymentCreatorResolver::resolve($customerId ? (int) $customerId : null);
+        if ($creator['creator_id'] !== null && $creator['creator_type'] !== null) {
+            $orderData['created_by_id'] = $creator['creator_id'];
+            $orderData['created_by_type'] = $creator['creator_type'];
         }
 
         return new OrderDraft(

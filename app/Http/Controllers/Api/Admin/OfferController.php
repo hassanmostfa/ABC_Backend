@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Repositories\OfferRepositoryInterface;
+use App\Http\Requests\OfferListFilterRequest;
 use App\Http\Resources\Admin\OfferResource;
 use App\Http\Requests\Admin\OfferRequest;
 use App\Traits\ManagesFileUploads;
@@ -25,27 +26,10 @@ class OfferController extends BaseApiController
     /**
      * Display a listing of the offers with pagination and filters.
      */
-    public function index(Request $request): JsonResponse
+    public function index(OfferListFilterRequest $request): JsonResponse
     {
-        // Validate filter parameters
-        $request->validate([
-            'per_page' => 'nullable|integer|min:1|max:100',
-            'type' => 'nullable|in:normal,charity',
-            'category_id' => 'nullable|integer|exists:categories,id',
-            'search' => 'nullable|string|max:1000',
-        ]);
-
         $perPage = $request->input('per_page', 15);
-        $filters = [
-            'type' => $request->input('type'),
-            'category_id' => $request->input('category_id'),
-            'search' => $request->input('search'),
-        ];
-        
-        // Remove null and empty values from filters
-        $filters = array_filter($filters, function($value) {
-            return $value !== null && $value !== '';
-        });
+        $filters = $request->offerFilters();
         
         $offers = $this->offerRepository->getAllPaginated($filters, $perPage);
 

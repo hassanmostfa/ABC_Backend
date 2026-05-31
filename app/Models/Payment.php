@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class Payment extends Model
 {
@@ -16,6 +17,8 @@ class Payment extends Model
     protected $fillable = [
         'invoice_id',
         'customer_id',
+        'creator_id',
+        'creator_type',
         'order_checkout_id',
         'reference',
         'type',
@@ -50,6 +53,11 @@ class Payment extends Model
     public function customer()
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function creator(): MorphTo
+    {
+        return $this->morphTo();
     }
 
     public function orderCheckout()

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Customer;
 use App\Models\CustomerAddress;
+use App\Support\KuwaitPhone;
 use GuzzleHttp\TransferStats;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -88,7 +89,7 @@ class ErpCustomerService
      */
     private function buildPayload(Customer $customer, string $source): array
     {
-        $phoneWithoutCode = $this->stripKuwaitCountryCode($customer->phone);
+        $phoneWithoutCode = KuwaitPhone::withoutCountryCode($customer->phone);
         $email = trim((string) ($customer->email ?? ''));
 
         return [
@@ -132,7 +133,7 @@ class ErpCustomerService
     private function resolveSecondaryNumber(Customer $customer, string $primaryNumber): ?string
     {
         foreach ($customer->addresses as $address) {
-            $addressPhone = $this->stripKuwaitCountryCode($address->phone_number);
+            $addressPhone = KuwaitPhone::withoutCountryCode($address->phone_number);
             if ($addressPhone !== '' && $addressPhone !== $primaryNumber) {
                 return $addressPhone;
             }
@@ -205,17 +206,6 @@ class ErpCustomerService
         }
 
         return implode(' | ', array_filter($parts));
-    }
-
-    private function stripKuwaitCountryCode(?string $phone): string
-    {
-        $digits = preg_replace('/\D/', '', (string) $phone) ?? '';
-
-        if (str_starts_with($digits, '965')) {
-            $digits = substr($digits, 3);
-        }
-
-        return $digits;
     }
 
     /**

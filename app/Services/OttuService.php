@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderCheckout;
 use App\Models\Payment;
+use App\Support\PaymentCreatorResolver;
 
 class OttuService
 {
@@ -175,10 +176,6 @@ class OttuService
             'redirect_url' => route('payments.success'),
         ];
 
-        if (str_starts_with((string) $order->order_number, 'WEB-')) {
-            $payload['redirect_url'] = config('services.ottu.website_return_url');
-        }
-
         $extra = $this->buildExtra($order);
         if (!empty($extra)) {
             $payload['extra'] = $extra;
@@ -263,10 +260,6 @@ class OttuService
             ],
         ];
 
-        if (str_starts_with((string) $checkout->order_number, 'WEB-')) {
-            $payload['redirect_url'] = config('services.ottu.website_return_url');
-        }
-
         $products = $this->buildCheckoutProducts($checkout);
         if (!empty($products)) {
             $payload['extra']['products'] = $products;
@@ -344,7 +337,7 @@ class OttuService
 
         $payment = Payment::firstOrCreate(
             ['gateway' => 'ottu', 'track_id' => $sessionId],
-            array_merge($attributes, [
+            array_merge($attributes, PaymentCreatorResolver::resolve($checkout->customer_id), [
                 'payment_number' => $this->generatePaymentNumber(),
                 'status' => 'pending',
             ])
@@ -487,7 +480,7 @@ class OttuService
 
         $payment = Payment::firstOrCreate(
             ['gateway' => 'ottu', 'track_id' => $sessionId],
-            array_merge($attributes, [
+            array_merge($attributes, PaymentCreatorResolver::fromOrder($order), [
                 'payment_number' => $this->generatePaymentNumber(),
                 'status' => 'pending',
             ])

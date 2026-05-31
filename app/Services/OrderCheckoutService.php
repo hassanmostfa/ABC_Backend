@@ -198,13 +198,15 @@ class OrderCheckoutService
         }
 
         if (!$statusResult['is_success']) {
+            $paymentStatus = app(OttuPaymentProcessor::class)->resolvePaymentStatus($statusResult);
+
             return [
                 'success' => false,
                 'message' => ($statusResult['is_failed'] ?? false)
                     ? 'Payment was not completed. You can try again using the same or a new payment link.'
                     : 'Payment is not completed at Ottu yet.',
                 'gateway_status_raw' => $statusResult['gateway_status_raw'] ?? null,
-                'payment_status' => 'pending',
+                'payment_status' => $paymentStatus,
             ];
         }
 
@@ -271,8 +273,10 @@ class OrderCheckoutService
                 return ['processed' => false, 'reason' => 'checkout_not_pending'];
             }
 
-            $draft = OrderDraft::fromPayloadArray($locked->draft());
-            $freshDraft = $this->orderService->prepareOrderDraft($draft->requestData);
+            $storedDraft = OrderDraft::fromPayloadArray($locked->draft());
+            $freshDraft = $this->orderService
+                ->prepareOrderDraft($storedDraft->requestData)
+                ->withCreatedByFrom($storedDraft);
 
             $order = $this->orderService->createOrderFromDraft(
                 $freshDraft,

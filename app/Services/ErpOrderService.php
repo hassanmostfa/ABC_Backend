@@ -500,14 +500,19 @@ class ErpOrderService
         return $order->items->map(function ($item) {
             $itemCode = $item->variant?->sku ?? '';
             $uom = $item->variant?->short_item ?? '';
+            $quantity = (int) $item->quantity;
+            $netLineTotal = max(0, (float) $item->total_price - (float) $item->discount);
+            $unitPriceAfterDiscount = $quantity > 0
+                ? round($netLineTotal / $quantity, 3)
+                : round((float) $item->unit_price, 3);
 
             return [
                 'itemCode'       => $itemCode,
                 'uom'            => $uom,
-                'price'          => round((float) $item->unit_price, 3),
-                'quantity'       => (int) $item->quantity,
+                'price'          => $unitPriceAfterDiscount,
+                'quantity'       => $quantity,
                 'isFOC'          => false,
-                'discountAmount' => round((float) $item->discount, 3),
+                'discountAmount' => 0.0,
                 'taxAmount'      => round((float) $item->tax, 3),
             ];
         })->values()->toArray();

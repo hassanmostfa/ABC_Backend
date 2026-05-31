@@ -19,8 +19,10 @@ use App\Models\Wallet;
 use App\Services\OttuPaymentProcessor;
 use App\Services\OttuService;
 use App\Services\WalletChargeService;
+use App\Support\PaymentCreatorResolver;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -183,6 +185,8 @@ class PaymentController extends BaseApiController
                 $paymentData['paid_at'] = now('Asia/Kuwait');
             }
 
+            $paymentData = array_merge($paymentData, PaymentCreatorResolver::resolve());
+
             $payment = $this->paymentRepository->create($paymentData);
 
             // Deduct amount from wallet if payment method is wallet and payment is completed
@@ -239,6 +243,7 @@ class PaymentController extends BaseApiController
                 'invoice.order.charity',
                 'invoice.order.items.product',
                 'invoice.order.items.variant',
+                'creator',
             ]);
 
             // Log activity
@@ -269,7 +274,8 @@ class PaymentController extends BaseApiController
             'invoice.order.offer',
             'invoice.order.items.product',
             'invoice.order.items.variant',
-            'invoice.order.delivery',
+            'invoice.order.customerAddress',
+            'creator',
         ]);
 
         return $this->resourceResponse(new PaymentResource($payment), 'Payment retrieved successfully');
@@ -382,7 +388,8 @@ class PaymentController extends BaseApiController
                 'invoice.order.offer',
                 'invoice.order.items.product',
                 'invoice.order.items.variant',
-                'invoice.order.delivery',
+                'invoice.order.customerAddress',
+                'creator',
             ]);
 
             // Log activity
@@ -416,7 +423,7 @@ class PaymentController extends BaseApiController
      * Handle payment success redirect from Ottu (browser callback).
      * Never trust redirect alone: verify HMAC when present, confirm with Ottu API, show success UI only if invoice is paid.
      */
-    public function success(Request $request): JsonResponse|View
+    public function success(Request $request): JsonResponse|View|RedirectResponse
     {
         $sessionId = trim((string) ($request->query('session_id') ?? $request->input('session_id') ?? ''));
         $orderNo = $request->query('order_no') ?? $request->input('order_no');
@@ -430,6 +437,11 @@ class PaymentController extends BaseApiController
 
         if ($sessionId === '') {
             Log::warning('Ottu success redirect: missing session_id');
+
+            $orderNo = $request->query('order_no') ?? $request->input('order_no');
+            if ($this->isWebsiteOrderNumber($orderNo) && !$request->expectsJson()) {
+                return redirect()->away($this->websitePaymentRedirectUrl(false, $request, $orderNo));
+            }
 
             return $this->renderPaymentCallbackResponse($request, null, false);
         }
@@ -474,7 +486,13 @@ class PaymentController extends BaseApiController
         }
 
         $order = $processedOrder ?? $this->resolveOrderFromCallback($request);
+        $orderNumber = $order?->order_number ?? $orderNo;
+
         if (!$order) {
+            if ($this->isWebsiteOrderNumber($orderNumber) && !$request->expectsJson()) {
+                return redirect()->away($this->websitePaymentRedirectUrl(false, $request, $orderNumber));
+            }
+
             if ($request->expectsJson()) {
                 return $this->errorResponse('Order not found', 404);
             }
@@ -491,9 +509,16 @@ class PaymentController extends BaseApiController
     /**
      * Render payment redirect UI/JSON from invoice state (webhook + API are source of truth).
      */
-    protected function renderPaymentCallbackResponse(Request $request, ?\App\Models\Order $order, bool $showSuccess): JsonResponse|View
+    protected function renderPaymentCallbackResponse(Request $request, ?\App\Models\Order $order, bool $showSuccess): JsonResponse|View|RedirectResponse
     {
-        $orderNumber = $order?->order_number;
+        $orderNumber = $order?->order_number
+            ?? $request->query('order_no')
+            ?? $request->input('order_no');
+
+        if ($this->isWebsiteOrderNumber($orderNumber) && !$request->expectsJson()) {
+            return redirect()->away($this->websitePaymentRedirectUrl($showSuccess, $request, $orderNumber));
+        }
+
         $invoiceStatus = $order?->invoice?->status ?? 'pending';
 
         if (!$request->expectsJson()) {
@@ -513,13 +538,53 @@ class PaymentController extends BaseApiController
         ], $showSuccess ? 200 : 200);
     }
 
+    protected function isWebsiteOrderNumber(?string $orderNumber): bool
+    {
+        $orderNumber = strtoupper(trim((string) ($orderNumber ?? '')));
+
+        return $orderNumber !== '' && str_starts_with($orderNumber, 'WEB-');
+    }
+
+    protected function websitePaymentRedirectUrl(bool $showSuccess, Request $request, ?string $orderNumber = null): string
+    {
+        $baseUrl = $showSuccess
+            ? (string) config('services.ottu.website_return_url', '')
+            : (string) config('services.ottu.website_cancel_url', '');
+
+        if ($baseUrl === '') {
+            return url('/');
+        }
+
+        $query = array_filter([
+            'order_no' => $orderNumber ?? $request->query('order_no') ?? $request->input('order_no'),
+            'session_id' => $request->query('session_id') ?? $request->input('session_id'),
+            'status' => $showSuccess ? 'paid' : 'failed',
+        ], static fn ($value) => $value !== null && $value !== '');
+
+        if ($query === []) {
+            return $baseUrl;
+        }
+
+        $separator = str_contains($baseUrl, '?') ? '&' : '?';
+
+        return $baseUrl . $separator . http_build_query($query);
+    }
+
     /**
      * Handle payment cancellation callback from Ottu (UI-only: never create/update Payment or mark invoice paid).
      * When opened in browser (no JSON Accept), returns HTML failed page; otherwise JSON.
      */
-    public function cancel(Request $request): JsonResponse|View
+    public function cancel(Request $request): JsonResponse|View|RedirectResponse
     {
         $order = $this->resolveOrderFromCallback($request);
+        $orderNumber = $order?->order_number
+            ?? $request->query('order_no')
+            ?? $request->input('order_no');
+
+        if ($this->isWebsiteOrderNumber($orderNumber) && !$request->expectsJson()) {
+            return redirect()->away($this->websitePaymentRedirectUrl(false, $request, $orderNumber));
+        }
+
         if (!$order) {
             if (!$request->expectsJson()) {
                 return view('payment-failed', ['order_number' => null]);
@@ -806,6 +871,8 @@ class PaymentController extends BaseApiController
 
         if ($this->ottuService->isSuccessfulPayment($payload['result'] ?? null, $payload['state'] ?? null, $payload)) {
             $this->walletChargeService->processSuccess($payment);
+        } elseif (!config('services.ottu.enable_pending_status', false)) {
+            $this->walletChargeService->processCancel($payment);
         }
 
         return response()->json([

@@ -53,17 +53,33 @@ class OfferRepository implements OfferRepositoryInterface
 
         // Filter by category_id (through conditions or rewards products)
         if (isset($filters['category_id']) && is_numeric($filters['category_id'])) {
-            $categoryId = $filters['category_id'];
+            $categoryId = (int) $filters['category_id'];
             $query->where(function ($q) use ($categoryId) {
-                // Search in conditions products
                 $q->whereHas('conditions.product', function ($productQuery) use ($categoryId) {
                     $productQuery->where('category_id', $categoryId);
                 })
-                // Or search in rewards products
                 ->orWhereHas('rewards.product', function ($productQuery) use ($categoryId) {
                     $productQuery->where('category_id', $categoryId);
                 });
             });
+        }
+
+        // Filter by subcategory_id (through conditions or rewards products)
+        if (isset($filters['subcategory_id']) && is_numeric($filters['subcategory_id'])) {
+            $subcategoryId = (int) $filters['subcategory_id'];
+            $query->where(function ($q) use ($subcategoryId) {
+                $q->whereHas('conditions.product', function ($productQuery) use ($subcategoryId) {
+                    $productQuery->where('subcategory_id', $subcategoryId);
+                })
+                ->orWhereHas('rewards.product', function ($productQuery) use ($subcategoryId) {
+                    $productQuery->where('subcategory_id', $subcategoryId);
+                });
+            });
+        }
+
+        // Filter by stock availability of offer line items (conditions + product rewards)
+        if (isset($filters['stock_status']) && in_array($filters['stock_status'], ['in_stock', 'out_of_stock'], true)) {
+            $this->applyStockStatusFilter($query, $filters['stock_status']);
         }
 
         // Default sorting by created_at desc
@@ -169,5 +185,38 @@ class OfferRepository implements OfferRepositoryInterface
         }
 
         return $query->orderBy('created_at', 'desc')->get();
+    }
+
+    private function applyStockStatusFilter($query, string $stockStatus): void
+    {
+        if ($stockStatus === 'in_stock') {
+            $query->whereDoesntHave('conditions', fn ($q) => $this->applyActiveLineItemStockFailure($q, 'offer_conditions'))
+                ->where(function ($q) {
+                    $q->where('reward_type', '!=', 'products')
+                        ->orWhereDoesntHave('rewards', fn ($rewardQuery) => $this->applyActiveLineItemStockFailure($rewardQuery, 'offer_rewards'));
+                });
+
+            return;
+        }
+
+        $query->where(function ($q) {
+            $q->whereHas('conditions', fn ($conditionQuery) => $this->applyActiveLineItemStockFailure($conditionQuery, 'offer_conditions'))
+                ->orWhere(function ($rewardScope) {
+                    $rewardScope->where('reward_type', 'products')
+                        ->whereHas('rewards', fn ($rewardQuery) => $this->applyActiveLineItemStockFailure($rewardQuery, 'offer_rewards'));
+                });
+        });
+    }
+
+    private function applyActiveLineItemStockFailure($query, string $pivotTable): void
+    {
+        $query->where('is_active', true)
+            ->where(function ($q) use ($pivotTable) {
+                $q->whereDoesntHave('productVariant')
+                    ->orWhereHas('productVariant', function ($variantQuery) use ($pivotTable) {
+                        $variantQuery->where('is_active', false)
+                            ->orWhereColumn('product_variants.quantity', '<', "{$pivotTable}.quantity");
+                    });
+            });
     }
 }

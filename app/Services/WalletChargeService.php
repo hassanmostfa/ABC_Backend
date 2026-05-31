@@ -6,6 +6,7 @@ use App\Models\Payment;
 use App\Models\Setting;
 use App\Repositories\CustomerRepositoryInterface;
 use App\Repositories\PaymentRepositoryInterface;
+use App\Support\PaymentCreatorResolver;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -48,7 +49,7 @@ class WalletChargeService
             $reference = $this->generateReference();
             $paymentNumber = $this->generatePaymentNumber();
 
-            $payment = $this->paymentRepository->create([
+            $payment = $this->paymentRepository->create(array_merge([
                 'invoice_id' => null,
                 'customer_id' => $customerId,
                 'reference' => $reference,
@@ -60,7 +61,7 @@ class WalletChargeService
                 'method' => 'online',
                 'status' => 'pending',
                 'payment_gateway_src' => $paymentGatewaySrc,
-            ]);
+            ], PaymentCreatorResolver::forCustomer($customerId)));
 
             $paymentLink = $this->ottuService->createWalletChargePayment($payment, $amount, $paymentGatewaySrc);
 

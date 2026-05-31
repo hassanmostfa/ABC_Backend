@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Mobile\offers;
 
 use App\Http\Controllers\Api\BaseApiController;
+use App\Http\Requests\OfferListFilterRequest;
 use App\Http\Resources\Mobile\OfferListResource;
 use App\Http\Resources\Mobile\OfferResource;
 use App\Repositories\OfferRepositoryInterface;
@@ -21,33 +22,11 @@ class OfferController extends BaseApiController
     /**
      * Display a listing of active offers with pagination and filters.
      */
-    public function index(Request $request): JsonResponse
+    public function index(OfferListFilterRequest $request): JsonResponse
     {
         try {
-            // Validate filter parameters
-            $request->validate([
-                'per_page' => 'nullable|integer|min:1|max:100',
-                'type' => 'nullable|in:normal,charity',
-                'category_id' => 'nullable|integer|exists:categories,id',
-                'search' => 'nullable|string|max:1000',
-            ]);
-
             $perPage = $request->input('per_page', 15);
-            $filters = [
-                'active_only' => true, // Only get active offers for mobile API
-                'type' => $request->input('type'),
-                'category_id' => $request->input('category_id'),
-                'search' => $request->input('search'),
-            ];
-            
-            // Remove null and empty values from filters (but keep active_only)
-            $filtered = [];
-            foreach ($filters as $key => $value) {
-                if ($key === 'active_only' || ($value !== null && $value !== '')) {
-                    $filtered[$key] = $value;
-                }
-            }
-            $filters = $filtered;
+            $filters = $request->offerFilters(activeOnly: true);
             
             // Get offers using repository
             $offers = $this->offerRepository->getAllPaginated($filters, $perPage);

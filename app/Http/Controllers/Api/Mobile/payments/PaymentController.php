@@ -44,7 +44,24 @@ class PaymentController extends BaseApiController
                     $q->where('customer_id', $customer->id)->where('type', 'wallet_charge');
                 });
         })
-        ->with(['invoice', 'invoice.order', 'invoice.order.customer', 'invoice.order.charity', 'invoice.order.items', 'customer'])
+        ->with([
+            'invoice',
+            'invoice.order',
+            'invoice.order.customer',
+            'invoice.order.charity',
+            'invoice.order.items',
+            'invoice.order.customerAddress',
+            'customer',
+            'creator',
+            'orderCheckout',
+            'orderCheckout.customer',
+            'orderCheckout.order',
+            'orderCheckout.order.customer',
+            'orderCheckout.order.charity',
+            'orderCheckout.order.items',
+            'orderCheckout.order.customerAddress',
+            'orderCheckout.order.invoice',
+        ])
         ->orderBy('created_at', 'desc')
         ->get();
 

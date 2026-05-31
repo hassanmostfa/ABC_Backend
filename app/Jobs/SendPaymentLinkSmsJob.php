@@ -79,10 +79,13 @@ class SendPaymentLinkSmsJob implements ShouldQueue
 
     protected function buildMessage(string $locale, string $orderNumber, string $amount, string $paymentLink): string
     {
+        // LRM forces left-to-right rendering so iOS/Android detect the URL as tappable in Arabic SMS.
+        $link = "\u{200E}" . trim($paymentLink);
+
         if ($locale === 'en') {
-            return "Your order {$orderNumber} is ready for payment ({$amount} KWD). Pay here: {$paymentLink}";
+            return "Your order {$orderNumber} is ready for payment ({$amount} KWD).\n\nPay here:\n{$link}";
         }
 
-        return "طلبك رقم {$orderNumber} جاهز للدفع ({$amount} د.ك). ادفع عبر الرابط: {$paymentLink}";
+        return "طلبك رقم {$orderNumber} جاهز للدفع ({$amount} د.ك).\n\n{$link}";
     }
 }

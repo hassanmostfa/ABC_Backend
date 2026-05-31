@@ -62,6 +62,47 @@ class OrderDraft
         ];
     }
 
+    public function withOrderData(array $orderData): self
+    {
+        return new self(
+            requestData: $this->requestData,
+            offersData: $this->offersData,
+            offersToProcess: $this->offersToProcess,
+            offersToAttach: $this->offersToAttach,
+            orderItemsData: $this->orderItemsData,
+            totalAmount: $this->totalAmount,
+            offerDiscount: $this->offerDiscount,
+            couponsDiscount: $this->couponsDiscount,
+            appliedCouponCode: $this->appliedCouponCode,
+            usedPoints: $this->usedPoints,
+            pointsDiscount: $this->pointsDiscount,
+            deliveryType: $this->deliveryType,
+            invoiceAmounts: $this->invoiceAmounts,
+            orderData: $orderData,
+            source: $this->source,
+            paymentMethod: $this->paymentMethod,
+            paymentGatewaySrc: $this->paymentGatewaySrc,
+        );
+    }
+
+    /**
+     * Keep the admin/customer who initiated checkout when re-validating the draft after payment.
+     */
+    public function withCreatedByFrom(self $source): self
+    {
+        $createdById = $source->orderData['created_by_id'] ?? null;
+        $createdByType = $source->orderData['created_by_type'] ?? null;
+
+        if (!$createdById || !$createdByType) {
+            return $this;
+        }
+
+        return $this->withOrderData(array_merge($this->orderData, [
+            'created_by_id' => $createdById,
+            'created_by_type' => $createdByType,
+        ]));
+    }
+
     public static function fromPayloadArray(array $payload): self
     {
         $offersToProcess = [];

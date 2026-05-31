@@ -16,11 +16,36 @@ class PaymentRepository implements PaymentRepositoryInterface
     }
 
     /**
+     * @return list<string>
+     */
+    protected function paymentRelations(): array
+    {
+        return [
+            'invoice',
+            'invoice.order',
+            'invoice.order.customer',
+            'invoice.order.charity',
+            'invoice.order.items',
+            'invoice.order.customerAddress',
+            'customer',
+            'creator',
+            'orderCheckout',
+            'orderCheckout.customer',
+            'orderCheckout.order',
+            'orderCheckout.order.customer',
+            'orderCheckout.order.charity',
+            'orderCheckout.order.items',
+            'orderCheckout.order.customerAddress',
+            'orderCheckout.order.invoice',
+        ];
+    }
+
+    /**
      * Get all payments with pagination, search and filters
      */
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
-        $query = $this->model->with(['invoice', 'invoice.order', 'invoice.order.customer', 'invoice.order.charity', 'customer']);
+        $query = $this->model->with($this->paymentRelations());
 
         // Search functionality
         if (isset($filters['search']) && !empty($filters['search'])) {
@@ -107,7 +132,7 @@ class PaymentRepository implements PaymentRepositoryInterface
      */
     public function getAll(): Collection
     {
-        return $this->model->with(['invoice', 'invoice.order', 'invoice.order.customer', 'invoice.order.charity', 'customer'])->get();
+        return $this->model->with($this->paymentRelations())->get();
     }
 
     /**
@@ -115,7 +140,7 @@ class PaymentRepository implements PaymentRepositoryInterface
      */
     public function findById(int $id): ?Payment
     {
-        return $this->model->with(['invoice', 'invoice.order', 'invoice.order.customer', 'invoice.order.charity'])->find($id);
+        return $this->model->with($this->paymentRelations())->find($id);
     }
 
     /**
