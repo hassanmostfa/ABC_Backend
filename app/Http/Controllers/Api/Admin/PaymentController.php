@@ -619,17 +619,21 @@ class PaymentController extends BaseApiController
         $result = $payload['result'] ?? null;
         $state = $payload['state'] ?? null;
 
+        // Ottu redirects the customer to our redirect_url ONLY when this webhook returns HTTP 200.
+        // Any non-200 keeps the payer on Ottu's hosted summary/failed page. So we always ACK with 200
+        // (even on missing session_id / invalid signature) and simply skip processing for unverified
+        // payloads. Actual fulfilment stays gated by signature + Ottu API verification below.
         if (!$sessionId) {
-            Log::warning('Ottu webhook: missing session_id', ['order_no' => $orderNo]);
-            return $this->errorResponse('Missing session_id', 400);
+            Log::warning('Ottu webhook: missing session_id (acknowledged, not processed)', ['order_no' => $orderNo]);
+            return response()->json(['message' => 'Webhook acknowledged'], 200);
         }
 
         if (!$this->ottuService->verifySignature($payload)) {
-            Log::warning('Ottu webhook: signature verification failed', [
+            Log::warning('Ottu webhook: signature verification failed (acknowledged, not processed)', [
                 'session_id' => $sessionId,
                 'order_no' => $orderNo,
             ]);
-            return $this->errorResponse('Invalid signature', 403);
+            return response()->json(['message' => 'Webhook acknowledged'], 200);
         }
 
         $pgParams = $payload['pg_params'] ?? [];
@@ -850,11 +854,13 @@ class PaymentController extends BaseApiController
     {
         $payload = $request->all();
 
+        // Always ACK with HTTP 200 so Ottu redirects the customer to our redirect_url (success/failed),
+        // instead of stranding them on Ottu's hosted summary page. Processing stays gated by verification.
         if (!$this->ottuService->verifySignature($payload)) {
-            Log::warning('Ottu wallet charge webhook: signature verification failed', [
+            Log::warning('Ottu wallet charge webhook: signature verification failed (acknowledged, not processed)', [
                 'order_no' => $payload['order_no'] ?? null,
             ]);
-            return $this->errorResponse('Invalid signature', 403);
+            return response()->json(['message' => 'Webhook acknowledged'], 200);
         }
 
         $reference = $payload['order_no']
@@ -866,7 +872,8 @@ class PaymentController extends BaseApiController
 
         $payment = $this->walletChargeService->findByReference($reference ?? '');
         if (!$payment) {
-            return $this->errorResponse('Wallet charge not found', 404);
+            Log::warning('Ottu wallet charge webhook: wallet charge not found (acknowledged)', ['reference' => $reference]);
+            return response()->json(['message' => 'Webhook acknowledged'], 200);
         }
 
         if ($this->ottuService->isSuccessfulPayment($payload['result'] ?? null, $payload['state'] ?? null, $payload)) {

@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Log;
 
 class ErpOrderService
 {
+    public const DEFAULT_EMPLOYEE_CODE = '200992';
+
     private string $baseUrl;
     private string $username;
     private string $password;
@@ -394,15 +396,11 @@ class ErpOrderService
      */
     private function resolveEmployeeCode(Order $order): string
     {
-        $fallbackCode = '200992';
-
         $order->loadMissing('createdBy');
         $creator = $order->createdBy;
 
         if ($creator instanceof Admin) {
-            $employeeCode = trim((string) ($creator->employee_code ?? ''));
-
-            return $employeeCode !== '' ? $employeeCode : $fallbackCode;
+            return $this->getEmployeeCodeByAdminId($creator->id);
         }
 
         $orderNumber = strtoupper(trim((string) ($order->order_number ?? '')));
@@ -415,7 +413,19 @@ class ErpOrderService
             return '2000';
         }
 
-        return $fallbackCode;
+        return self::DEFAULT_EMPLOYEE_CODE;
+    }
+
+    /**
+     * Look up the ERP employee code for the given admin ID.
+     * Returns the default fallback code when the admin is not found or has no code set.
+     */
+    public function getEmployeeCodeByAdminId(int $adminId): string
+    {
+        $admin = Admin::find($adminId);
+        $employeeCode = trim((string) ($admin?->employee_code ?? ''));
+
+        return $employeeCode !== '' ? $employeeCode : self::DEFAULT_EMPLOYEE_CODE;
     }
 
     /**

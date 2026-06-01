@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\Customer;
 use App\Models\Order;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Request;
 
 class PaymentCreatorResolver
 {
@@ -14,25 +15,25 @@ class PaymentCreatorResolver
      */
     public static function resolve(?int $customerId = null): array
     {
-        $admin = Auth::guard('admin')->user();
-        if ($admin instanceof Admin) {
-            return self::forAdmin($admin->id);
+        // Check all possible guards where an admin could be authenticated.
+        // Priority: admin guard (session) → sanctum guard → request user → default guard.
+        $candidates = [
+            Auth::guard('admin')->user(),
+            Auth::guard('sanctum')->user(),
+            Request::user(),
+            Auth::user(),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if ($candidate instanceof Admin) {
+                return self::forAdmin($candidate->id);
+            }
         }
 
-        $tokenUser = Auth::guard('sanctum')->user();
-        if ($tokenUser instanceof Admin) {
-            return self::forAdmin($tokenUser->id);
-        }
-        if ($tokenUser instanceof Customer) {
-            return self::forCustomer($tokenUser->id);
-        }
-
-        $user = Auth::user();
-        if ($user instanceof Admin) {
-            return self::forAdmin($user->id);
-        }
-        if ($user instanceof Customer) {
-            return self::forCustomer($user->id);
+        foreach ($candidates as $candidate) {
+            if ($candidate instanceof Customer) {
+                return self::forCustomer($candidate->id);
+            }
         }
 
         if ($customerId !== null) {
