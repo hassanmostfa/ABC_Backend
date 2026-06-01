@@ -11,6 +11,7 @@ use App\Http\Requests\Admin\UpdateOrderRequest;
 use App\Http\Resources\Admin\OrderResource;
 use App\Http\Resources\Admin\RefundRequestResource;
 use App\Http\Resources\CheckoutAsOrderResource;
+use App\Models\Admin;
 use App\Models\Order;
 use App\Models\OrderCheckout;
 use App\Repositories\OrderRepositoryInterface;
@@ -105,6 +106,11 @@ class OrderController extends BaseApiController
         try {
             $orderData = $request->validated();
             $orderData['source'] = $orderData['source'] ?? 'call_center';
+
+            $admin = $request->user();
+            if ($admin instanceof Admin) {
+                $orderData['acting_admin_id'] = $admin->id;
+            }
 
             $result = $this->orderService->createOrder($orderData);
 

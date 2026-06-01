@@ -243,7 +243,12 @@ class OrderService
             $orderData['payment_gateway_src'] = $paymentGatewaySrc;
         }
 
-        $creator = PaymentCreatorResolver::resolve($customerId ? (int) $customerId : null);
+        $actingAdminId = isset($data['acting_admin_id']) ? (int) $data['acting_admin_id'] : null;
+        $creator = PaymentCreatorResolver::resolveForOrder(
+            $customerId ? (int) $customerId : null,
+            $source,
+            $actingAdminId > 0 ? $actingAdminId : null
+        );
         if ($creator['creator_id'] !== null && $creator['creator_type'] !== null) {
             $orderData['created_by_id'] = $creator['creator_id'];
             $orderData['created_by_type'] = $creator['creator_type'];

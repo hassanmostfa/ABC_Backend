@@ -396,11 +396,9 @@ class ErpOrderService
      */
     private function resolveEmployeeCode(Order $order): string
     {
-        $order->loadMissing('createdBy');
-        $creator = $order->createdBy;
-
-        if ($creator instanceof Admin) {
-            return $this->getEmployeeCodeByAdminId($creator->id);
+        $adminId = $this->resolveAdminIdForOrder($order);
+        if ($adminId !== null) {
+            return $this->getEmployeeCodeByAdminId($adminId);
         }
 
         $orderNumber = strtoupper(trim((string) ($order->order_number ?? '')));
@@ -414,6 +412,29 @@ class ErpOrderService
         }
 
         return self::DEFAULT_EMPLOYEE_CODE;
+    }
+
+    private function resolveAdminIdForOrder(Order $order): ?int
+    {
+        if ($order->created_by_id && $this->isAdminCreatorType($order->created_by_type)) {
+            return (int) $order->created_by_id;
+        }
+
+        $order->loadMissing('createdBy');
+        if ($order->createdBy instanceof Admin) {
+            return (int) $order->createdBy->id;
+        }
+
+        return null;
+    }
+
+    private function isAdminCreatorType(?string $type): bool
+    {
+        if ($type === null || $type === '') {
+            return false;
+        }
+
+        return $type === Admin::class || str_ends_with($type, '\\Admin');
     }
 
     /**
