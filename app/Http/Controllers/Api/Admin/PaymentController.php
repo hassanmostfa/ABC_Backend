@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Jobs\DispatchErpOrderJob;
+use App\Jobs\ProcessOttuWalletChargeWebhookJob;
+use App\Jobs\ProcessOttuWebhookJob;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Admin\StorePaymentRequest;
 use App\Http\Requests\Admin\UpdatePaymentRequest;
@@ -439,11 +441,13 @@ class PaymentController extends BaseApiController
             Log::warning('Ottu success redirect: missing session_id');
 
             $orderNo = $request->query('order_no') ?? $request->input('order_no');
+            $showSuccess = $this->resolvePaymentOutcomeForRedirect($request, null, null);
+
             if ($this->isWebsiteOrderNumber($orderNo) && !$request->expectsJson()) {
-                return redirect()->away($this->websitePaymentRedirectUrl(false, $request, $orderNo));
+                return redirect()->away($this->websitePaymentRedirectUrl($showSuccess, $request, $orderNo));
             }
 
-            return $this->renderPaymentCallbackResponse($request, null, false);
+            return $this->renderPaymentCallbackResponse($request, null, $showSuccess);
         }
 
         if (!$this->ottuService->verifyRedirectParams($redirectParams)) {
@@ -454,6 +458,7 @@ class PaymentController extends BaseApiController
         }
 
         $processedOrder = null;
+        $statusResult = null;
 
         try {
             $statusResult = $this->ottuService->getPaymentStatusWithRetries($sessionId);
@@ -489,21 +494,64 @@ class PaymentController extends BaseApiController
         $orderNumber = $order?->order_number ?? $orderNo;
 
         if (!$order) {
+            $showSuccess = $this->resolvePaymentOutcomeForRedirect($request, null, $statusResult);
+
             if ($this->isWebsiteOrderNumber($orderNumber) && !$request->expectsJson()) {
-                return redirect()->away($this->websitePaymentRedirectUrl(false, $request, $orderNumber));
+                return redirect()->away($this->websitePaymentRedirectUrl($showSuccess, $request, $orderNumber));
             }
 
             if ($request->expectsJson()) {
                 return $this->errorResponse('Order not found', 404);
             }
 
-            return $this->renderPaymentCallbackResponse($request, null, false);
+            return $this->renderPaymentCallbackResponse($request, null, $showSuccess);
         }
 
         $order->load('invoice');
-        $isPaid = $order->invoice && $order->invoice->status === 'paid';
+        $showSuccess = $this->resolvePaymentOutcomeForRedirect(
+            $request,
+            $order,
+            $statusResult ?? null
+        );
 
-        return $this->renderPaymentCallbackResponse($request, $order, $isPaid);
+        return $this->renderPaymentCallbackResponse($request, $order, $showSuccess);
+    }
+
+    /**
+     * Decide success vs failed for the browser redirect (website page or dashboard blade).
+     * Uses Ottu redirect/API status first; invoice paid state is the fallback.
+     *
+     * @param  array{is_success?: bool, is_failed?: bool}|null  $statusResult
+     */
+    protected function resolvePaymentOutcomeForRedirect(
+        Request $request,
+        ?Order $order,
+        ?array $statusResult = null
+    ): bool {
+        if ($statusResult !== null) {
+            if ($statusResult['is_success'] ?? false) {
+                return true;
+            }
+            if ($statusResult['is_failed'] ?? false) {
+                return false;
+            }
+        }
+
+        $result = strtolower(trim((string) ($request->query('result') ?? $request->input('result') ?? '')));
+        $state = strtolower(trim((string) ($request->query('state') ?? $request->input('state') ?? '')));
+
+        $successValues = ['success', 'paid', 'captured', 'completed', 'approved'];
+        $failedValues = ['failed', 'canceled', 'cancelled', 'error', 'declined', 'voided', 'expired'];
+
+        if (in_array($result, $successValues, true) || in_array($state, $successValues, true)) {
+            return true;
+        }
+
+        if (in_array($result, $failedValues, true) || in_array($state, $failedValues, true)) {
+            return false;
+        }
+
+        return $order?->invoice?->status === 'paid';
     }
 
     /**
@@ -619,79 +667,18 @@ class PaymentController extends BaseApiController
         $result = $payload['result'] ?? null;
         $state = $payload['state'] ?? null;
 
-        // Ottu redirects the customer to our redirect_url ONLY when this webhook returns HTTP 200.
-        // Any non-200 keeps the payer on Ottu's hosted summary/failed page. So we always ACK with 200
-        // (even on missing session_id / invalid signature) and simply skip processing for unverified
-        // payloads. Actual fulfilment stays gated by signature + Ottu API verification below.
-        if (!$sessionId) {
-            Log::warning('Ottu webhook: missing session_id (acknowledged, not processed)', ['order_no' => $orderNo]);
-            return response()->json(['message' => 'Webhook acknowledged'], 200);
-        }
-
-        if (!$this->ottuService->verifySignature($payload)) {
-            Log::warning('Ottu webhook: signature verification failed (acknowledged, not processed)', [
-                'session_id' => $sessionId,
-                'order_no' => $orderNo,
-            ]);
-            return response()->json(['message' => 'Webhook acknowledged'], 200);
-        }
-
-        $pgParams = $payload['pg_params'] ?? [];
-
-        PaymentGatewayEvent::create([
-            'provider' => 'ottu',
-            'event_type' => 'webhook',
-            'track_id' => $sessionId,
-            'receipt_id' => $pgParams['receipt_no'] ?? null,
-            'payload' => $payload,
-            'received_at' => now(),
-        ]);
-
-        $statusResult = $this->ottuService->buildStatusResultFromWebhook($payload, $sessionId);
-        if ($statusResult['requested_order_id'] === null && $orderNo !== null) {
-            $statusResult['requested_order_id'] = $orderNo;
-        }
-
-        try {
-            $processResult = $this->ottuPaymentProcessor->processVerifiedPayment(
-                $sessionId,
-                $statusResult,
-                $pgParams['receipt_no'] ?? null,
-                $orderNo
-            );
-        } catch (\Exception $e) {
-            Log::error('Ottu webhook: processVerifiedPayment exception', [
-                'session_id' => $sessionId,
-                'order_no' => $orderNo,
-                'message' => $e->getMessage(),
-            ]);
-
-            return response()->json(['message' => 'Webhook received'], 200);
-        }
-
-        if (!$processResult['processed']) {
-            Log::info('Ottu webhook: not processed', [
-                'session_id' => $sessionId,
-                'order_no' => $orderNo,
-                'outcome' => $processResult['reason'] ?? 'order_or_invoice_not_found',
-            ]);
-
-            return response()->json(['message' => 'Webhook received'], 200);
-        }
-        if ($processResult['idempotent'] ?? false) {
-            return response()->json(['message' => 'Webhook processed'], 200);
-        }
-        Log::info('Ottu webhook: processed', [
+        Log::info('Ottu webhook received', [
             'session_id' => $sessionId,
             'order_no' => $orderNo,
-            'outcome' => $processResult['payment_status'],
+            'result' => $result,
+            'state' => $state,
         ]);
 
-        return response()->json([
-            'order_number' => $processResult['order']->order_number,
-            'payment_status' => $processResult['payment_status'],
-            'message' => 'Webhook processed successfully',
-        ], 200);
+        // Ottu only redirects the payer to redirect_url when this endpoint returns HTTP 200 quickly.
+        // Success already works; failed/canceled needs the same fast ACK + async processing.
+        ProcessOttuWebhookJob::dispatch($payload)->afterResponse();
+
+        return response()->json(['message' => 'Webhook acknowledged'], 200);
     }
 
     /**
@@ -854,39 +841,15 @@ class PaymentController extends BaseApiController
     {
         $payload = $request->all();
 
-        // Always ACK with HTTP 200 so Ottu redirects the customer to our redirect_url (success/failed),
-        // instead of stranding them on Ottu's hosted summary page. Processing stays gated by verification.
-        if (!$this->ottuService->verifySignature($payload)) {
-            Log::warning('Ottu wallet charge webhook: signature verification failed (acknowledged, not processed)', [
-                'order_no' => $payload['order_no'] ?? null,
-            ]);
-            return response()->json(['message' => 'Webhook acknowledged'], 200);
-        }
+        Log::info('Ottu wallet charge webhook received', [
+            'order_no' => $payload['order_no'] ?? null,
+            'result' => $payload['result'] ?? null,
+            'state' => $payload['state'] ?? null,
+        ]);
 
-        $reference = $payload['order_no']
-            ?? $request->input('requested_order_id')
-            ?? $this->extractWalletChargeReference($request->query('reference'))
-            ?? $this->extractWalletChargeReference($request->input('reference'));
+        ProcessOttuWalletChargeWebhookJob::dispatch($payload)->afterResponse();
 
-        Log::info('Wallet charge webhook received', ['reference' => $reference, 'data' => $payload]);
-
-        $payment = $this->walletChargeService->findByReference($reference ?? '');
-        if (!$payment) {
-            Log::warning('Ottu wallet charge webhook: wallet charge not found (acknowledged)', ['reference' => $reference]);
-            return response()->json(['message' => 'Webhook acknowledged'], 200);
-        }
-
-        if ($this->ottuService->isSuccessfulPayment($payload['result'] ?? null, $payload['state'] ?? null, $payload)) {
-            $this->walletChargeService->processSuccess($payment);
-        } elseif (!config('services.ottu.enable_pending_status', false)) {
-            $this->walletChargeService->processCancel($payment);
-        }
-
-        return response()->json([
-            'reference' => $payment->reference,
-            'status' => $payment->fresh()->status,
-            'message' => 'Webhook processed successfully',
-        ], 200);
+        return response()->json(['message' => 'Webhook acknowledged'], 200);
     }
 
     /**
