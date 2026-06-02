@@ -117,7 +117,7 @@ class ErpCustomerService
      */
     private function resolveErpEmail(Customer $customer, string $phoneWithoutCode): string
     {
-        $email = trim((string) ($customer->email ?? '');
+        $email = trim((string) ($customer->email ?? ''));
 
         if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return $email;
