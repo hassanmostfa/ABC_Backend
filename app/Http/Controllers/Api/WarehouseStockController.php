@@ -14,7 +14,7 @@ class WarehouseStockController extends BaseApiController
 
     /**
      * Get warehouse stock for a given warehouse code.
-     * Query parameter: wh_code (optional; defaults to WAREHOUSE_STOCK_DEFAULT_CODE from config)
+     * Query parameter: wh_code (optional; when omitted fetches all WAREHOUSE_STOCK_CODES)
      */
     public function getStock(Request $request): JsonResponse
     {
@@ -22,18 +22,26 @@ class WarehouseStockController extends BaseApiController
             'wh_code' => 'nullable|string|max:50',
         ]);
 
-        $warehouseCode = $validated['wh_code'] ?? config('services.warehouse_stock.default_code', 'FGW1');
-        $result = $this->warehouseStockService->getStock($warehouseCode);
+        if (!empty($validated['wh_code'])) {
+            $warehouseCodes = [$validated['wh_code']];
+            $result = $this->warehouseStockService->getStock($validated['wh_code']);
+        } else {
+            $warehouseCodes = $this->warehouseStockService->getWarehouseCodes();
+            $result = $this->warehouseStockService->getAggregatedStock($warehouseCodes);
+        }
 
         if (!$result['success']) {
             return $this->customResponse([
+                'warehouse_codes' => $warehouseCodes,
+                'warehouse_errors' => $result['warehouse_errors'] ?? null,
                 'warehouse_response' => $result['body'],
                 'warehouse_status' => $result['status'],
             ], $result['error'] ?? 'Failed to fetch warehouse stock', $result['status'] ?? 502);
         }
 
         return $this->successResponse([
-            'warehouse_code' => $warehouseCode,
+            'warehouse_codes' => $warehouseCodes,
+            'warehouse_errors' => $result['warehouse_errors'] ?? null,
             'warehouse_response' => $result['body'],
             'warehouse_status' => $result['status'],
         ], 'Warehouse stock fetched successfully');
@@ -56,7 +64,7 @@ class WarehouseStockController extends BaseApiController
         $config = config('services.warehouse_stock');
         
         $startTime = microtime(true);
-        $result = $this->warehouseStockService->getStock($config['default_code'] ?? 'FGW1');
+        $result = $this->warehouseStockService->getAggregatedStock();
         $duration = round((microtime(true) - $startTime) * 1000, 2);
 
         return $this->successResponse([
@@ -64,6 +72,7 @@ class WarehouseStockController extends BaseApiController
                 'url' => $config['url'],
                 'endpoint' => $config['endpoint'],
                 'default_code' => $config['default_code'],
+                'codes' => $this->warehouseStockService->getWarehouseCodes(),
                 'timeout' => $config['timeout'],
                 'connect_timeout' => $config['connect_timeout'],
             ],

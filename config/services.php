@@ -53,6 +53,7 @@ return [
         'password'        => env('WAREHOUSE_STOCK_PASSWORD'),
         'endpoint'        => env('WAREHOUSE_STOCK_ENDPOINT', '/API/order/GetWHStock'),
         'default_code'    => env('WAREHOUSE_STOCK_DEFAULT_CODE', 'FGW1'),
+        'codes'           => env('WAREHOUSE_STOCK_CODES', 'FGW1,AHL01'),
         'driver'          => env('WAREHOUSE_STOCK_DRIVER', 'stream'),
         'curl_path'       => env('WAREHOUSE_STOCK_CURL_PATH', 'curl'),
         'timeout'         => (int) env('WAREHOUSE_STOCK_TIMEOUT', 30),

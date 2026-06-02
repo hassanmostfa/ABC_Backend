@@ -235,6 +235,12 @@ class OrderResource extends JsonResource
             $creatorData['phone'] = $creator->phone ?? null;
         }
 
+        if ($this->created_by_type === Admin::class) {
+            $creatorData['admin_id'] = $creator->admin_id ?? null;
+            $creatorData['employee_code'] = $creator->employee_code ?? null;
+            $creatorData['phone'] = $creator->phone ?? null;
+        }
+
         return $creatorData;
     }
 

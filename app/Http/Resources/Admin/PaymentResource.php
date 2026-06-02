@@ -89,6 +89,7 @@ class PaymentResource extends JsonResource
         }
 
         if ($this->creator_type === Admin::class) {
+            $creatorData['admin_id'] = $creator->admin_id ?? null;
             $creatorData['employee_code'] = $creator->employee_code ?? null;
             $creatorData['phone'] = $creator->phone ?? null;
         }

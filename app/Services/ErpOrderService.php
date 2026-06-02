@@ -13,6 +13,8 @@ class ErpOrderService
 {
     public const DEFAULT_EMPLOYEE_CODE = '200992';
 
+    private const ERP_PRICE_DECIMALS = 3;
+
     private string $baseUrl;
     private string $username;
     private string $password;
@@ -68,7 +70,7 @@ class ErpOrderService
             'createdBy',
         ]);
 
-        $payload  = $this->buildPayload($order);
+        $payload  = $this->normalizeOrderPayloadPrices($this->buildPayload($order));
         $endpoint = $this->buildEndpoint('/API/Order/SendOrder');
 
         return $this->request($endpoint, [
@@ -92,6 +94,7 @@ class ErpOrderService
     public function sendRawOrder(array $payload): array
     {
         $endpoint = $this->buildEndpoint('/API/Order/SendOrder');
+        $payload = $this->normalizeOrderPayloadPrices($payload);
 
         return $this->request($endpoint, [
             'method' => 'POST',
@@ -349,7 +352,7 @@ class ErpOrderService
             'OrderNumber'   => $order->order_number,
             'OrderDate'     => $orderDate,
             'DeliveryDate'  => $deliveryDate,
-            'DeliveryValue' => round($deliveryFee, 3),
+            'DeliveryValue' => $this->formatErpPrice($deliveryFee),
             'CustomerCode'  => $this->resolveCustomerCode($order),
             'EmployeeCode'  => $this->resolveEmployeeCode($order),
             'LPO'           => $this->resolveLpo($order),
@@ -534,19 +537,56 @@ class ErpOrderService
             $quantity = (int) $item->quantity;
             $netLineTotal = max(0, (float) $item->total_price - (float) $item->discount);
             $unitPriceAfterDiscount = $quantity > 0
-                ? round($netLineTotal / $quantity, 3)
-                : round((float) $item->unit_price, 3);
+                ? $netLineTotal / $quantity
+                : (float) $item->unit_price;
 
             return [
                 'itemCode'       => $itemCode,
                 'uom'            => $uom,
-                'price'          => $unitPriceAfterDiscount,
+                'price'          => $this->formatErpPrice($unitPriceAfterDiscount),
                 'quantity'       => $quantity,
                 'isFOC'          => false,
-                'discountAmount' => 0.0,
-                'taxAmount'      => round((float) $item->tax, 3),
+                'discountAmount' => $this->formatErpPrice(0),
+                'taxAmount'      => $this->formatErpPrice((float) $item->tax),
             ];
         })->values()->toArray();
+    }
+
+    /**
+     * Round monetary values to 3 decimal places (KWD fils) for ERP payloads.
+     */
+    private function formatErpPrice(float|int|string|null $value): float
+    {
+        return round((float) $value, self::ERP_PRICE_DECIMALS);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function normalizeOrderPayloadPrices(array $payload): array
+    {
+        if (array_key_exists('DeliveryValue', $payload)) {
+            $payload['DeliveryValue'] = $this->formatErpPrice($payload['DeliveryValue']);
+        }
+
+        if (!isset($payload['allItems']) || !is_array($payload['allItems'])) {
+            return $payload;
+        }
+
+        foreach ($payload['allItems'] as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            foreach (['price', 'discountAmount', 'taxAmount'] as $field) {
+                if (array_key_exists($field, $item)) {
+                    $payload['allItems'][$index][$field] = $this->formatErpPrice($item[$field]);
+                }
+            }
+        }
+
+        return $payload;
     }
 
     /**

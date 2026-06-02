@@ -25,23 +25,34 @@ class SyncWarehouseStockCommand extends Command
             return self::SUCCESS;
         }
 
-        $warehouseCode = $this->option('wh_code')
-            ?: config('services.warehouse_stock.default_code', 'FGW1');
+        $singleWarehouseCode = $this->option('wh_code');
+        $warehouseCodes = $singleWarehouseCode
+            ? [(string) $singleWarehouseCode]
+            : $warehouseStockService->getWarehouseCodes();
 
         $this->line('');
         $this->info("[*] Warehouse Stock Sync Started");
-        $this->line("[>] Warehouse Code: {$warehouseCode}");
+        $this->line("[>] Warehouse Codes: " . implode(', ', $warehouseCodes));
         $this->line("[~] Fetching stock data from API...");
 
-        $result = $warehouseStockService->getStock($warehouseCode);
+        $result = count($warehouseCodes) === 1
+            ? $warehouseStockService->getStock($warehouseCodes[0])
+            : $warehouseStockService->getAggregatedStock($warehouseCodes);
 
         if (!$result['success']) {
             $this->error("[X] Failed to fetch warehouse stock: " . ($result['error'] ?? 'Unknown error'));
             Log::channel('erp')->error('Warehouse stock sync failed', [
-                'warehouse_code' => $warehouseCode,
+                'warehouse_codes' => $warehouseCodes,
+                'warehouse_errors' => $result['warehouse_errors'] ?? null,
                 'error' => $result['error'],
             ]);
             return self::FAILURE;
+        }
+
+        if (!empty($result['warehouse_errors'])) {
+            foreach ($result['warehouse_errors'] as $code => $error) {
+                $this->warn("[!] Warehouse {$code} failed: " . ($error ?? 'Unknown error'));
+            }
         }
 
         $this->info("[+] Stock data received successfully");
@@ -55,20 +66,7 @@ class SyncWarehouseStockCommand extends Command
 
         $this->line("[i] Raw stock entries: " . count($stockData));
 
-        $quantityByItemCode = [];
-        foreach ($stockData as $item) {
-            $itemCode = $item['itemCode'] ?? null;
-            $quantity = (int) ($item['quantity'] ?? 0);
-
-            if ($itemCode === null) {
-                continue;
-            }
-
-            if (!isset($quantityByItemCode[$itemCode])) {
-                $quantityByItemCode[$itemCode] = 0;
-            }
-            $quantityByItemCode[$itemCode] += $quantity;
-        }
+        $quantityByItemCode = $warehouseStockService->aggregateQuantitiesByItemCode($stockData);
 
         $this->line("[i] Unique SKUs aggregated: " . count($quantityByItemCode));
         $this->line("[~] Matching with product variants in database...");
@@ -110,7 +108,7 @@ class SyncWarehouseStockCommand extends Command
         $this->line('');
 
         Log::channel('erp')->info('Warehouse stock sync completed', [
-            'warehouse_code' => $warehouseCode,
+            'warehouse_codes' => $warehouseCodes,
             'total_stock_items' => count($stockData),
             'aggregated_skus' => count($quantityByItemCode),
             'variants_found' => $variants->count(),

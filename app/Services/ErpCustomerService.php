@@ -43,7 +43,7 @@ class ErpCustomerService
     /**
      * After a new customer is created: send to ERP. Logs on failure; does not throw.
      */
-    public function dispatchAfterCustomerCreated(Customer $customer, string $source): void
+    public function dispatchAfterCustomerCreated(Customer $customer, string $source, string|int $createdBy = 0): void
     {
         $customer->loadMissing([
             'addresses.country',
@@ -51,12 +51,13 @@ class ErpCustomerService
             'addresses.area',
         ]);
 
-        $result = $this->addNewCustomer($customer, $source);
+        $result = $this->addNewCustomer($customer, $source, $createdBy);
         if (!$result['success']) {
             Log::channel('erp')->warning('ERP AddNewCustomer failed after customer created', [
                 'customer_id' => $customer->id,
                 'phone'       => $customer->phone,
                 'source'      => $source,
+                'created_by'  => $createdBy,
                 'error'       => $result['error'],
                 'http_status' => $result['status'],
             ]);
@@ -66,9 +67,9 @@ class ErpCustomerService
     /**
      * @return array{success: bool, status: int|null, body: mixed, error: string|null}
      */
-    public function addNewCustomer(Customer $customer, string $source): array
+    public function addNewCustomer(Customer $customer, string $source, string|int $createdBy = 0): array
     {
-        $payload  = $this->buildPayload($customer, $source);
+        $payload  = $this->buildPayload($customer, $source, $createdBy);
         $endpoint = $this->buildEndpoint('/API/customer/AddNewCustomer');
 
         return $this->request($endpoint, [
@@ -79,6 +80,7 @@ class ErpCustomerService
                 'customer_id'   => $customer->id,
                 'customer_code' => $payload['CustomerCode'] ?? null,
                 'source'        => $source,
+                'created_by'    => $payload['CreatedBy'] ?? null,
                 'payload_bytes' => strlen((string) json_encode($payload)),
             ],
         ]);
@@ -87,7 +89,7 @@ class ErpCustomerService
     /**
      * @return array<string, mixed>
      */
-    private function buildPayload(Customer $customer, string $source): array
+    private function buildPayload(Customer $customer, string $source, string|int $createdBy = 0): array
     {
         $phoneWithoutCode = KuwaitPhone::withoutCountryCode($customer->phone);
         $email = trim((string) ($customer->email ?? ''));
@@ -97,6 +99,7 @@ class ErpCustomerService
             'CustomerCode' => $phoneWithoutCode,
             'email'        => $email !== '' ? $email : self::DEFAULT_EMAIL,
             'source'       => $source,
+            'CreatedBy'    => $this->resolveCreatedBy($source, $createdBy),
             'DOB'          => ($customer->created_at ?? now())->toDateString(),
             'AreaId'       => self::DEFAULT_AREA_ID,
             'postcode'     => '000000',
@@ -105,6 +108,17 @@ class ErpCustomerService
             'numbers'      => $this->buildNumbers($customer, $phoneWithoutCode),
             'addresses'    => $this->buildAddresses($customer),
         ];
+    }
+
+    private function resolveCreatedBy(string $source, string|int $createdBy): string|int
+    {
+        if ($source === self::SOURCE_CALS) {
+            $adminId = trim((string) $createdBy);
+
+            return $adminId !== '' ? $adminId : 0;
+        }
+
+        return 0;
     }
 
     /**

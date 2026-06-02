@@ -19,6 +19,7 @@ class AdminFactory extends Factory
     public function definition(): array
     {
         return [
+            'admin_id' => fake()->unique()->bothify('ADM-####'),
             'name' => fake()->name(),
             'employee_code' => fake()->unique()->bothify('EMP-####'),
             'email' => fake()->unique()->safeEmail(),

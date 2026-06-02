@@ -138,6 +138,8 @@ class AdminController extends Controller
             $searchTerm = $request->search;
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('name', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('admin_id', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('employee_code', 'LIKE', "%{$searchTerm}%")
                   ->orWhere('email', 'LIKE', "%{$searchTerm}%")
                   ->orWhere('phone', 'LIKE', "%{$searchTerm}%");
             });
@@ -179,6 +181,7 @@ class AdminController extends Controller
 
         try {
             $request->validate([
+                'admin_id' => 'required|string|max:50|unique:admins,admin_id',
                 'name' => 'required|string|max:255',
                 'employee_code' => 'required|string|max:50|unique:admins,employee_code',
                 'email' => 'required|email|unique:admins,email',
@@ -188,6 +191,7 @@ class AdminController extends Controller
             ]);
 
             $admin = Admin::create([
+                'admin_id' => $request->admin_id,
                 'name' => $request->name,
                 'employee_code' => $request->employee_code,
                 'email' => $request->email,
@@ -261,6 +265,7 @@ class AdminController extends Controller
         }
 
         $request->validate([
+            'admin_id' => ['required', 'string', 'max:50', Rule::unique('admins', 'admin_id')->ignore($admin->id)],
             'name' => 'required|string|max:255',
             'employee_code' => ['required', 'string', 'max:50', Rule::unique('admins', 'employee_code')->ignore($admin->id)],
             'email' => ['required', 'email', Rule::unique('admins')->ignore($admin->id)],
@@ -271,6 +276,7 @@ class AdminController extends Controller
         ]);
 
         $updateData = [
+            'admin_id' => $request->admin_id,
             'name' => $request->name,
             'employee_code' => $request->employee_code,
             'email' => $request->email,

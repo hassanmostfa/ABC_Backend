@@ -15,7 +15,8 @@ class DispatchErpCustomerJob
 
     public function __construct(
         public int $customerId,
-        public string $source
+        public string $source,
+        public string|int $createdBy = 0,
     ) {
     }
 
@@ -27,11 +28,12 @@ class DispatchErpCustomerJob
         }
 
         try {
-            $erpCustomerService->dispatchAfterCustomerCreated($customer, $this->source);
+            $erpCustomerService->dispatchAfterCustomerCreated($customer, $this->source, $this->createdBy);
         } catch (\Throwable $e) {
             Log::warning('DispatchErpCustomerJob failed', [
                 'customer_id' => $this->customerId,
                 'source'      => $this->source,
+                'created_by'  => $this->createdBy,
                 'message'     => $e->getMessage(),
             ]);
         }

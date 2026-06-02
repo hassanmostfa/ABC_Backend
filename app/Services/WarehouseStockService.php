@@ -54,6 +54,110 @@ class WarehouseStockService
     }
 
     /**
+     * @return list<string>
+     */
+    public function getWarehouseCodes(): array
+    {
+        $codes = config('services.warehouse_stock.codes', 'FGW1,AHL01');
+
+        if (is_string($codes)) {
+            $codes = explode(',', $codes);
+        }
+
+        if (!is_array($codes)) {
+            return ['FGW1'];
+        }
+
+        return array_values(array_filter(array_map(
+            static fn ($code) => trim((string) $code),
+            $codes
+        )));
+    }
+
+    /**
+     * Fetch stock from multiple warehouses and merge item rows (quantities summed per itemCode).
+     *
+     * @param  list<string>|null  $warehouseCodes
+     * @return array{success: bool, status: int|null, body: mixed, error: string|null, warehouse_codes?: list<string>, warehouse_errors?: array<string, string|null>}
+     */
+    public function getAggregatedStock(?array $warehouseCodes = null): array
+    {
+        $codes = $warehouseCodes ?? $this->getWarehouseCodes();
+
+        if ($codes === []) {
+            return [
+                'success' => false,
+                'status' => null,
+                'body' => null,
+                'error' => 'No warehouse codes configured.',
+            ];
+        }
+
+        $mergedData = [];
+        $warehouseErrors = [];
+
+        foreach ($codes as $code) {
+            $result = $this->getStock($code);
+
+            if (!$result['success']) {
+                $warehouseErrors[$code] = $result['error'];
+                continue;
+            }
+
+            $items = $result['body']['data'] ?? [];
+            if (is_array($items)) {
+                $mergedData = array_merge($mergedData, $items);
+            }
+        }
+
+        if ($mergedData === [] && $warehouseErrors !== []) {
+            return [
+                'success' => false,
+                'status' => null,
+                'body' => null,
+                'error' => 'Failed to fetch warehouse stock for: ' . implode(', ', array_keys($warehouseErrors)),
+                'warehouse_codes' => $codes,
+                'warehouse_errors' => $warehouseErrors,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'status' => 200,
+            'body' => ['data' => $mergedData],
+            'error' => null,
+            'warehouse_codes' => $codes,
+            'warehouse_errors' => $warehouseErrors !== [] ? $warehouseErrors : null,
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $stockData
+     * @return array<string, int>
+     */
+    public function aggregateQuantitiesByItemCode(array $stockData): array
+    {
+        $quantityByItemCode = [];
+
+        foreach ($stockData as $item) {
+            $itemCode = $item['itemCode'] ?? null;
+            $quantity = (int) ($item['quantity'] ?? 0);
+
+            if ($itemCode === null) {
+                continue;
+            }
+
+            if (!isset($quantityByItemCode[$itemCode])) {
+                $quantityByItemCode[$itemCode] = 0;
+            }
+
+            $quantityByItemCode[$itemCode] += $quantity;
+        }
+
+        return $quantityByItemCode;
+    }
+
+    /**
      * @param  array<string, scalar|array|null>  $query  Query string parameters
      * @param  array{log_context?: array}  $options
      * @return array{success: bool, status: int|null, body: mixed, error: string|null}
