@@ -15,7 +15,8 @@ class ErpCustomerService
     public const SOURCE_WEB = 'WEB';
     public const SOURCE_CALS = 'CALS';
 
-    private const DEFAULT_EMAIL = 'abdelhamid@abcjuice.com.kw';
+    /** Placeholder domain when customer has no email (local part is unique per phone/id). */
+    private const PLACEHOLDER_EMAIL_DOMAIN = 'customers.abcjuice.com.kw';
     private const DEFAULT_AREA_ID = 1;
     private const DEFAULT_COUNTRY_ID = 1;
     private const DEFAULT_ADDRESS = 'Kuwait';
@@ -93,12 +94,11 @@ class ErpCustomerService
     private function buildPayload(Customer $customer, string $source, string|int $createdBy = 0): array
     {
         $phoneWithoutCode = KuwaitPhone::withoutCountryCode($customer->phone);
-        $email = trim((string) ($customer->email ?? ''));
 
         return [
             'Name'         => (string) $customer->name,
             'CustomerCode' => $phoneWithoutCode,
-            'email'        => $email !== '' ? $email : self::DEFAULT_EMAIL,
+            'email'        => $this->resolveErpEmail($customer, $phoneWithoutCode),
             'source'       => $source,
             'CreatedBy'    => $this->resolveCreatedBy($source, $createdBy),
             'DOB'          => ($customer->created_at ?? now())->toDateString(),
@@ -109,6 +109,27 @@ class ErpCustomerService
             'numbers'      => $this->buildNumbers($customer, $phoneWithoutCode),
             'addresses'    => $this->buildAddresses($customer),
         ];
+    }
+
+    /**
+     * ERP requires a unique email. Use the customer's real email when set;
+     * otherwise generate a stable placeholder from phone (or customer id).
+     */
+    private function resolveErpEmail(Customer $customer, string $phoneWithoutCode): string
+    {
+        $email = trim((string) ($customer->email ?? '');
+
+        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $email;
+        }
+
+        $localPart = preg_replace('/\D+/', '', $phoneWithoutCode) ?? '';
+
+        if ($localPart === '') {
+            $localPart = 'c' . $customer->id;
+        }
+
+        return $localPart . '@' . self::PLACEHOLDER_EMAIL_DOMAIN;
     }
 
     private function resolveCreatedBy(string $source, string|int $createdBy): string|int

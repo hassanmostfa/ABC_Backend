@@ -80,7 +80,7 @@ class OrderCheckoutService
         $checkout->load(['customer']);
 
         if ($source === 'call_center' && $paymentLink) {
-            SendPaymentLinkSmsJob::dispatch($checkout->id)->afterResponse();
+            SendPaymentLinkSmsJob::dispatch(checkoutId: $checkout->id)->afterResponse();
         }
 
         return [
@@ -146,7 +146,7 @@ class OrderCheckoutService
             }
 
             if ($checkout->source === 'call_center' && $paymentLink) {
-                SendPaymentLinkSmsJob::dispatch($checkout->id)->afterResponse();
+                SendPaymentLinkSmsJob::dispatch(checkoutId: $checkout->id)->afterResponse();
             }
 
             return [

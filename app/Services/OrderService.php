@@ -16,6 +16,7 @@ use App\Services\OttuPaymentProcessor;
 use App\Services\OttuService;
 use App\Jobs\DispatchErpOrderJob;
 use App\Jobs\SendOrderCreatedNotificationsJob;
+use App\Jobs\SendPaymentLinkSmsJob;
 use App\Support\PaymentCreatorResolver;
 
 class OrderService
@@ -764,6 +765,8 @@ class OrderService
                     $this->orderRepository->update($order->id, ['payment_gateway_src' => $paymentGatewaySrc]);
                 }
                 Log::info('Payment link regenerated for order ' . $order->id);
+                $this->dispatchPaymentLinkSmsForOrder($order->id);
+
                 return ['success' => true, 'message' => 'Payment link regenerated successfully.', 'payment_link' => $paymentLink];
             }
         } catch (\Exception $e) {
@@ -831,6 +834,8 @@ class OrderService
 
             DB::commit();
 
+            $this->dispatchPaymentLinkSmsForOrder($orderId);
+
             $fresh = $this->orderRepository->findById($orderId);
             if ($fresh) {
                 $fresh->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice.payments', 'customerAddress']);
@@ -850,6 +855,11 @@ class OrderService
             ]);
             return ['success' => false, 'message' => 'Failed to generate payment link: ' . $e->getMessage()];
         }
+    }
+
+    protected function dispatchPaymentLinkSmsForOrder(int $orderId): void
+    {
+        SendPaymentLinkSmsJob::dispatch(orderId: $orderId)->afterResponse();
     }
 
     /**
