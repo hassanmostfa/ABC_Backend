@@ -8,7 +8,9 @@ use App\Http\Requests\Mobile\VerifyOtpRequest;
 use App\Http\Requests\Mobile\ResendOtpRequest;
 use App\Http\Requests\Mobile\CompleteRegistrationRequest;
 use App\Http\Resources\Web\CustomerResource;
+use App\Jobs\DispatchErpCustomerJob;
 use App\Models\DeviceToken;
+use App\Services\ErpCustomerService;
 use App\Services\OtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -158,6 +160,8 @@ class AuthController extends BaseApiController
 
             // Load relationships
             $customer->load(['wallet', 'addresses']);
+
+            DispatchErpCustomerJob::dispatchAfterResponse($customer->id, ErpCustomerService::SOURCE_APP);
 
             return $this->successResponse(
                 new CustomerResource($customer),

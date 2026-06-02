@@ -7,7 +7,6 @@ use App\Models\Customer;
 use App\Models\DeviceToken;
 use App\Models\Setting;
 use App\Http\Resources\Mobile\CustomerResource;
-use App\Jobs\DispatchErpCustomerJob;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 
@@ -234,7 +233,6 @@ class OtpService
             ]);
             // Assign welcome coupon (valid for one month) for first registration
             app(\App\Services\CouponService::class)->createWelcomeCouponForCustomer($customer);
-            DispatchErpCustomerJob::dispatchAfterResponse($customer->id, ErpCustomerService::SOURCE_APP);
         }
 
         // Store device token if provided

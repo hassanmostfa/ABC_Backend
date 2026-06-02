@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Admin;
 use App\Models\Order;
 use App\Models\Setting;
+use App\Support\KuwaitPhone;
 use GuzzleHttp\TransferStats;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -590,12 +591,18 @@ class ErpOrderService
     }
 
     /**
-     * Resolve the ERP customer code from settings based on the order's payment method.
-     *
-     * Setting keys: cash_customer_code, wallet_customer_code, knet_customer_code, credit_card_customer_code
+     * ERP CustomerCode: customer phone without country code (same as AddNewCustomer).
+     * Falls back to payment-method settings when the order has no customer phone.
      */
     private function resolveCustomerCode(Order $order): string
     {
+        $order->loadMissing('customer');
+        $customerCode = KuwaitPhone::withoutCountryCode($order->customer?->phone);
+
+        if ($customerCode !== '') {
+            return $customerCode;
+        }
+
         $method = $order->payment_method;
         $src    = $order->payment_gateway_src ?? '';
 
@@ -606,7 +613,6 @@ class ErpOrderService
         } elseif ($method === 'wallet') {
             $settingKey = 'wallet_customer_code';
         } else {
-            // cash or any unrecognised method
             $settingKey = 'cash_customer_code';
         }
 

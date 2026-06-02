@@ -18,6 +18,7 @@ class ErpCustomerService
     private const DEFAULT_EMAIL = 'abdelhamid@abcjuice.com.kw';
     private const DEFAULT_AREA_ID = 1;
     private const DEFAULT_COUNTRY_ID = 1;
+    private const DEFAULT_ADDRESS = 'Kuwait';
 
     private string $baseUrl;
     private string $username;
@@ -162,21 +163,33 @@ class ErpCustomerService
     private function buildAddresses(Customer $customer): array
     {
         if ($customer->addresses->isEmpty()) {
-            return [[
-                'address'    => '',
-                'is_Default' => true,
-            ]];
+            return [$this->defaultErpAddressEntry()];
         }
 
-        return $customer->addresses
+        $addresses = $customer->addresses
             ->values()
             ->map(function (CustomerAddress $address, int $index) {
+                $formatted = $this->formatAddress($address);
+
                 return [
-                    'address'    => $this->formatAddress($address),
+                    'address'    => $formatted !== '' ? $formatted : self::DEFAULT_ADDRESS,
                     'is_Default' => $index === 0,
                 ];
             })
             ->all();
+
+        return $addresses !== [] ? $addresses : [$this->defaultErpAddressEntry()];
+    }
+
+    /**
+     * @return array{address: string, is_Default: bool}
+     */
+    private function defaultErpAddressEntry(): array
+    {
+        return [
+            'address'    => self::DEFAULT_ADDRESS,
+            'is_Default' => true,
+        ];
     }
 
     private function formatAddress(CustomerAddress $address): string
