@@ -627,15 +627,17 @@ class ErpOrderService
             $itemCode = $item->variant?->sku ?? '';
             $uom = $item->variant?->short_item ?? '';
             $quantity = (int) $item->quantity;
-            $netLineTotal = max(0, (float) $item->total_price - (float) $item->discount);
+            $netLineTotal = $this->formatErpPrice(
+                max(0, (float) $item->total_price - (float) $item->discount)
+            );
             $unitPriceAfterDiscount = $quantity > 0
-                ? $netLineTotal / $quantity
-                : (float) $item->unit_price;
+                ? $this->formatErpPrice($netLineTotal / $quantity)
+                : $this->formatErpPrice((float) $item->unit_price);
 
             return [
                 'itemCode'       => $itemCode,
                 'uom'            => $uom,
-                'price'          => $this->formatErpPrice($unitPriceAfterDiscount),
+                'price'          => $unitPriceAfterDiscount,
                 'quantity'       => $quantity,
                 'isFOC'          => false,
                 'discountAmount' => $this->formatErpPrice(0),
