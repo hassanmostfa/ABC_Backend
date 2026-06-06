@@ -16,6 +16,9 @@ class ErpOrderService
 
     private const ERP_PRICE_DECIMALS = 4;
 
+    /** @var list<string> */
+    private const ERP_PRICE_FIELDS = ['DeliveryValue', 'price', 'discountAmount', 'taxAmount'];
+
     private string $baseUrl;
     private string $username;
     private string $password;
@@ -74,16 +77,11 @@ class ErpOrderService
         $payload  = $this->normalizeOrderPayloadPrices($this->buildPayload($order));
         $endpoint = $this->buildEndpoint('/API/Order/SendOrder');
 
-        return $this->request($endpoint, [
-            'method' => 'POST',
-            'json'   => $payload,
-            'log_context' => [
-                'action'       => 'SendOrder',
-                'order_number' => $order->order_number,
-                'items_count'  => is_array($payload['allItems'] ?? null) ? count($payload['allItems']) : 0,
-                'payload_bytes' => strlen((string) json_encode($payload)),
-            ],
-        ]);
+        return $this->request($endpoint, $this->buildSendOrderRequestOptions($payload, [
+            'action'       => 'SendOrder',
+            'order_number' => $order->order_number,
+            'items_count'  => is_array($payload['allItems'] ?? null) ? count($payload['allItems']) : 0,
+        ]));
     }
 
     /**
@@ -97,16 +95,11 @@ class ErpOrderService
         $endpoint = $this->buildEndpoint('/API/Order/SendOrder');
         $payload = $this->normalizeOrderPayloadPrices($payload);
 
-        return $this->request($endpoint, [
-            'method' => 'POST',
-            'json'   => $payload,
-            'log_context' => [
-                'action'        => 'SendOrderRaw',
-                'order_number'  => $payload['OrderNumber'] ?? null,
-                'items_count'   => is_array($payload['allItems'] ?? null) ? count($payload['allItems']) : 0,
-                'payload_bytes' => strlen((string) json_encode($payload)),
-            ],
-        ]);
+        return $this->request($endpoint, $this->buildSendOrderRequestOptions($payload, [
+            'action'       => 'SendOrderRaw',
+            'order_number' => $payload['OrderNumber'] ?? null,
+            'items_count'  => is_array($payload['allItems'] ?? null) ? count($payload['allItems']) : 0,
+        ]));
     }
 
     /**
@@ -195,9 +188,11 @@ class ErpOrderService
         $logContext = array_merge(['method' => $method, 'url' => $url], $options['log_context'] ?? []);
         unset($options['log_context']);
 
-        $query = $options['query'] ?? [];
-        $json  = $options['json'] ?? null;
-        unset($options['method'], $options['query'], $options['json']);
+        $query       = $options['query'] ?? [];
+        $json        = $options['json'] ?? null;
+        $body        = $options['body'] ?? null;
+        $logPayload  = $options['log_payload'] ?? $json;
+        unset($options['method'], $options['query'], $options['json'], $options['body'], $options['log_payload']);
 
         $maxAttempts = max(1, $this->retries + 1);
 
@@ -205,11 +200,12 @@ class ErpOrderService
             $requestStats = [];
 
             try {
-                if ($this->shouldLogFailedPayload($method, $json)) {
+                if ($this->shouldLogFailedPayload($method, $logPayload, $body)) {
                     Log::channel('erp')->info('ERP outbound payload', array_merge($logContext, [
                         'attempt'      => $attempt,
                         'max_attempts' => $maxAttempts,
-                        'payload'      => $json,
+                        'payload'      => $logPayload,
+                        'payload_wire' => is_string($body) ? $body : null,
                     ]));
                 }
 
@@ -246,7 +242,9 @@ class ErpOrderService
                     ])
                     ->acceptJson();
 
-                if ($method === 'POST' && is_array($json)) {
+                if ($method === 'POST' && is_string($body)) {
+                    $response = $pending->withBody($body, 'application/json')->post($url);
+                } elseif ($method === 'POST' && is_array($json)) {
                     $response = $pending->asJson()->post($url, $json);
                 } else {
                     $response = $pending->get($url, $query);
@@ -283,11 +281,12 @@ class ErpOrderService
                 );
 
                 if ($isLastAttempt) {
-                    if ($this->shouldLogFailedPayload($method, $json)) {
+                    if ($this->shouldLogFailedPayload($method, $logPayload, $body)) {
                         Log::channel('erp')->warning('ERP final failed payload', array_merge($logContext, [
                             'attempt'      => $attempt,
                             'max_attempts' => $maxAttempts,
-                            'payload'      => $json,
+                            'payload'      => $logPayload,
+                            'payload_wire' => is_string($body) ? $body : null,
                         ]));
                     }
 
@@ -327,9 +326,77 @@ class ErpOrderService
         ];
     }
 
-    private function shouldLogFailedPayload(string $method, mixed $json): bool
+    private function shouldLogFailedPayload(string $method, mixed $payload, ?string $body = null): bool
     {
-        return $this->logFailedPayload && $method === 'POST' && is_array($json);
+        return $this->logFailedPayload && $method === 'POST' && (is_array($payload) || is_string($body));
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $logContext
+     * @return array{method: string, body: string, log_payload: array<string, mixed>, log_context: array<string, mixed>}
+     */
+    private function buildSendOrderRequestOptions(array $payload, array $logContext): array
+    {
+        $body = $this->encodeOrderPayloadJson($payload);
+
+        return [
+            'method'      => 'POST',
+            'body'        => $body,
+            'log_payload' => $payload,
+            'log_context' => array_merge($logContext, [
+                'payload_bytes' => strlen($body),
+            ]),
+        ];
+    }
+
+    /**
+     * Encode order payload so price fields appear as JSON numbers with 4 decimals (e.g. 0.7500).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function encodeOrderPayloadJson(array $payload): string
+    {
+        return $this->encodeJsonValue($payload);
+    }
+
+    private function encodeJsonValue(mixed $value, ?string $key = null): string
+    {
+        if (is_array($value)) {
+            if ($value === []) {
+                return '[]';
+            }
+
+            if (array_is_list($value)) {
+                return '[' . implode(',', array_map(fn ($item) => $this->encodeJsonValue($item), $value)) . ']';
+            }
+
+            $pairs = [];
+            foreach ($value as $entryKey => $entryValue) {
+                $pairs[] = json_encode((string) $entryKey, JSON_UNESCAPED_UNICODE)
+                    . ':' . $this->encodeJsonValue($entryValue, (string) $entryKey);
+            }
+
+            return '{' . implode(',', $pairs) . '}';
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if ($value === null) {
+            return 'null';
+        }
+
+        if ($key !== null && in_array($key, self::ERP_PRICE_FIELDS, true) && is_numeric($value)) {
+            return number_format(round((float) $value, self::ERP_PRICE_DECIMALS), self::ERP_PRICE_DECIMALS, '.', '');
+        }
+
+        if (is_int($value)) {
+            return (string) $value;
+        }
+
+        return json_encode($value, JSON_UNESCAPED_UNICODE) ?: 'null';
     }
 
     private function buildEndpoint(string $path): string
@@ -578,17 +645,12 @@ class ErpOrderService
     }
 
     /**
-     * Format monetary values with exactly 4 decimal places for ERP payloads.
-     * Returned as string so JSON keeps trailing zeros (e.g. "0.9000" not 0.9).
+     * Round monetary values to 4 decimal places for ERP payloads.
+     * Must be a JSON number (not string) — ERP deserializes to System.Decimal.
      */
-    private function formatErpPrice(float|int|string|null $value): string
+    private function formatErpPrice(float|int|string|null $value): float
     {
-        return number_format(
-            round((float) $value, self::ERP_PRICE_DECIMALS),
-            self::ERP_PRICE_DECIMALS,
-            '.',
-            ''
-        );
+        return round((float) $value, self::ERP_PRICE_DECIMALS);
     }
 
     /**
