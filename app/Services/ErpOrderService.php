@@ -578,11 +578,17 @@ class ErpOrderService
     }
 
     /**
-     * Round monetary values to 4 decimal places (KWD fils) for ERP payloads.
+     * Format monetary values with exactly 4 decimal places for ERP payloads.
+     * Returned as string so JSON keeps trailing zeros (e.g. "0.9000" not 0.9).
      */
-    private function formatErpPrice(float|int|string|null $value): float
+    private function formatErpPrice(float|int|string|null $value): string
     {
-        return round((float) $value, self::ERP_PRICE_DECIMALS);
+        return number_format(
+            round((float) $value, self::ERP_PRICE_DECIMALS),
+            self::ERP_PRICE_DECIMALS,
+            '.',
+            ''
+        );
     }
 
     /**
