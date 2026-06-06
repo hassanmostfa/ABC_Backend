@@ -14,6 +14,12 @@ class Payment extends Model
     const TYPE_WALLET_CHARGE = 'wallet_charge';
     const TYPE_ORDER_CHECKOUT = 'order_checkout';
 
+    const STATUS_PENDING = 'pending';
+    const STATUS_COMPLETED = 'completed';
+    const STATUS_FAILED = 'failed';
+    const STATUS_REFUNDED = 'refunded';
+    const STATUS_CANCELLED = 'cancelled';
+
     protected $fillable = [
         'invoice_id',
         'customer_id',

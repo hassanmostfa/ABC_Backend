@@ -45,6 +45,8 @@ class PaymentResource extends JsonResource
             'status' => $this->status,
             'paid_at' => \format_datetime_app_tz($this->paid_at),
             'receipt_id' => $this->receipt_id,
+            'track_id' => $this->track_id,
+            'payment_link' => $this->payment_link,
             'customer' => $this->whenLoaded('customer', fn () => $this->customer ? [
                 'id' => $this->customer->id,
                 'name' => $this->customer->name,

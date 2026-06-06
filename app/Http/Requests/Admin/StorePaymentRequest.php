@@ -25,7 +25,7 @@ class StorePaymentRequest extends FormRequest
             'invoice_id' => 'required|integer|exists:invoices,id',
             'amount' => 'nullable|numeric|min:0.01',
             'method' => 'required|in:cash,card,online,bank_transfer,wallet',
-            'status' => 'nullable|in:pending,completed,failed,refunded',
+            'status' => 'nullable|in:pending,completed,failed,refunded,cancelled',
             'paid_at' => 'nullable|date',
         ];
     }
@@ -45,7 +45,7 @@ class StorePaymentRequest extends FormRequest
             'amount.min' => 'The amount must be at least 0.01.',
             'method.required' => 'The payment method is required.',
             'method.in' => 'The payment method must be one of: cash, card, online, bank_transfer, wallet.',
-            'status.in' => 'The status must be one of: pending, completed, failed, refunded.',
+            'status.in' => 'The status must be one of: pending, completed, failed, refunded, cancelled.',
             'paid_at.date' => 'The paid at must be a valid date.',
         ];
     }

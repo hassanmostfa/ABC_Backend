@@ -62,7 +62,7 @@ class PaymentController extends BaseApiController
         // Validate filter parameters
         $request->validate([
             'search' => 'nullable|string|max:1000',
-            'status' => 'nullable|in:pending,completed,failed,refunded',
+            'status' => 'nullable|in:pending,completed,failed,refunded,cancelled',
             'method' => 'nullable|in:cash,card,online,bank_transfer,wallet',
             'invoice_id' => 'nullable|integer|exists:invoices,id',
             'date_from' => 'nullable|date',
@@ -419,6 +419,59 @@ class PaymentController extends BaseApiController
         logAdminActivity('deleted', 'Payment', $id);
 
         return $this->deletedResponse('Payment deleted successfully');
+    }
+
+    /**
+     * Cancel a pending payment.
+     * Only payments with 'pending' status can be cancelled.
+     */
+    public function cancelPayment(int $id): JsonResponse
+    {
+        $payment = $this->paymentRepository->findById($id);
+
+        if (!$payment) {
+            return $this->notFoundResponse('Payment not found');
+        }
+
+        if ($payment->status !== Payment::STATUS_PENDING) {
+            return $this->errorResponse(
+                'Only pending payments can be cancelled. Current status: ' . $payment->status,
+                400
+            );
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $payment = $this->paymentRepository->update($id, [
+                'status' => Payment::STATUS_CANCELLED,
+            ]);
+
+            if (!$payment) {
+                DB::rollBack();
+                return $this->errorResponse('Failed to cancel payment', 500);
+            }
+
+            DB::commit();
+
+            // Reload with relationships
+            $payment = $this->paymentRepository->findById($id);
+            $payment->load([
+                'invoice.order.customer',
+                'invoice.order.charity',
+                'invoice.order.items.product',
+                'invoice.order.items.variant',
+                'creator',
+            ]);
+
+            // Log activity
+            logAdminActivity('cancelled', 'Payment', $id);
+
+            return $this->updatedResponse(new PaymentResource($payment), 'Payment cancelled successfully');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->errorResponse('Failed to cancel payment: ' . $e->getMessage(), 500);
+        }
     }
 
     /**

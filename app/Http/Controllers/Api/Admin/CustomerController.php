@@ -129,12 +129,12 @@ class CustomerController extends BaseApiController
         logAdminActivity('created', 'Customer', $customer->id);
 
         $admin = $request->user();
-        $createdBy = trim((string) ($admin?->admin_id ?? ''));
+        $createdBy = (int) ($admin?->admin_id ?? 0);
 
         DispatchErpCustomerJob::dispatchAfterResponse(
             $customer->id,
             ErpCustomerService::SOURCE_CALS,
-            $createdBy !== '' ? $createdBy : 0,
+            $createdBy,
         );
 
         return $this->createdResponse(new CustomerResource($customer), 'Customer created successfully');

@@ -14,7 +14,7 @@ class ErpOrderService
 {
     public const DEFAULT_EMPLOYEE_CODE = '200992';
 
-    private const ERP_PRICE_DECIMALS = 3;
+    private const ERP_PRICE_DECIMALS = 4;
 
     private string $baseUrl;
     private string $username;
@@ -363,7 +363,7 @@ class ErpOrderService
     }
 
     /**
-     * ERP LPO: payment receipt_id when the invoice is paid (e.g. gateway receipt).
+     * ERP LPO: payment track_id when the invoice is paid (e.g. gateway track ID).
      */
     private function resolveLpo(Order $order): string
     {
@@ -377,20 +377,20 @@ class ErpOrderService
             : $invoice->payments()->get();
 
         $completed = $payments->where('status', 'completed')->sortByDesc('id');
-        $withReceipt = $completed->first(function ($p) {
-            $r = $p->receipt_id ?? null;
+        $withTrackId = $completed->first(function ($p) {
+            $t = $p->track_id ?? null;
 
-            return $r !== null && $r !== '';
+            return $t !== null && $t !== '';
         });
 
-        if ($withReceipt) {
-            return (string) $withReceipt->receipt_id;
+        if ($withTrackId) {
+            return (string) $withTrackId->track_id;
         }
 
         $latest = $completed->first();
 
-        return $latest && $latest->receipt_id !== null && $latest->receipt_id !== ''
-            ? (string) $latest->receipt_id
+        return $latest && $latest->track_id !== null && $latest->track_id !== ''
+            ? (string) $latest->track_id
             : '';
     }
 
@@ -454,7 +454,8 @@ class ErpOrderService
     }
 
     /**
-     * ERP Notes: customer name plus address text (order.address or customer-address detail).
+     * ERP Notes: customer name plus address text (order.address or customer-address detail),
+     * with payment type (Cash or Online) appended.
      */
     private function resolveNotes(Order $order): string
     {
@@ -463,13 +464,13 @@ class ErpOrderService
 
         $direct = trim((string) ($order->address ?? ''));
         if ($direct !== '') {
-            return $this->formatNotes($customerName, $direct);
+            return $this->formatNotes($customerName, $direct, $order);
         }
 
         $order->loadMissing('customerAddress.country', 'customerAddress.governorate', 'customerAddress.area');
         $addr = $order->customerAddress;
         if (!$addr) {
-            return $customerName;
+            return $this->formatNotes($customerName, '', $order);
         }
 
         $parts = [];
@@ -511,20 +512,43 @@ class ErpOrderService
                 : 'Phone: ' . $customerPhone;
         }
 
-        return $this->formatNotes($customerName, $addressText);
+        return $this->formatNotes($customerName, $addressText, $order);
     }
 
-    private function formatNotes(string $customerName, string $addressText): string
+    private function formatNotes(string $customerName, string $addressText, Order $order): string
     {
-        if ($customerName === '') {
-            return $addressText;
+        $paymentType = $this->resolvePaymentType($order);
+
+        $baseParts = [];
+        if ($customerName !== '') {
+            $baseParts[] = $customerName;
+        }
+        if ($addressText !== '') {
+            $baseParts[] = $addressText;
         }
 
-        if ($addressText === '') {
-            return $customerName;
+        $baseNotes = implode(' | ', $baseParts);
+
+        if ($paymentType !== '') {
+            return $baseNotes !== '' ? $baseNotes . ' | Payment: ' . $paymentType : 'Payment: ' . $paymentType;
         }
 
-        return $customerName . ' | ' . $addressText;
+        return $baseNotes;
+    }
+
+    private function resolvePaymentType(Order $order): string
+    {
+        $method = strtolower(trim((string) ($order->payment_method ?? '')));
+
+        if (in_array($method, ['cash', 'wallet'], true)) {
+            return 'Cash';
+        }
+
+        if ($method === 'online_link') {
+            return 'Online';
+        }
+
+        return '';
     }
 
     /**
@@ -554,7 +578,7 @@ class ErpOrderService
     }
 
     /**
-     * Round monetary values to 3 decimal places (KWD fils) for ERP payloads.
+     * Round monetary values to 4 decimal places (KWD fils) for ERP payloads.
      */
     private function formatErpPrice(float|int|string|null $value): float
     {

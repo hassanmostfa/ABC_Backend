@@ -309,6 +309,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
       // Payments Management
       Route::controller(PaymentController::class)->prefix('payments')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:transactions,view');
+         Route::patch('/{id}/cancel', 'cancelPayment')->middleware('admin.permission:transactions,edit');
       });
 
       // Points Transactions Management

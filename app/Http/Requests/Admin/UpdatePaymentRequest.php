@@ -25,7 +25,7 @@ class UpdatePaymentRequest extends FormRequest
             'invoice_id' => 'sometimes|integer|exists:invoices,id',
             'amount' => 'sometimes|numeric|min:0.01',
             'method' => 'sometimes|in:cash,card,online,bank_transfer,wallet',
-            'status' => 'sometimes|in:pending,completed,failed,refunded',
+            'status' => 'sometimes|in:pending,completed,failed,refunded,cancelled',
             'paid_at' => 'nullable|date',
         ];
     }
@@ -43,7 +43,7 @@ class UpdatePaymentRequest extends FormRequest
             'amount.numeric' => 'The amount must be a valid number.',
             'amount.min' => 'The amount must be at least 0.01.',
             'method.in' => 'The payment method must be one of: cash, card, online, bank_transfer, wallet.',
-            'status.in' => 'The status must be one of: pending, completed, failed, refunded.',
+            'status.in' => 'The status must be one of: pending, completed, failed, refunded, cancelled.',
             'paid_at.date' => 'The paid at must be a valid date.',
         ];
     }

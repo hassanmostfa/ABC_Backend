@@ -45,7 +45,7 @@ class ErpCustomerService
     /**
      * After a new customer is created: send to ERP. Logs on failure; does not throw.
      */
-    public function dispatchAfterCustomerCreated(Customer $customer, string $source, string|int $createdBy = 0): void
+    public function dispatchAfterCustomerCreated(Customer $customer, string $source, int $createdBy = 0): void
     {
         $customer->loadMissing([
             'addresses.country',
@@ -69,7 +69,7 @@ class ErpCustomerService
     /**
      * @return array{success: bool, status: int|null, body: mixed, error: string|null}
      */
-    public function addNewCustomer(Customer $customer, string $source, string|int $createdBy = 0): array
+    public function addNewCustomer(Customer $customer, string $source, int $createdBy = 0): array
     {
         $payload  = $this->buildPayload($customer, $source, $createdBy);
         $endpoint = $this->buildEndpoint('/API/customer/AddNewCustomer');
@@ -91,7 +91,7 @@ class ErpCustomerService
     /**
      * @return array<string, mixed>
      */
-    private function buildPayload(Customer $customer, string $source, string|int $createdBy = 0): array
+    private function buildPayload(Customer $customer, string $source, int $createdBy = 0): array
     {
         $phoneWithoutCode = KuwaitPhone::withoutCountryCode($customer->phone);
 
@@ -132,12 +132,10 @@ class ErpCustomerService
         return $localPart . '@' . self::PLACEHOLDER_EMAIL_DOMAIN;
     }
 
-    private function resolveCreatedBy(string $source, string|int $createdBy): string|int
+    private function resolveCreatedBy(string $source, int $createdBy): int
     {
         if ($source === self::SOURCE_CALS) {
-            $adminId = trim((string) $createdBy);
-
-            return $adminId !== '' ? $adminId : 0;
+            return $createdBy > 0 ? $createdBy : 0;
         }
 
         return 0;

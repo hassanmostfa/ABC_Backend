@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Resources\Admin\PaymentResource;
 use App\Repositories\PaymentRepositoryInterface;
 use App\Models\Payment;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -26,7 +27,7 @@ class PaymentController extends BaseApiController
     {
         // Validate filter parameters
         $request->validate([
-            'status' => 'nullable|in:pending,completed,failed,refunded',
+            'status' => 'nullable|in:pending,completed,failed,refunded,cancelled',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
@@ -38,11 +39,17 @@ class PaymentController extends BaseApiController
         }
 
         // Get all payments: order payments (via invoice) + wallet charge payments (direct customer_id)
-        $payments = Payment::where(function ($query) use ($customer) {
-            $query->whereHas('invoice.order', fn ($q) => $q->where('customer_id', $customer->id))
-                ->orWhere(function ($q) use ($customer) {
-                    $q->where('customer_id', $customer->id)->where('type', 'wallet_charge');
+        $payments = Payment::query()
+        ->where(function (Builder $query) use ($customer): void {
+            $query->whereHas('invoice', function (Builder $invoiceQuery) use ($customer): void {
+                $invoiceQuery->whereHas('order', function (Builder $orderQuery) use ($customer): void {
+                    $orderQuery->where('customer_id', $customer->id);
                 });
+            })
+            ->orWhere(function (Builder $walletQuery) use ($customer): void {
+                $walletQuery->where('customer_id', $customer->id)
+                    ->where('type', Payment::TYPE_WALLET_CHARGE);
+            });
         })
         ->with([
             'invoice',

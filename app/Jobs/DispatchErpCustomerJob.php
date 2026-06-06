@@ -16,7 +16,7 @@ class DispatchErpCustomerJob
     public function __construct(
         public int $customerId,
         public string $source,
-        public string|int $createdBy = 0,
+        public int $createdBy = 0,
     ) {
     }
 
