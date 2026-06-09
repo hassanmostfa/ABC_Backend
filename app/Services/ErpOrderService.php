@@ -418,7 +418,6 @@ class ErpOrderService
 
         $amountDue      = $invoice ? (float) $invoice->amount_due : 0.00;
         $taxAmount      = $invoice ? (float) $invoice->tax_amount : 0.00;
-        $totalDiscount  = $invoice ? (float) $invoice->total_discount : 0.00;
 
         return [
             'OrderNumber'   => $order->order_number,
@@ -432,7 +431,7 @@ class ErpOrderService
             'NetTotal'      => $this->formatErpPrice($amountDue - $taxAmount),
             'GrossTotal'    => $this->formatErpPrice($amountDue),
             'TotalTax'      => $this->formatErpPrice($taxAmount),
-            'TotalDiscount' => $this->formatErpPrice($totalDiscount),
+            'TotalDiscount' => $this->formatErpPrice(0),
             'allItems'      => $this->buildItems($order),
         ];
     }
