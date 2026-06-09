@@ -14,10 +14,10 @@ class ErpOrderService
 {
     public const DEFAULT_EMPLOYEE_CODE = '200992';
 
-    private const ERP_PRICE_DECIMALS = 4;
+    private const ERP_PRICE_DECIMALS = 6;
 
     /** @var list<string> */
-    private const ERP_PRICE_FIELDS = ['DeliveryValue', 'price', 'discountAmount', 'taxAmount'];
+    private const ERP_PRICE_FIELDS = ['DeliveryValue', 'NetTotal', 'GrossTotal', 'TotalTax', 'TotalDiscount', 'price', 'discountAmount', 'taxAmount'];
 
     private string $baseUrl;
     private string $username;
@@ -416,6 +416,10 @@ class ErpOrderService
         $orderDate    = $order->created_at ? $order->created_at->toDateString() : now()->toDateString();
         $deliveryDate = $order->delivery_date ? $order->delivery_date->toDateString() : $orderDate;
 
+        $amountDue      = $invoice ? (float) $invoice->amount_due : 0.00;
+        $taxAmount      = $invoice ? (float) $invoice->tax_amount : 0.00;
+        $totalDiscount  = $invoice ? (float) $invoice->total_discount : 0.00;
+
         return [
             'OrderNumber'   => $order->order_number,
             'OrderDate'     => $orderDate,
@@ -425,6 +429,10 @@ class ErpOrderService
             'EmployeeCode'  => $this->resolveEmployeeCode($order),
             'LPO'           => $this->resolveLpo($order),
             'Notes'         => $this->resolveNotes($order),
+            'NetTotal'      => $this->formatErpPrice($amountDue - $taxAmount),
+            'GrossTotal'    => $this->formatErpPrice($amountDue),
+            'TotalTax'      => $this->formatErpPrice($taxAmount),
+            'TotalDiscount' => $this->formatErpPrice($totalDiscount),
             'allItems'      => $this->buildItems($order),
         ];
     }
@@ -647,7 +655,7 @@ class ErpOrderService
     }
 
     /**
-     * Round monetary values to 4 decimal places for ERP payloads.
+     * Round monetary values to 6 decimal places for ERP payloads.
      * Must be a JSON number (not string) — ERP deserializes to System.Decimal.
      */
     private function formatErpPrice(float|int|string|null $value): float
@@ -661,8 +669,10 @@ class ErpOrderService
      */
     public function normalizeOrderPayloadPrices(array $payload): array
     {
-        if (array_key_exists('DeliveryValue', $payload)) {
-            $payload['DeliveryValue'] = $this->formatErpPrice($payload['DeliveryValue']);
+        foreach (['DeliveryValue', 'NetTotal', 'GrossTotal', 'TotalTax', 'TotalDiscount'] as $field) {
+            if (array_key_exists($field, $payload)) {
+                $payload[$field] = $this->formatErpPrice($payload[$field]);
+            }
         }
 
         if (!isset($payload['allItems']) || !is_array($payload['allItems'])) {
