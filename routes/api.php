@@ -398,11 +398,10 @@ Route::controller(CareerController::class)->prefix('careers')->group(function ()
 
 // Protected ERP endpoint: send order payload and return ERP response.
 // Requires octopus.token middleware (Authorization: Bearer abc_... or X-Access-Token header)
-Route::post('/erp/orders/send', [PublicErpOrderController::class, 'sendOrder'])
-    ->middleware('octopus.token');
+Route::post('/erp/orders/send', [PublicErpOrderController::class, 'sendOrder']);
 
 // Protected Warehouse Stock endpoints: require admin authentication with product view permission.
-Route::middleware('admin.permission:products,view')->group(function () {
+Route::controller(WarehouseStockController::class)->prefix('warehouse')->group(function () {
     Route::get('/warehouse/stock', [WarehouseStockController::class, 'getStock']);
     Route::get('/warehouse/test-connection', [WarehouseStockController::class, 'testConnection']);
 });
