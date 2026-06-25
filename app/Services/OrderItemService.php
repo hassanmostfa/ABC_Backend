@@ -25,6 +25,20 @@ class OrderItemService
      */
     public function processItems(array $items): array
     {
+        $mergedItems = [];
+        foreach ($items as $item) {
+            $variantId = (int) $item['variant_id'];
+            if (isset($mergedItems[$variantId])) {
+                $mergedItems[$variantId]['quantity'] += (int) $item['quantity'];
+            } else {
+                $mergedItems[$variantId] = [
+                    'variant_id' => $variantId,
+                    'quantity' => (int) $item['quantity'],
+                ];
+            }
+        }
+        $items = array_values($mergedItems);
+
         $variantIds = collect($items)->pluck('variant_id')->unique()->values()->all();
         $variants = ProductVariant::with('product')->whereIn('id', $variantIds)->get()->keyBy('id');
 
@@ -157,6 +171,79 @@ class OrderItemService
     }
 
     /**
+     * Merge duplicate order lines that share the same variant into one row.
+     *
+     * @param  array<int, array<string, mixed>>  $orderItemsData
+     * @return array<int, array<string, mixed>>
+     */
+    public function consolidateByVariant(array $orderItemsData): array
+    {
+        if (count($orderItemsData) <= 1) {
+            return $orderItemsData;
+        }
+
+        $byVariant = [];
+        $withoutVariant = [];
+
+        foreach ($orderItemsData as $item) {
+            $variantId = $item['variant_id'] ?? null;
+            if ($variantId === null) {
+                $withoutVariant[] = $item;
+                continue;
+            }
+            $byVariant[(int) $variantId][] = $item;
+        }
+
+        $merged = [];
+
+        foreach ($byVariant as $items) {
+            if (count($items) === 1) {
+                $merged[] = $items[0];
+                continue;
+            }
+
+            $base = $items[0];
+            $quantity = 0;
+            $totalPrice = 0.0;
+            $discount = 0.0;
+            $tax = 0.0;
+            $isOffer = false;
+            $offerLineKind = null;
+
+            foreach ($items as $item) {
+                $quantity += (int) $item['quantity'];
+                $totalPrice += (float) ($item['total_price'] ?? 0);
+                $discount += (float) ($item['discount'] ?? 0);
+                $tax += (float) ($item['tax'] ?? 0);
+                $isOffer = $isOffer || (bool) ($item['is_offer'] ?? false);
+
+                $kind = $item['offer_line_kind'] ?? null;
+                if ($kind === 'reward') {
+                    $offerLineKind = 'reward';
+                } elseif ($kind === 'condition' && $offerLineKind !== 'reward') {
+                    $offerLineKind = 'condition';
+                }
+            }
+
+            $unitPrice = $quantity > 0
+                ? round($totalPrice / $quantity, 2)
+                : (float) ($base['unit_price'] ?? 0);
+
+            $merged[] = array_merge($base, [
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'total_price' => round($totalPrice, 2),
+                'discount' => round($discount, 3),
+                'tax' => round($tax, 3),
+                'is_offer' => $isOffer,
+                'offer_line_kind' => $offerLineKind,
+            ]);
+        }
+
+        return array_merge($merged, $withoutVariant);
+    }
+
+    /**
      * Create order items and update variant quantities
      *
      * @param int $orderId
@@ -168,6 +255,8 @@ class OrderItemService
         if (empty($orderItemsData)) {
             return;
         }
+
+        $orderItemsData = $this->consolidateByVariant($orderItemsData);
 
         $variantIds = collect($orderItemsData)->pluck('variant_id')->unique()->values()->all();
         $variants = ProductVariant::whereIn('id', $variantIds)->get()->keyBy('id');

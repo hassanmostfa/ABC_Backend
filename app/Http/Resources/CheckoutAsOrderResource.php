@@ -54,6 +54,7 @@ class CheckoutAsOrderResource extends JsonResource
             ] : null,
             'charity_id' => $orderData['charity_id'] ?? null,
             'address' => $orderData['address'] ?? null,
+            'note' => $orderData['note'] ?? null,
             'type' => !empty($orderData['charity_id']) ? 'charity' : ($checkout->customer_id ? 'customer' : null),
             'payment_method' => 'online_link',
             'src' => $checkout->payment_gateway_src,

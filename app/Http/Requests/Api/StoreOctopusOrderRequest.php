@@ -36,6 +36,7 @@ class StoreOctopusOrderRequest extends FormRequest
             'name' => 'required|string|max:255',
             'payment_method' => 'required|in:cash,online_link',
             'address' => 'required|string|max:1000',
+            'note' => 'nullable|string|max:1000',
             'src' => 'nullable|in:knet,cc,octopus',
             
             // Payment info (if online and already paid)
@@ -111,6 +112,7 @@ class StoreOctopusOrderRequest extends FormRequest
             'name' => 'customer name',
             'payment_method' => 'payment method',
             'address' => 'delivery address',
+            'note' => 'order note',
             'src' => 'payment gateway source',
             'offers' => 'offers',
             'offers.*.offer_id' => 'offer ID',

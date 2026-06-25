@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Models\Order;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 
@@ -24,18 +25,7 @@ class OrderRepository implements OrderRepositoryInterface
 
         // Search functionality
         if (isset($filters['search']) && !empty($filters['search'])) {
-            $search = $filters['search'];
-            $query->where(function ($q) use ($search) {
-                $q->where('order_number', 'LIKE', "%{$search}%")
-                  ->orWhereHas('customer', function ($customerQuery) use ($search) {
-                      $customerQuery->where('name', 'LIKE', "%{$search}%")
-                                   ->orWhere('phone', 'LIKE', "%{$search}%");
-                  })
-                  ->orWhereHas('charity', function ($charityQuery) use ($search) {
-                      $charityQuery->where('name_en', 'LIKE', "%{$search}%")
-                                  ->orWhere('name_ar', 'LIKE', "%{$search}%");
-                  });
-            });
+            $this->applyOrderSearch($query, (string) $filters['search']);
         }
 
         // Filter by customer_id
@@ -106,6 +96,26 @@ class OrderRepository implements OrderRepositoryInterface
         $query->orderBy($sortBy, $sortOrder);
 
         return $query->paginate($perPage);
+    }
+
+    protected function applyOrderSearch(Builder $query, string $search): void
+    {
+        $search = trim($search);
+        if ($search === '') {
+            return;
+        }
+
+        $query->where(function (Builder $q) use ($search) {
+            $q->where('order_number', 'LIKE', "%{$search}%")
+                ->orWhereHas('customer', function (Builder $customerQuery) use ($search) {
+                    $customerQuery->where('name', 'LIKE', "%{$search}%")
+                        ->orWhere('phone', 'LIKE', "%{$search}%");
+                })
+                ->orWhereHas('charity', function (Builder $charityQuery) use ($search) {
+                    $charityQuery->where('name_en', 'LIKE', "%{$search}%")
+                        ->orWhere('name_ar', 'LIKE', "%{$search}%");
+                });
+        });
     }
 
     /**

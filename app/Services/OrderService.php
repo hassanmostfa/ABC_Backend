@@ -255,6 +255,11 @@ class OrderService
             $orderData['created_by_type'] = $creator['creator_type'];
         }
 
+        if (array_key_exists('note', $orderData)) {
+            $note = trim((string) $orderData['note']);
+            $orderData['note'] = $note !== '' ? $note : null;
+        }
+
         return new OrderDraft(
             requestData: $data,
             offersData: $offersData,

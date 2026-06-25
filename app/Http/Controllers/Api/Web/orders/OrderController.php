@@ -109,6 +109,7 @@ class OrderController extends BaseApiController
     public function index(Request $request): JsonResponse
     {
         $request->validate([
+            'search' => 'nullable|string|max:1000',
             'status' => 'nullable|in:pending,processing,completed,cancelled',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
@@ -120,6 +121,7 @@ class OrderController extends BaseApiController
 
         $filters = array_filter([
             'customer_id' => $customer->id,
+            'search' => $request->input('search'),
             'status' => $request->input('status'),
         ], fn ($v) => $v !== null && $v !== '');
 
@@ -150,8 +152,11 @@ class OrderController extends BaseApiController
             'statistics' => $stats,
         ];
 
-        if (!empty($filters) && isset($filters['status'])) {
-            $response['filters'] = ['status' => $filters['status']];
+        if (!empty($filters) && (isset($filters['status']) || isset($filters['search']))) {
+            $response['filters'] = array_filter([
+                'status' => $filters['status'] ?? null,
+                'search' => $filters['search'] ?? null,
+            ], fn ($value) => $value !== null && $value !== '');
         }
 
         return response()->json($response);

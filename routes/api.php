@@ -402,8 +402,8 @@ Route::post('/erp/orders/send', [PublicErpOrderController::class, 'sendOrder']);
 
 // Protected Warehouse Stock endpoints: require admin authentication with product view permission.
 Route::controller(WarehouseStockController::class)->prefix('warehouse')->group(function () {
-    Route::get('/warehouse/stock', [WarehouseStockController::class, 'getStock']);
-    Route::get('/warehouse/test-connection', [WarehouseStockController::class, 'testConnection']);
+    Route::get('/stock', 'getStock');
+    Route::get('/test-connection', 'testConnection');
 });
 
 // Web Product Routes (Public)

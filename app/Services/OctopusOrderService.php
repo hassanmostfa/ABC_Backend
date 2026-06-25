@@ -154,6 +154,7 @@ class OctopusOrderService
                 'charity_id' => null,
                 'customer_address_id' => null,
                 'address' => $data['address'] ?? null,
+                'note' => !empty($data['note']) ? trim((string) $data['note']) : null,
                 'order_number' => $orderNumber,
                 'status' => 'pending',
                 'total_amount' => $totalAmount,
@@ -346,6 +347,8 @@ class OctopusOrderService
         if (empty($orderItemsData)) {
             return;
         }
+
+        $orderItemsData = app(OrderItemService::class)->consolidateByVariant($orderItemsData);
 
         $variantIds = collect($orderItemsData)->pluck('variant_id')->unique()->values()->all();
         $variants = ProductVariant::whereIn('id', $variantIds)->get()->keyBy('id');

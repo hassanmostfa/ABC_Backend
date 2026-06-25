@@ -14,6 +14,7 @@ class Order extends Model
         'charity_id',
         'customer_address_id',
         'address',
+        'note',
         'order_number',
         'status',
         'total_amount',

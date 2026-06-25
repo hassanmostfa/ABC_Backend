@@ -250,7 +250,9 @@ class ErpOrderService
                     $response = $pending->get($url, $query);
                 }
 
-                $success = $response->successful();
+                $responseBody = $response->json() ?? $response->body();
+                $businessResult = $this->evaluateErpBusinessResponse($response->status(), $responseBody);
+                $success = $businessResult['success'];
 
                 Log::channel('erp')->info('ERP ' . ($logContext['action'] ?? 'GET'), array_merge($logContext, [
                     'http_status'   => $response->status(),
@@ -258,14 +260,14 @@ class ErpOrderService
                     'attempt'       => $attempt,
                     'max_attempts'  => $maxAttempts,
                     'stats'         => $requestStats,
-                    'response'      => $response->json() ?? $response->body(),
+                    'response'      => $responseBody,
                 ]));
 
                 return [
                     'success' => $success,
                     'status'  => $response->status(),
-                    'body'    => $response->json() ?? $response->body(),
-                    'error'   => $success ? null : 'ERP responded with HTTP ' . $response->status(),
+                    'body'    => $responseBody,
+                    'error'   => $businessResult['error'],
                 ];
             } catch (\Illuminate\Http\Client\ConnectionException $e) {
                 $isLastAttempt = $attempt >= $maxAttempts;
@@ -603,6 +605,11 @@ class ErpOrderService
 
         $baseNotes = implode(' | ', $baseParts);
 
+        $userNote = trim((string) ($order->note ?? ''));
+        if ($userNote !== '') {
+            $baseNotes = $baseNotes !== '' ? $baseNotes . ' | ' . $userNote : $userNote;
+        }
+
         if ($paymentType !== '') {
             return $baseNotes !== '' ? $baseNotes . ' | Payment: ' . $paymentType : 'Payment: ' . $paymentType;
         }
@@ -626,31 +633,85 @@ class ErpOrderService
     }
 
     /**
-     * Build the allItems array from order items.
+     * Build the allItems array from order items (one row per itemCode + uom).
      */
     private function buildItems(Order $order): array
     {
-        return $order->items->map(function ($item) {
+        $grouped = [];
+
+        foreach ($order->items as $item) {
             $itemCode = $item->variant?->sku ?? '';
             $uom = $item->variant?->short_item ?? '';
+            $key = $itemCode . '|' . $uom;
             $quantity = (int) $item->quantity;
-            $netLineTotal = $this->formatErpPrice(
-                max(0, (float) $item->total_price - (float) $item->discount)
-            );
+            $netLineTotal = max(0, (float) $item->total_price - (float) $item->discount);
+            $taxAmount = (float) $item->tax;
+
+            if (!isset($grouped[$key])) {
+                $grouped[$key] = [
+                    'itemCode' => $itemCode,
+                    'uom' => $uom,
+                    'quantity' => 0,
+                    'netLineTotal' => 0.0,
+                    'taxAmount' => 0.0,
+                ];
+            }
+
+            $grouped[$key]['quantity'] += $quantity;
+            $grouped[$key]['netLineTotal'] += $netLineTotal;
+            $grouped[$key]['taxAmount'] += $taxAmount;
+        }
+
+        return collect($grouped)->map(function (array $row) {
+            $quantity = (int) $row['quantity'];
+            $netLineTotal = $this->formatErpPrice($row['netLineTotal']);
             $unitPriceAfterDiscount = $quantity > 0
                 ? $this->formatErpPrice($netLineTotal / $quantity)
-                : $this->formatErpPrice((float) $item->unit_price);
+                : 0.0;
 
             return [
-                'itemCode'       => $itemCode,
-                'uom'            => $uom,
+                'itemCode'       => $row['itemCode'],
+                'uom'            => $row['uom'],
                 'price'          => $unitPriceAfterDiscount,
                 'quantity'       => $quantity,
                 'isFOC'          => false,
                 'discountAmount' => $this->formatErpPrice(0),
-                'taxAmount'      => $this->formatErpPrice((float) $item->tax),
+                'taxAmount'      => $this->formatErpPrice($row['taxAmount']),
             ];
         })->values()->toArray();
+    }
+
+    /**
+     * ERP may return HTTP 200 with a business status (e.g. status: -1) indicating failure.
+     *
+     * @return array{success: bool, error: string|null}
+     */
+    private function evaluateErpBusinessResponse(int $httpStatus, mixed $responseBody): array
+    {
+        if ($httpStatus < 200 || $httpStatus >= 300) {
+            return [
+                'success' => false,
+                'error' => 'ERP responded with HTTP ' . $httpStatus,
+            ];
+        }
+
+        if (!is_array($responseBody) || !array_key_exists('status', $responseBody)) {
+            return ['success' => true, 'error' => null];
+        }
+
+        $businessStatus = $responseBody['status'];
+        if (is_numeric($businessStatus) && (int) $businessStatus < 0) {
+            $message = is_string($responseBody['message'] ?? null) && $responseBody['message'] !== ''
+                ? $responseBody['message']
+                : 'ERP returned status ' . $businessStatus;
+
+            return [
+                'success' => false,
+                'error' => 'ERP rejected request: ' . $message,
+            ];
+        }
+
+        return ['success' => true, 'error' => null];
     }
 
     /**

@@ -3,6 +3,8 @@
 namespace App\Repositories;
 
 use App\Models\Payment;
+use App\Support\KuwaitPhone;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 
@@ -49,20 +51,7 @@ class PaymentRepository implements PaymentRepositoryInterface
 
         // Search functionality
         if (isset($filters['search']) && !empty($filters['search'])) {
-            $search = $filters['search'];
-            $query->where(function ($q) use ($search) {
-                $q->where('payment_number', 'LIKE', "%{$search}%")
-                  ->orWhereHas('invoice', function ($invoiceQuery) use ($search) {
-                      $invoiceQuery->where('invoice_number', 'LIKE', "%{$search}%")
-                                   ->orWhereHas('order', function ($orderQuery) use ($search) {
-                                       $orderQuery->where('order_number', 'LIKE', "%{$search}%")
-                                                  ->orWhereHas('customer', function ($customerQuery) use ($search) {
-                                                      $customerQuery->where('name', 'LIKE', "%{$search}%")
-                                                                   ->orWhere('phone', 'LIKE', "%{$search}%");
-                                                  });
-                                   });
-                  });
-            });
+            $this->applyPaymentSearch($query, (string) $filters['search']);
         }
 
         // Filter by invoice_id
@@ -125,6 +114,80 @@ class PaymentRepository implements PaymentRepositoryInterface
         $query->orderBy($sortBy, $sortOrder);
 
         return $query->paginate($perPage);
+    }
+
+    protected function applyPaymentSearch(Builder $query, string $search): void
+    {
+        $search = trim($search);
+        if ($search === '') {
+            return;
+        }
+
+        $phoneTerms = $this->phoneSearchTerms($search);
+
+        $query->where(function (Builder $q) use ($search, $phoneTerms) {
+            $q->where('payment_number', 'LIKE', "%{$search}%")
+                ->orWhereHas('customer', function (Builder $customerQuery) use ($search, $phoneTerms) {
+                    $this->applyCustomerNameOrPhoneSearch($customerQuery, $search, $phoneTerms);
+                })
+                ->orWhereHas('invoice', function (Builder $invoiceQuery) use ($search, $phoneTerms) {
+                    $invoiceQuery->where('invoice_number', 'LIKE', "%{$search}%")
+                        ->orWhereHas('order', function (Builder $orderQuery) use ($search, $phoneTerms) {
+                            $orderQuery->where('order_number', 'LIKE', "%{$search}%")
+                                ->orWhereHas('customer', function (Builder $customerQuery) use ($search, $phoneTerms) {
+                                    $this->applyCustomerNameOrPhoneSearch($customerQuery, $search, $phoneTerms);
+                                });
+                        });
+                })
+                ->orWhereHas('orderCheckout', function (Builder $checkoutQuery) use ($search, $phoneTerms) {
+                    $checkoutQuery->where('order_number', 'LIKE', "%{$search}%")
+                        ->orWhereHas('customer', function (Builder $customerQuery) use ($search, $phoneTerms) {
+                            $this->applyCustomerNameOrPhoneSearch($customerQuery, $search, $phoneTerms);
+                        })
+                        ->orWhereHas('order', function (Builder $orderQuery) use ($search, $phoneTerms) {
+                            $orderQuery->where('order_number', 'LIKE', "%{$search}%")
+                                ->orWhereHas('customer', function (Builder $customerQuery) use ($search, $phoneTerms) {
+                                    $this->applyCustomerNameOrPhoneSearch($customerQuery, $search, $phoneTerms);
+                                });
+                        });
+                });
+        });
+    }
+
+    /**
+     * @param  list<string>  $phoneTerms
+     */
+    protected function applyCustomerNameOrPhoneSearch(Builder $query, string $search, array $phoneTerms): void
+    {
+        $query->where(function (Builder $q) use ($search, $phoneTerms) {
+            $q->where('name', 'LIKE', "%{$search}%");
+
+            foreach ($phoneTerms as $term) {
+                $q->orWhere('phone', 'LIKE', '%' . $term . '%');
+            }
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function phoneSearchTerms(string $search): array
+    {
+        $terms = [trim($search)];
+        $digitsOnly = preg_replace('/\D+/', '', $search) ?? '';
+
+        if ($digitsOnly !== '') {
+            $terms[] = $digitsOnly;
+
+            $localDigits = KuwaitPhone::withoutCountryCode($digitsOnly);
+            if ($localDigits !== '') {
+                $terms[] = $localDigits;
+                $terms[] = '965' . $localDigits;
+                $terms[] = '+965' . $localDigits;
+            }
+        }
+
+        return array_values(array_unique(array_filter($terms, static fn ($term) => $term !== '')));
     }
 
     /**

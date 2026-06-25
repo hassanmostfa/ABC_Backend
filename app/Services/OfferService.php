@@ -134,9 +134,7 @@ class OfferService
                 }
             }
             
-            // Add ALL reward products to order items (always add, even if duplicates from multiple offers)
-            // Reward products are free, so they should always be added as separate items
-            // Their total price will be added to offer_discount
+            // Add reward products to order items (merge into existing line when same variant)
             $rewardProductsTotal = 0.00;
             $activeRewards = $offer->activeRewards()->with(['product', 'productVariant'])->get();
             foreach ($activeRewards as $reward) {
@@ -149,14 +147,17 @@ class OfferService
                         }
                         
                         $rewardQuantity = $reward->quantity;
-                        
-                        // Check if variant has sufficient quantity
+                        $existingItemIndex = $this->findItemIndexByVariantId($orderItemsData, $variant->id);
+                        $requiredQuantity = $existingItemIndex !== false
+                            ? (int) $orderItemsData[$existingItemIndex]['quantity'] + $rewardQuantity
+                            : $rewardQuantity;
+
                         $availableQuantity = $variant->quantity ?? 0;
-                        if ($availableQuantity < $rewardQuantity) {
+                        if ($availableQuantity < $requiredQuantity) {
                             DB::rollBack();
                             $sizeInfo = $variant->size ? ' - ' . $variant->size : '';
                             throw new \Exception(
-                                "Insufficient quantity for offer reward product {$productName}{$sizeInfo}. Available: {$availableQuantity}, Required: {$rewardQuantity}"
+                                "Insufficient quantity for offer reward product {$productName}{$sizeInfo}. Available: {$availableQuantity}, Required: {$requiredQuantity}"
                             );
                         }
                         
@@ -164,23 +165,32 @@ class OfferService
                         $rewardTotalPrice = $rewardUnitPrice * $rewardQuantity;
                         $rewardProductsTotal += $rewardTotalPrice;
                         
-                        // IMPORTANT: Always add reward products to order items (they're free)
-                        $orderItemsData[] = [
-                            'variant_id' => $variant->id,
-                            'product_id' => $variant->product_id,
-                            'name' => $productName,
-                            'sku' => $variant->sku,
-                            'quantity' => $rewardQuantity,
-                            'unit_price' => $rewardUnitPrice,
-                            'total_price' => $rewardTotalPrice,
-                            'is_offer' => true,
-                            'offer_line_kind' => 'reward',
-                            'discount' => $rewardTotalPrice,
-                            'tax' => 0,
-                        ];
-                        
-                        // Add to total amount
-                        $totalAmount += $rewardTotalPrice;
+                        if ($existingItemIndex !== false) {
+                            $existingItem = $orderItemsData[$existingItemIndex];
+                            $oldTotalPrice = (float) $existingItem['total_price'];
+                            $existingItem['quantity'] += $rewardQuantity;
+                            $existingItem['total_price'] = round($existingItem['unit_price'] * $existingItem['quantity'], 2);
+                            $existingItem['is_offer'] = true;
+                            $existingItem['offer_line_kind'] = 'reward';
+                            $existingItem['discount'] = round(($existingItem['discount'] ?? 0) + $rewardTotalPrice, 3);
+                            $orderItemsData[$existingItemIndex] = $existingItem;
+                            $totalAmount = $totalAmount - $oldTotalPrice + $existingItem['total_price'];
+                        } else {
+                            $orderItemsData[] = [
+                                'variant_id' => $variant->id,
+                                'product_id' => $variant->product_id,
+                                'name' => $productName,
+                                'sku' => $variant->sku,
+                                'quantity' => $rewardQuantity,
+                                'unit_price' => $rewardUnitPrice,
+                                'total_price' => $rewardTotalPrice,
+                                'is_offer' => true,
+                                'offer_line_kind' => 'reward',
+                                'discount' => $rewardTotalPrice,
+                                'tax' => 0,
+                            ];
+                            $totalAmount += $rewardTotalPrice;
+                        }
                     }
                 }
             }
@@ -470,6 +480,16 @@ class OfferService
                 "Earned {$totalPoints} points from order #{$order->id}"
             );
         }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $orderItemsData
+     */
+    private function findItemIndexByVariantId(array $orderItemsData, int $variantId): int|false
+    {
+        return collect($orderItemsData)->search(
+            fn ($item) => isset($item['variant_id']) && (int) $item['variant_id'] === $variantId
+        );
     }
 
     private function normalizeOrderItemRows(array &$orderItemsData): void

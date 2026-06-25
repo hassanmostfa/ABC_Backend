@@ -135,6 +135,7 @@ class OrderController extends BaseApiController
     {
         // Validate filter parameters
         $request->validate([
+            'search' => 'nullable|string|max:1000',
             'status' => 'nullable|in:pending,processing,completed,cancelled',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
@@ -149,6 +150,7 @@ class OrderController extends BaseApiController
         // Prepare filters - always filter by customer_id
         $filters = [
             'customer_id' => $customer->id,
+            'search' => $request->input('search'),
             'status' => $request->input('status'),
         ];
 
@@ -193,8 +195,11 @@ class OrderController extends BaseApiController
             'statistics' => $stats,
         ];
 
-        if (!empty($filters) && isset($filters['status'])) {
-            $response['filters'] = ['status' => $filters['status']];
+        if (!empty($filters) && (isset($filters['status']) || isset($filters['search']))) {
+            $response['filters'] = array_filter([
+                'status' => $filters['status'] ?? null,
+                'search' => $filters['search'] ?? null,
+            ], fn ($value) => $value !== null && $value !== '');
         }
 
         return response()->json($response);

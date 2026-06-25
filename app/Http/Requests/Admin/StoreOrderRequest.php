@@ -47,6 +47,7 @@ class StoreOrderRequest extends FormRequest
             'delivery_type' => 'nullable|in:pickup,delivery', // Will be auto-determined if not provided
             'delivery_date' => 'required|date',
             'delivery_time' => ['required', 'regex:/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/'],
+            'note' => 'nullable|string|max:1000',
             'payment_method' => 'nullable|in:cash,card,online_link,bank_transfer,wallet',
             'src' => 'required_if:payment_method,online_link|nullable|string|in:knet,cc',
             'offer_ids' => 'nullable|array', // Backward compatibility: simple array of IDs
@@ -177,6 +178,7 @@ class StoreOrderRequest extends FormRequest
             'delivery_type' => 'delivery type',
             'delivery_date' => 'delivery date',
             'delivery_time' => 'delivery time',
+            'note' => 'note',
             'offer_snapshot' => 'offer snapshot',
             'offers' => 'offers',
             'offers.*.offer_id' => 'offer ID',
