@@ -531,7 +531,7 @@ class ErpOrderService
 
     /**
      * ERP Notes: customer name plus address text (order.address or customer-address detail),
-     * with payment type (Cash or Online) appended.
+     * with payment type appended. Labels and location names are in Arabic.
      */
     private function resolveNotes(Order $order): string
     {
@@ -551,20 +551,20 @@ class ErpOrderService
 
         $parts = [];
 
-        if ($addr->governorate?->name_en) {
-            $parts[] = $addr->governorate->name_en;
+        if ($governorateName = $this->localizedArabicName($addr->governorate)) {
+            $parts[] = $governorateName;
         }
-        if ($addr->area?->name_en) {
-            $parts[] = $addr->area->name_en;
+        if ($areaName = $this->localizedArabicName($addr->area)) {
+            $parts[] = $areaName;
         }
         if (!empty($addr->type)) {
-            $parts[] = (string) $addr->type;
+            $parts[] = $this->translateAddressType((string) $addr->type);
         }
         if (!empty($addr->building_name)) {
             $parts[] = (string) $addr->building_name;
         }
         if (!empty($addr->apartment_number)) {
-            $parts[] = 'Apt ' . $addr->apartment_number;
+            $parts[] = 'شقة ' . $addr->apartment_number;
         }
         if (!empty($addr->company)) {
             $parts[] = (string) $addr->company;
@@ -576,7 +576,7 @@ class ErpOrderService
             $parts[] = (string) $addr->house;
         }
         if (!empty($addr->block)) {
-            $parts[] = 'Block ' . $addr->block;
+            $parts[] = 'قطعة ' . $addr->block;
         }
 
         $addressText = implode(' | ', array_filter($parts));
@@ -584,8 +584,8 @@ class ErpOrderService
         $customerPhone = trim((string) ($order->customer?->phone ?? ''));
         if ($customerPhone !== '') {
             $addressText = $addressText !== ''
-                ? $addressText . ' | Phone: ' . $customerPhone
-                : 'Phone: ' . $customerPhone;
+                ? $addressText . ' | هاتف: ' . $customerPhone
+                : 'هاتف: ' . $customerPhone;
         }
 
         return $this->formatNotes($customerName, $addressText, $order);
@@ -611,7 +611,7 @@ class ErpOrderService
         }
 
         if ($paymentType !== '') {
-            return $baseNotes !== '' ? $baseNotes . ' | Payment: ' . $paymentType : 'Payment: ' . $paymentType;
+            return $baseNotes !== '' ? $baseNotes . ' | الدفع: ' . $paymentType : 'الدفع: ' . $paymentType;
         }
 
         return $baseNotes;
@@ -621,15 +621,40 @@ class ErpOrderService
     {
         $method = strtolower(trim((string) ($order->payment_method ?? '')));
 
-        if (in_array($method, ['cash', 'wallet'], true)) {
-            return 'Cash';
+        if ($method === 'cash') {
+            return 'نقدي';
+        }
+
+        if ($method === 'wallet') {
+            return 'محفظة';
         }
 
         if ($method === 'online_link') {
-            return 'Online';
+            return 'إلكتروني';
         }
 
         return '';
+    }
+
+    private function localizedArabicName(?object $model): string
+    {
+        if ($model === null) {
+            return '';
+        }
+
+        $arabic = trim((string) ($model->name_ar ?? ''));
+
+        return $arabic !== '' ? $arabic : trim((string) ($model->name_en ?? ''));
+    }
+
+    private function translateAddressType(string $type): string
+    {
+        return match (strtolower(trim($type))) {
+            'apartment' => 'شقة',
+            'house' => 'منزل',
+            'office' => 'مكتب',
+            default => $type,
+        };
     }
 
     /**
