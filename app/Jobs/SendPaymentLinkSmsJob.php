@@ -116,16 +116,6 @@ class SendPaymentLinkSmsJob implements ShouldQueue
         $amount = number_format($amountDue, 3);
         $message = $this->buildMessage($locale, $orderNumber, $amount, $paymentLink);
 
-        $isProduction = getSetting('is_production', '0') === '1';
-        if (!$isProduction) {
-            Log::info('SendPaymentLinkSmsJob: skipped SMS in test mode', array_merge($logContext, [
-                'phone' => $phone,
-                'message' => $message,
-            ]));
-
-            return;
-        }
-
         $result = $smsBoxService->send($phone, $message);
 
         if (!$result['success']) {

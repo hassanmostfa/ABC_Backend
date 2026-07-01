@@ -245,7 +245,7 @@ class PayFirstOnlineOrderTest extends TestCase
     public function test_send_payment_link_sms_job_sends_message_to_customer(): void
     {
         [$customer, $address, $variant] = $this->seedOrderPrerequisites();
-        Setting::query()->updateOrCreate(['key' => 'is_production'], ['value' => '1']);
+        Setting::query()->updateOrCreate(['key' => 'is_production'], ['value' => '0']);
 
         $partial = Mockery::mock(OttuService::class)->makePartial();
         $partial->shouldReceive('createCheckoutPayment')->once()->andReturn('https://pay.example/checkout?session_id=cals-session');
