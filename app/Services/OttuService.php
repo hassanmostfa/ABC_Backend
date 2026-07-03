@@ -113,6 +113,24 @@ class OttuService
         return rtrim($base, '/') . self::CHECKOUT_TXN_PATH . '/' . ltrim($suffix, '/');
     }
 
+    /**
+     * Ottu requires a valid customer_email. Customers may have null/empty/invalid email in our DB.
+     */
+    protected function resolveCustomerEmail(object $customer): string
+    {
+        $email = trim((string) ($customer->email ?? ''));
+        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $email;
+        }
+
+        $phone = preg_replace('/\D+/', '', (string) ($customer->phone ?? ''));
+        if ($phone !== '') {
+            return $phone . '@example.com';
+        }
+
+        return 'customer-' . ($customer->id ?? 'unknown') . '@example.com';
+    }
+
     protected function resolveOttuErrorMessage(\Illuminate\Http\Client\Response $response): string
     {
         $body = $response->json();
@@ -170,7 +188,7 @@ class OttuService
             'order_no' => $order->order_number,
             'customer_id' => (string) $customer->id,
             'customer_first_name' => $customer->name,
-            'customer_email' => $customer->email ?? $customer->phone . '@example.com',
+            'customer_email' => $this->resolveCustomerEmail($customer),
             'customer_phone' => $customer->phone,
             'webhook_url' => route('payments.notification'),
             'redirect_url' => route('payments.success'),
@@ -250,7 +268,7 @@ class OttuService
             'order_no' => $checkout->order_number,
             'customer_id' => (string) $customer->id,
             'customer_first_name' => $customer->name,
-            'customer_email' => $customer->email ?? $customer->phone . '@example.com',
+            'customer_email' => $this->resolveCustomerEmail($customer),
             'customer_phone' => $customer->phone,
             'webhook_url' => route('payments.notification'),
             'redirect_url' => route('payments.success'),
@@ -395,7 +413,7 @@ class OttuService
             'order_no' => $payment->reference,
             'customer_id' => (string) $customer->id,
             'customer_first_name' => $customer->name,
-            'customer_email' => $customer->email ?? $customer->phone . '@example.com',
+            'customer_email' => $this->resolveCustomerEmail($customer),
             'customer_phone' => $customer->phone,
             'webhook_url' => route('payments.wallet-charge.notification'),
             'redirect_url' => route('payments.wallet-charge.success'),

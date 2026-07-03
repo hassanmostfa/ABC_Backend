@@ -280,6 +280,49 @@ class PayFirstOnlineOrderTest extends TestCase
         (new SendPaymentLinkSmsJob($result['checkout']->id))->handle($smsMock);
     }
 
+    public function test_online_checkout_succeeds_when_customer_has_no_email(): void
+    {
+        [$customer, $address, $variant] = $this->seedOrderPrerequisites();
+        $customer->update(['email' => null]);
+
+        config([
+            'payments.mode' => 'test',
+            'services.ottu.url' => 'https://sandbox.ottu.net',
+            'services.ottu.api_key' => 'test-api-key',
+            'services.ottu.pg_code' => 'knet',
+        ]);
+
+        \Illuminate\Support\Facades\Http::fake([
+            'https://sandbox.ottu.net/*' => \Illuminate\Support\Facades\Http::response([
+                'session_id' => 'no-email-session',
+                'checkout_url' => 'https://pay.example/checkout?session_id=no-email-session',
+            ], 200),
+        ]);
+
+        $result = app(OrderService::class)->createOrder([
+            'customer_id' => $customer->id,
+            'customer_address_id' => $address->id,
+            'delivery_date' => now()->addDay()->toDateString(),
+            'delivery_time' => '10:00',
+            'payment_method' => 'online_link',
+            'src' => 'knet',
+            'source' => 'call_center',
+            'items' => [
+                ['variant_id' => $variant->id, 'quantity' => 1],
+            ],
+        ]);
+
+        $this->assertTrue($result['success']);
+        $this->assertTrue($result['is_checkout']);
+        $this->assertDatabaseCount('order_checkouts', 1);
+
+        \Illuminate\Support\Facades\Http::assertSent(function (\Illuminate\Http\Client\Request $request) use ($customer) {
+            $body = $request->data();
+
+            return ($body['customer_email'] ?? '') === '96550001001@example.com';
+        });
+    }
+
     /**
      * @return array{0: Customer, 1: CustomerAddress, 2: ProductVariant}
      */

@@ -12,6 +12,8 @@ use App\Repositories\CustomerRepositoryInterface;
 use App\Services\ErpCustomerService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Validation\Rule;
+use App\Models\Customer;
 
 class CustomerController extends BaseApiController
 {
@@ -165,18 +167,78 @@ class CustomerController extends BaseApiController
             'email' => 'nullable|email|max:255|unique:customers,email,' . $id,
             'is_active' => 'boolean',
             'points' => 'integer|min:0',
+            'addresses' => 'nullable|array',
+            'addresses.*.id' => [
+                'nullable',
+                'integer',
+                Rule::exists('customer_addresses', 'id')->where(fn ($query) => $query->where('customer_id', $id)),
+            ],
+            'addresses.*.country_id' => 'required_with:addresses|integer|exists:countries,id',
+            'addresses.*.governorate_id' => 'required_with:addresses|integer|exists:governorates,id',
+            'addresses.*.area_id' => 'required_with:addresses|integer|exists:areas,id',
+            'addresses.*.lat' => 'nullable|numeric|between:-90,90',
+            'addresses.*.lng' => 'nullable|numeric|between:-180,180',
+            'addresses.*.type' => 'nullable|in:apartment,house,office',
+            'addresses.*.building_name' => 'nullable|string|max:255',
+            'addresses.*.apartment_number' => 'nullable|string|max:255',
+            'addresses.*.company' => 'nullable|string|max:255',
+            'addresses.*.street' => 'nullable|string|max:255',
+            'addresses.*.house' => 'nullable|string|max:255',
+            'addresses.*.block' => 'nullable|string|max:255',
+            'addresses.*.floor' => 'nullable|string|max:255',
+            'addresses.*.phone_number' => 'nullable|string|max:20',
+            'addresses.*.additional_directions' => 'nullable|string',
+            'addresses.*.address_label' => 'nullable|string|max:255',
         ]);
 
-        $customer = $this->customerRepository->update($id, $request->all());
+        $customer = $this->customerRepository->findById($id);
 
         if (!$customer) {
             return $this->notFoundResponse('Customer not found');
+        }
+
+        $customer = $this->customerRepository->update($id, $request->except('addresses'));
+
+        if ($request->has('addresses') && is_array($request->addresses)) {
+            $this->syncCustomerAddresses($customer, $request->addresses);
+            $customer->load(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area']);
         }
 
         // Log activity
         logAdminActivity('updated', 'Customer', $id);
 
         return $this->updatedResponse(new CustomerResource($customer), 'Customer updated successfully');
+    }
+
+    /**
+     * Replace customer addresses with the submitted list (update by id, create when id is omitted).
+     *
+     * @param  array<int, array<string, mixed>>  $addresses
+     */
+    protected function syncCustomerAddresses(Customer $customer, array $addresses): void
+    {
+        $keepIds = [];
+
+        foreach ($addresses as $addressData) {
+            $addressId = $addressData['id'] ?? null;
+            unset($addressData['id']);
+            $addressData['customer_id'] = $customer->id;
+
+            if ($addressId) {
+                $customer->addresses()->whereKey($addressId)->update($addressData);
+                $keepIds[] = (int) $addressId;
+                continue;
+            }
+
+            $created = $customer->addresses()->create($addressData);
+            $keepIds[] = $created->id;
+        }
+
+        if ($keepIds !== []) {
+            $customer->addresses()->whereNotIn('id', $keepIds)->delete();
+        } else {
+            $customer->addresses()->delete();
+        }
     }
 
     /**

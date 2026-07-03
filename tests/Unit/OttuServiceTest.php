@@ -7,6 +7,59 @@ use Tests\TestCase;
 
 class OttuServiceTest extends TestCase
 {
+    public function test_resolve_customer_email_uses_valid_email_when_present(): void
+    {
+        $service = new OttuService();
+        $customer = (object) [
+            'id' => 1,
+            'email' => 'user@example.com',
+            'phone' => '96550001001',
+        ];
+
+        $this->assertSame('user@example.com', $this->invokeResolveCustomerEmail($service, $customer));
+    }
+
+    public function test_resolve_customer_email_falls_back_when_email_missing_or_invalid(): void
+    {
+        $service = new OttuService();
+        $customer = (object) [
+            'id' => 2,
+            'email' => '',
+            'phone' => '96550001002',
+        ];
+
+        $this->assertSame('96550001002@example.com', $this->invokeResolveCustomerEmail($service, $customer));
+
+        $customer->email = null;
+        $this->assertSame('96550001002@example.com', $this->invokeResolveCustomerEmail($service, $customer));
+
+        $customer->email = 'not-an-email';
+        $this->assertSame('96550001002@example.com', $this->invokeResolveCustomerEmail($service, $customer));
+    }
+
+    public function test_resolve_customer_email_falls_back_to_customer_id_without_phone(): void
+    {
+        $service = new OttuService();
+        $customer = (object) [
+            'id' => 99,
+            'email' => null,
+            'phone' => null,
+        ];
+
+        $this->assertSame('customer-99@example.com', $this->invokeResolveCustomerEmail($service, $customer));
+    }
+
+    /**
+     * @param  object{id?: int|string|null, email?: string|null, phone?: string|null}  $customer
+     */
+    private function invokeResolveCustomerEmail(OttuService $service, object $customer): string
+    {
+        $method = new \ReflectionMethod(OttuService::class, 'resolveCustomerEmail');
+        $method->setAccessible(true);
+
+        return $method->invoke($service, $customer);
+    }
+
     public function test_is_successful_payment_accepts_ottu_success_and_paid(): void
     {
         $service = new OttuService();
