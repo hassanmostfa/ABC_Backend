@@ -101,6 +101,7 @@ class PayFirstOnlineOrderTest extends TestCase
         $this->assertDatabaseCount('orders', 1);
         $this->assertDatabaseCount('order_checkouts', 0);
         $this->assertSame('cash', $result['order']->payment_method);
+        $this->assertSame('paid', $result['order']->invoice->status);
     }
 
     public function test_fulfill_checkout_creates_paid_order(): void

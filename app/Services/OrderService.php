@@ -79,7 +79,7 @@ class OrderService
         DB::beginTransaction();
 
         try {
-            $order = $this->createOrderFromDraft($draft, $draft->paymentMethod === 'wallet');
+            $order = $this->createOrderFromDraft($draft);
             DB::commit();
         } catch (\Exception $e) {
             DB::rollBack();
@@ -310,6 +310,7 @@ class OrderService
 
         $invoiceAmounts = $draft->invoiceAmounts;
         $isWalletPayment = ($draft->paymentMethod === 'wallet');
+        $shouldMarkInvoicePaid = $markInvoicePaid || in_array($draft->paymentMethod, ['wallet', 'cash'], true);
 
         $this->invoiceService->createOrGetInvoice(
             $order->id,
@@ -322,7 +323,7 @@ class OrderService
             $draft->usedPoints,
             $draft->pointsDiscount,
             $invoiceAmounts['totalDiscount'],
-            $markInvoicePaid || $isWalletPayment
+            $shouldMarkInvoicePaid
         );
 
         if ($isWalletPayment) {

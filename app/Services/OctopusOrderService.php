@@ -138,9 +138,8 @@ class OctopusOrderService
             // Determine payment method
             $paymentMethod = $data['payment_method'] ?? 'cash';
             $paymentGatewaySrc = $data['src'] ?? null;
-            $isPaid = false;
+            $isPaid = $paymentMethod === 'cash';
 
-            // If payment_info is provided and payment is online, mark as paid
             if ($paymentMethod === 'online_link' && !empty($data['payment_info'])) {
                 $isPaid = true;
             }
