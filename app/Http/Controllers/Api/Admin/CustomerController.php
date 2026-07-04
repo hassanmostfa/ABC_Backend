@@ -162,7 +162,7 @@ class CustomerController extends BaseApiController
     public function update(Request $request, int $id): JsonResponse
     {
         $request->validate([
-            'name' => 'sometimes|required|string|max:255|regex:/^[a-zA-Z\s]+$/',
+            'name' => 'sometimes|required|string|max:255',
             'phone' => 'sometimes|required|string|max:20|unique:customers,phone,' . $id,
             'email' => 'nullable|email|max:255|unique:customers,email,' . $id,
             'is_active' => 'boolean',
