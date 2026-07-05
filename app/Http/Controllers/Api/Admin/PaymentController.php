@@ -604,6 +604,7 @@ class PaymentController extends BaseApiController
         ?array $statusResult = null,
         ?array $processResult = null
     ): bool {
+        // Database state is strongest signal
         if ($order?->invoice?->status === 'paid') {
             return true;
         }
@@ -619,15 +620,38 @@ class PaymentController extends BaseApiController
             }
         }
 
-        if (($processResult['payment_status'] ?? null) === Payment::STATUS_COMPLETED
-            && ($processResult['processed'] ?? false)) {
+        // processResult indicates we successfully applied the payment
+        if (($processResult['processed'] ?? false) 
+            && ($processResult['payment_status'] ?? null) === Payment::STATUS_COMPLETED) {
             return true;
         }
 
+        // Ottu API confirmed success (verified via getPaymentStatus)
+        if ($statusResult !== null && ($statusResult['is_success'] ?? false)) {
+            return true;
+        }
+
+        // Ottu API confirmed failure
         if ($statusResult !== null && ($statusResult['is_failed'] ?? false)) {
             return false;
         }
 
+        // Check redirect params as fallback
+        $result = strtolower(trim((string) ($request->query('result') ?? $request->input('result') ?? '')));
+        $state = strtolower(trim((string) ($request->query('state') ?? $request->input('state') ?? '')));
+
+        $successValues = ['success', 'paid', 'captured', 'completed', 'approved'];
+        $failedValues = ['failed', 'canceled', 'cancelled', 'error', 'declined', 'voided', 'expired'];
+
+        if (in_array($result, $successValues, true) || in_array($state, $successValues, true)) {
+            return true;
+        }
+
+        if (in_array($result, $failedValues, true) || in_array($state, $failedValues, true)) {
+            return false;
+        }
+
+        // Default to false if we can't determine
         return false;
     }
 
