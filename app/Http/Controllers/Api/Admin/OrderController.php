@@ -345,6 +345,44 @@ class OrderController extends BaseApiController
     }
 
     /**
+     * Resend an order to ERP when the initial automatic send failed.
+     */
+    public function resendToErp(int $id): JsonResponse
+    {
+        $result = $this->orderService->resendOrderToErp($id);
+
+        if (!$result['success']) {
+            $code = in_array($result['message'], ['Order not found.'], true) ? 404 : 400;
+
+            if (array_key_exists('erp_response', $result)) {
+                return $this->errorResponse(
+                    $result['message'],
+                    $result['erp_status'] ?? 502,
+                    [
+                        'erp_response' => $result['erp_response'],
+                        'erp_status' => $result['erp_status'] ?? null,
+                    ]
+                );
+            }
+
+            return $this->errorResponse($result['message'], $code);
+        }
+
+        logAdminActivity('resent order to ERP', 'Order', $id);
+
+        $order = $result['order'] ?? $this->orderRepository->findById($id);
+        if ($order) {
+            $order->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice.payments', 'customerAddress', 'createdBy']);
+        }
+
+        return $this->successResponse([
+            'order' => $order ? new OrderResource($order) : null,
+            'erp_response' => $result['erp_response'] ?? null,
+            'erp_status' => $result['erp_status'] ?? null,
+        ], $result['message']);
+    }
+
+    /**
      * Switch cash-on-delivery order to online payment and return a new payment link.
      */
     public function switchToPaymentLink(Request $request, int $id): JsonResponse

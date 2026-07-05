@@ -128,6 +128,50 @@ class ErpOrderService
     }
 
     /**
+     * Manually resend an order to ERP (e.g. after automatic send failed).
+     *
+     * @return array{success: bool, message: string, order?: Order, erp_status?: int|null, erp_response?: mixed, error?: string|null}
+     */
+    public function resendOrder(Order $order): array
+    {
+        $validation = $this->validateOrderForErpSend($order);
+        if (!$validation['eligible']) {
+            return ['success' => false, 'message' => $validation['message']];
+        }
+
+        $order->loadMissing(['items.variant', 'invoice', 'customer', 'charity']);
+
+        $result = $this->sendOrder($order);
+
+        if (!$result['success']) {
+            Log::channel('erp')->warning('ERP SendOrder failed on manual resend', [
+                'order_id'     => $order->id,
+                'order_number' => $order->order_number,
+                'error'        => $result['error'],
+                'http_status'  => $result['status'],
+            ]);
+
+            return [
+                'success'      => false,
+                'message'      => $result['error'] ?? 'Failed to send order to ERP',
+                'erp_status'   => $result['status'],
+                'erp_response' => $result['body'],
+                'error'        => $result['error'],
+            ];
+        }
+
+        $order->update(['is_sent_to_erp' => true]);
+
+        return [
+            'success'      => true,
+            'message'      => 'Order sent to ERP successfully',
+            'order'        => $order->fresh(),
+            'erp_status'   => $result['status'],
+            'erp_response' => $result['body'],
+        ];
+    }
+
+    /**
      * After an online_link order's invoice is fully paid: send to ERP.
      * Logs on failure; does not throw.
      */
@@ -406,6 +450,38 @@ class ErpOrderService
         $path = '/' . ltrim($path, '/');
 
         return $this->baseUrl . $path;
+    }
+
+    /**
+     * @return array{eligible: bool, message: string}
+     */
+    private function validateOrderForErpSend(Order $order): array
+    {
+        if ($order->status === 'cancelled') {
+            return ['eligible' => false, 'message' => 'Cancelled orders cannot be sent to ERP.'];
+        }
+
+        if ($order->is_sent_to_erp) {
+            return ['eligible' => false, 'message' => 'Order was already sent to ERP.'];
+        }
+
+        if (!in_array($order->payment_method, ['cash', 'wallet', 'online_link'], true)) {
+            return ['eligible' => false, 'message' => 'Order payment method is not supported for ERP.'];
+        }
+
+        if ($order->payment_method === 'online_link') {
+            $order->loadMissing('invoice');
+            if (!$order->invoice || $order->invoice->status !== 'paid') {
+                return ['eligible' => false, 'message' => 'Online orders can only be sent to ERP after the invoice is paid.'];
+            }
+        }
+
+        $order->loadMissing('items');
+        if ($order->items->isEmpty()) {
+            return ['eligible' => false, 'message' => 'Order has no items.'];
+        }
+
+        return ['eligible' => true, 'message' => ''];
     }
 
     /**

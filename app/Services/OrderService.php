@@ -694,6 +694,21 @@ class OrderService
         return $this->ottuPaymentProcessor->syncOrderPayment($order, $sessionId);
     }
 
+    /**
+     * Manually resend a failed ERP order submission.
+     *
+     * @return array{success: bool, message: string, order?: Order, erp_status?: int|null, erp_response?: mixed, error?: string|null}
+     */
+    public function resendOrderToErp(int $orderId): array
+    {
+        $order = $this->orderRepository->findById($orderId);
+        if (!$order) {
+            return ['success' => false, 'message' => 'Order not found.'];
+        }
+
+        return app(ErpOrderService::class)->resendOrder($order);
+    }
+
     protected function recordOttuPendingPayment(
         Invoice $invoice,
         Order $order,
@@ -760,6 +775,18 @@ class OrderService
             : $order->payment_gateway_src;
         if ($effectiveSrc === null || $effectiveSrc === '') {
             return ['success' => false, 'message' => 'No payment gateway source (src) is stored for this order; create the order with src or pass src when regenerating the link.'];
+        }
+
+        $reusable = $this->ottuService->findReusablePaymentForInvoice($invoice, $effectiveSrc);
+        if ($reusable) {
+            Log::info('Reusing existing payment link for order ' . $order->id);
+
+            return [
+                'success' => true,
+                'message' => 'Existing payment link is still valid. You can retry payment using the same link.',
+                'payment_link' => $reusable['payment_link'],
+                'reused' => true,
+            ];
         }
 
         try {

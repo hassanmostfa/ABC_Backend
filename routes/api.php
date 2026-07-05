@@ -287,6 +287,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::patch('/{id}/cancel', 'cancel')->middleware('admin.permission:orders,edit');
          Route::post('/{id}/regenerate-payment-link', 'regeneratePaymentLink')->middleware('admin.permission:orders,edit');
          Route::post('/{id}/sync-payment', 'syncPayment')->middleware('admin.permission:orders,edit');
+         Route::post('/{id}/resend-to-erp', 'resendToErp')->middleware('admin.permission:orders,edit');
          Route::post('/{id}/switch-to-payment-link', 'switchToPaymentLink')->middleware('admin.permission:orders,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:orders,delete');
       });

@@ -66,7 +66,9 @@ class OttuPaymentProcessor
         if (!$statusResult['is_success']) {
             return [
                 'success' => false,
-                'message' => 'Payment is not completed at Ottu yet.',
+                'message' => ($statusResult['is_failed'] ?? false)
+                    ? 'Payment was not completed. You can retry using the same payment link.'
+                    : 'Payment is not completed at Ottu yet.',
                 'gateway_status_raw' => $statusResult['gateway_status_raw'] ?? null,
                 'invoice_status' => $invoice->status,
                 'payment_status' => $this->resolvePaymentStatus($statusResult),
@@ -117,12 +119,16 @@ class OttuPaymentProcessor
         $pending = Payment::query()
             ->where('gateway', 'ottu')
             ->where('invoice_id', $invoice->id)
-            ->where('status', 'pending')
+            ->whereIn('status', [Payment::STATUS_PENDING, Payment::STATUS_FAILED])
             ->whereNotNull('track_id')
             ->orderByDesc('id')
             ->first();
 
         if ($pending?->track_id) {
+            if ($pending->status === Payment::STATUS_FAILED) {
+                $pending->update(['status' => Payment::STATUS_PENDING, 'paid_at' => null]);
+            }
+
             return (string) $pending->track_id;
         }
 
@@ -209,20 +215,19 @@ class OttuPaymentProcessor
         }
 
         if (!($statusResult['is_success'] ?? false)) {
-            if ($this->isPendingStatusEnabled()) {
-                if ($statusResult['is_failed'] ?? false) {
-                    // Keep checkout/payment pending so the customer can retry with the same or a new link.
-                    return [
-                        'processed' => true,
-                        'payment_status' => 'pending',
-                    ];
+            if ($this->shouldAllowPaymentRetry()) {
+                if ($payment && $payment->status !== Payment::STATUS_COMPLETED) {
+                    $payment->update(['status' => Payment::STATUS_PENDING, 'paid_at' => null]);
                 }
 
-                return ['processed' => false, 'reason' => 'payment_not_successful'];
+                return [
+                    'processed' => true,
+                    'payment_status' => Payment::STATUS_PENDING,
+                ];
             }
 
-            if ($payment && $payment->status !== 'completed') {
-                $payment->update(['status' => 'failed']);
+            if ($payment && $payment->status !== Payment::STATUS_COMPLETED) {
+                $payment->update(['status' => Payment::STATUS_FAILED]);
             }
             if ($checkout->isPending()) {
                 $checkout->update(['status' => OrderCheckout::STATUS_FAILED]);
@@ -230,7 +235,7 @@ class OttuPaymentProcessor
 
             return [
                 'processed' => true,
-                'payment_status' => 'failed',
+                'payment_status' => Payment::STATUS_FAILED,
             ];
         }
 
@@ -272,6 +277,32 @@ class OttuPaymentProcessor
         $invoice = $order->invoice;
         if (!$invoice) {
             return ['processed' => false, 'reason' => 'invoice_not_found'];
+        }
+
+        if (!($statusResult['is_success'] ?? false) && $this->shouldAllowPaymentRetry()) {
+            $existingPayment = Payment::query()
+                ->where('gateway', 'ottu')
+                ->where('track_id', $trackId)
+                ->first();
+
+            if ($existingPayment && $existingPayment->status === Payment::STATUS_COMPLETED) {
+                return [
+                    'processed' => true,
+                    'idempotent' => true,
+                    'order' => $order,
+                    'payment_status' => Payment::STATUS_COMPLETED,
+                ];
+            }
+
+            if ($existingPayment && $existingPayment->status !== Payment::STATUS_COMPLETED) {
+                $existingPayment->update(['status' => Payment::STATUS_PENDING, 'paid_at' => null]);
+            }
+
+            return [
+                'processed' => true,
+                'order' => $order,
+                'payment_status' => Payment::STATUS_PENDING,
+            ];
         }
 
         $gateway = 'ottu';
@@ -447,21 +478,21 @@ class OttuPaymentProcessor
         return sprintf('PAY-%s-%06d', $year, $sequence);
     }
 
-    protected function isPendingStatusEnabled(): bool
+    protected function shouldAllowPaymentRetry(): bool
     {
-        return (bool) config('services.ottu.enable_pending_status', false);
+        return (bool) config('services.ottu.enable_pending_status', true);
     }
 
     public function resolvePaymentStatus(array $statusResult): string
     {
         if ($statusResult['is_success'] ?? false) {
-            return 'completed';
+            return Payment::STATUS_COMPLETED;
         }
 
-        if ($this->isPendingStatusEnabled()) {
-            return ($statusResult['is_failed'] ?? false) ? 'failed' : 'pending';
+        if ($this->shouldAllowPaymentRetry()) {
+            return Payment::STATUS_PENDING;
         }
 
-        return 'failed';
+        return Payment::STATUS_FAILED;
     }
 }

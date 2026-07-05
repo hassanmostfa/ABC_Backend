@@ -21,7 +21,7 @@
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
         </div>
         <h1>Payment Failed / Cancelled</h1>
-        <p>Your payment was not completed. You can try again from your order or close this page.</p>
+        <p>Your payment was not completed. You can try again using the same payment link from your order.</p>
         @if(!empty($order_number))
             <p class="order">Order: {{ $order_number }}</p>
         @endif

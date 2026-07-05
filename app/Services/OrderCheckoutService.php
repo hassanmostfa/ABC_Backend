@@ -118,6 +118,18 @@ class OrderCheckoutService
             return ['success' => false, 'message' => 'No payment gateway source (src) is stored for this checkout.'];
         }
 
+        $reusable = $this->ottuService->findReusablePaymentForCheckout($checkout, $effectiveSrc);
+        if ($reusable) {
+            Log::info('Reusing existing payment link for checkout ' . $checkout->id);
+
+            return [
+                'success' => true,
+                'message' => 'Existing payment link is still valid. You can retry payment using the same link.',
+                'payment_link' => $reusable['payment_link'],
+                'reused' => true,
+            ];
+        }
+
         try {
             $checkout->load('customer');
             $paymentLink = $this->ottuService->createCheckoutPayment(

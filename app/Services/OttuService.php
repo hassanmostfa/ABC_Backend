@@ -357,12 +357,16 @@ class OttuService
             ['gateway' => 'ottu', 'track_id' => $sessionId],
             array_merge($attributes, PaymentCreatorResolver::resolve($checkout->customer_id), [
                 'payment_number' => $this->generatePaymentNumber(),
-                'status' => 'pending',
+                'status' => Payment::STATUS_PENDING,
             ])
         );
 
         if (!$payment->wasRecentlyCreated) {
             $payment->fill($attributes);
+            if ($payment->status !== Payment::STATUS_COMPLETED) {
+                $payment->status = Payment::STATUS_PENDING;
+                $payment->paid_at = null;
+            }
             $payment->save();
         }
 
@@ -500,16 +504,149 @@ class OttuService
             ['gateway' => 'ottu', 'track_id' => $sessionId],
             array_merge($attributes, PaymentCreatorResolver::fromOrder($order), [
                 'payment_number' => $this->generatePaymentNumber(),
-                'status' => 'pending',
+                'status' => Payment::STATUS_PENDING,
             ])
         );
 
         if (!$payment->wasRecentlyCreated) {
             $payment->fill($attributes);
+            if ($payment->status !== Payment::STATUS_COMPLETED) {
+                $payment->status = Payment::STATUS_PENDING;
+                $payment->paid_at = null;
+            }
             $payment->save();
         }
 
         return $payment->fresh();
+    }
+
+    /**
+     * Find an existing Ottu payment link that can be reused for retry (invoice not yet paid).
+     *
+     * @return array{payment_link: string, session_id: string, payment: Payment|null}|null
+     */
+    public function findReusablePaymentForInvoice(Invoice $invoice, ?string $requiredSrc = null): ?array
+    {
+        if ($invoice->status === 'paid') {
+            return null;
+        }
+
+        $payments = Payment::query()
+            ->where('invoice_id', $invoice->id)
+            ->where('gateway', 'ottu')
+            ->whereIn('status', [Payment::STATUS_PENDING, Payment::STATUS_FAILED])
+            ->whereNotNull('track_id')
+            ->orderByDesc('id')
+            ->get();
+
+        foreach ($payments as $payment) {
+            if ($requiredSrc !== null && $requiredSrc !== ''
+                && $payment->payment_gateway_src
+                && $payment->payment_gateway_src !== $requiredSrc) {
+                continue;
+            }
+
+            $link = is_string($payment->payment_link) && $payment->payment_link !== ''
+                ? $payment->payment_link
+                : (is_string($invoice->payment_link) ? $invoice->payment_link : null);
+
+            if (!$link) {
+                continue;
+            }
+
+            if ($payment->status === Payment::STATUS_FAILED) {
+                $payment->update(['status' => Payment::STATUS_PENDING, 'paid_at' => null]);
+            }
+
+            return [
+                'payment_link' => $link,
+                'session_id' => (string) $payment->track_id,
+                'payment' => $payment->fresh(),
+            ];
+        }
+
+        $invoiceLink = $invoice->payment_link;
+        if (!is_string($invoiceLink) || $invoiceLink === '') {
+            return null;
+        }
+
+        $sessionId = $this->extractSessionIdFromUrl($invoiceLink);
+        if (!$sessionId) {
+            return null;
+        }
+
+        return [
+            'payment_link' => $invoiceLink,
+            'session_id' => $sessionId,
+            'payment' => null,
+        ];
+    }
+
+    /**
+     * Find an existing Ottu payment link that can be reused for a pending checkout.
+     *
+     * @return array{payment_link: string, session_id: string, payment: Payment|null}|null
+     */
+    public function findReusablePaymentForCheckout(OrderCheckout $checkout, ?string $requiredSrc = null): ?array
+    {
+        if (!$checkout->isPending()) {
+            return null;
+        }
+
+        if ($checkout->expires_at && $checkout->expires_at->isPast()) {
+            return null;
+        }
+
+        $effectiveSrc = $requiredSrc ?: $checkout->payment_gateway_src;
+
+        $payments = Payment::query()
+            ->where('order_checkout_id', $checkout->id)
+            ->where('gateway', 'ottu')
+            ->whereIn('status', [Payment::STATUS_PENDING, Payment::STATUS_FAILED])
+            ->whereNotNull('track_id')
+            ->orderByDesc('id')
+            ->get();
+
+        foreach ($payments as $payment) {
+            if ($effectiveSrc !== null && $effectiveSrc !== ''
+                && $payment->payment_gateway_src
+                && $payment->payment_gateway_src !== $effectiveSrc) {
+                continue;
+            }
+
+            $link = is_string($payment->payment_link) && $payment->payment_link !== ''
+                ? $payment->payment_link
+                : (is_string($checkout->payment_link) ? $checkout->payment_link : null);
+
+            if (!$link) {
+                continue;
+            }
+
+            if ($payment->status === Payment::STATUS_FAILED) {
+                $payment->update(['status' => Payment::STATUS_PENDING, 'paid_at' => null]);
+            }
+
+            return [
+                'payment_link' => $link,
+                'session_id' => (string) $payment->track_id,
+                'payment' => $payment->fresh(),
+            ];
+        }
+
+        $checkoutLink = $checkout->payment_link;
+        $sessionId = $checkout->ottu_session_id ?: (
+            is_string($checkoutLink) ? $this->extractSessionIdFromUrl($checkoutLink) : null
+        );
+
+        if (!is_string($checkoutLink) || $checkoutLink === '' || !$sessionId) {
+            return null;
+        }
+
+        return [
+            'payment_link' => $checkoutLink,
+            'session_id' => $sessionId,
+            'payment' => null,
+        ];
     }
 
     public function extractSessionIdFromUrl(string $paymentUrl): ?string
