@@ -239,6 +239,11 @@ class OttuPaymentProcessor
             ];
         }
 
+        if ($checkout->status === OrderCheckout::STATUS_FAILED) {
+            $checkout->update(['status' => OrderCheckout::STATUS_PENDING]);
+            $checkout->refresh();
+        }
+
         return app(OrderCheckoutService::class)->fulfillCheckout($checkout, $payment, $statusResult);
     }
 

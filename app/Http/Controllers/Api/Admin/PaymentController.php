@@ -512,6 +512,7 @@ class PaymentController extends BaseApiController
 
         $processedOrder = null;
         $statusResult = null;
+        $processResult = null;
 
         try {
             $statusResult = $this->ottuService->getPaymentStatusWithRetries($sessionId);
@@ -527,6 +528,14 @@ class PaymentController extends BaseApiController
                     $effectiveOrderNo
                 );
                 $processedOrder = $processResult['order'] ?? null;
+
+                if (!($processResult['processed'] ?? false)) {
+                    Log::error('Ottu success redirect: gateway success but payment not applied', [
+                        'session_id' => $sessionId,
+                        'order_no' => $orderNo,
+                        'reason' => $processResult['reason'] ?? null,
+                    ]);
+                }
             } else {
                 Log::info('Ottu success redirect: payment not successful at gateway', [
                     'session_id' => $sessionId,
@@ -544,10 +553,21 @@ class PaymentController extends BaseApiController
         }
 
         $order = $processedOrder ?? $this->resolveOrderFromCallback($request);
+
+        if (!$order && $orderNo) {
+            $fulfilledCheckout = OrderCheckout::query()
+                ->where('order_number', $orderNo)
+                ->whereNotNull('order_id')
+                ->first();
+            if ($fulfilledCheckout) {
+                $order = $this->orderRepository->findById((int) $fulfilledCheckout->order_id);
+            }
+        }
+
         $orderNumber = $order?->order_number ?? $orderNo;
 
         if (!$order) {
-            $showSuccess = $this->resolvePaymentOutcomeForRedirect($request, null, $statusResult);
+            $showSuccess = $this->resolvePaymentOutcomeForRedirect($request, null, $statusResult, $processResult);
 
             if ($this->isWebsiteOrderNumber($orderNumber) && !$request->expectsJson()) {
                 return redirect()->away($this->websitePaymentRedirectUrl($showSuccess, $request, $orderNumber));
@@ -564,7 +584,8 @@ class PaymentController extends BaseApiController
         $showSuccess = $this->resolvePaymentOutcomeForRedirect(
             $request,
             $order,
-            $statusResult ?? null
+            $statusResult ?? null,
+            $processResult
         );
 
         return $this->renderPaymentCallbackResponse($request, $order, $showSuccess);
@@ -572,39 +593,42 @@ class PaymentController extends BaseApiController
 
     /**
      * Decide success vs failed for the browser redirect (website page or dashboard blade).
-     * Uses Ottu redirect/API status first; invoice paid state is the fallback.
+     * Database state (paid invoice / completed payment) is the source of truth — not Ottu redirect alone.
      *
      * @param  array{is_success?: bool, is_failed?: bool}|null  $statusResult
+     * @param  array{processed?: bool, payment_status?: string}|null  $processResult
      */
     protected function resolvePaymentOutcomeForRedirect(
         Request $request,
         ?Order $order,
-        ?array $statusResult = null
+        ?array $statusResult = null,
+        ?array $processResult = null
     ): bool {
-        if ($statusResult !== null) {
-            if ($statusResult['is_success'] ?? false) {
-                return true;
-            }
-            if ($statusResult['is_failed'] ?? false) {
-                return false;
-            }
-        }
-
-        $result = strtolower(trim((string) ($request->query('result') ?? $request->input('result') ?? '')));
-        $state = strtolower(trim((string) ($request->query('state') ?? $request->input('state') ?? '')));
-
-        $successValues = ['success', 'paid', 'captured', 'completed', 'approved'];
-        $failedValues = ['failed', 'canceled', 'cancelled', 'error', 'declined', 'voided', 'expired'];
-
-        if (in_array($result, $successValues, true) || in_array($state, $successValues, true)) {
+        if ($order?->invoice?->status === 'paid') {
             return true;
         }
 
-        if (in_array($result, $failedValues, true) || in_array($state, $failedValues, true)) {
+        $sessionId = trim((string) ($request->query('session_id') ?? $request->input('session_id') ?? ''));
+        if ($sessionId !== '') {
+            $payment = Payment::query()
+                ->where('gateway', 'ottu')
+                ->where('track_id', $sessionId)
+                ->first();
+            if ($payment && $payment->status === Payment::STATUS_COMPLETED) {
+                return true;
+            }
+        }
+
+        if (($processResult['payment_status'] ?? null) === Payment::STATUS_COMPLETED
+            && ($processResult['processed'] ?? false)) {
+            return true;
+        }
+
+        if ($statusResult !== null && ($statusResult['is_failed'] ?? false)) {
             return false;
         }
 
-        return $order?->invoice?->status === 'paid';
+        return false;
     }
 
     /**

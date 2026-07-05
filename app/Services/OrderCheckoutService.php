@@ -280,9 +280,14 @@ class OrderCheckoutService
             }
 
             if (!$locked->isPending()) {
-                DB::rollBack();
+                if ($locked->status === OrderCheckout::STATUS_FAILED) {
+                    $locked->update(['status' => OrderCheckout::STATUS_PENDING]);
+                    $locked->refresh();
+                } else {
+                    DB::rollBack();
 
-                return ['processed' => false, 'reason' => 'checkout_not_pending'];
+                    return ['processed' => false, 'reason' => 'checkout_not_pending'];
+                }
             }
 
             $storedDraft = OrderDraft::fromPayloadArray($locked->draft());
