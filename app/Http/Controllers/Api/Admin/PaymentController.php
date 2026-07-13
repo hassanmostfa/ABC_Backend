@@ -64,6 +64,7 @@ class PaymentController extends BaseApiController
             'search' => 'nullable|string|max:1000',
             'status' => 'nullable|in:pending,completed,failed,refunded,cancelled',
             'method' => 'nullable|in:cash,card,online,bank_transfer,wallet',
+            'source' => 'nullable|in:app,web,call_center,website,calls,cals',
             'invoice_id' => 'nullable|integer|exists:invoices,id',
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date|after_or_equal:date_from',
@@ -75,6 +76,7 @@ class PaymentController extends BaseApiController
             'search' => $request->input('search'),
             'status' => $request->input('status'),
             'method' => $request->input('method'),
+            'source' => $request->input('source'),
             'invoice_id' => $request->input('invoice_id'),
             'date_from' => $request->input('date_from'),
             'date_to' => $request->input('date_to'),
@@ -521,6 +523,15 @@ class PaymentController extends BaseApiController
                 $receiptId = is_array($redirectParams['pg_params'] ?? null)
                     ? ($redirectParams['pg_params']['receipt_no'] ?? null)
                     : null;
+
+                $referenceNumber = $request->query('reference_number') ?? $request->input('reference_number');
+                if (is_string($referenceNumber) && trim($referenceNumber) !== '') {
+                    $statusResult['reference_number'] = trim($referenceNumber);
+                    if (empty($statusResult['payment_id'])) {
+                        $statusResult['payment_id'] = trim($referenceNumber);
+                    }
+                }
+
                 $processResult = $this->ottuPaymentProcessor->processVerifiedPayment(
                     $sessionId,
                     $statusResult,
@@ -611,10 +622,11 @@ class PaymentController extends BaseApiController
 
         $sessionId = trim((string) ($request->query('session_id') ?? $request->input('session_id') ?? ''));
         if ($sessionId !== '') {
-            $payment = Payment::query()
-                ->where('gateway', 'ottu')
-                ->where('track_id', $sessionId)
-                ->first();
+            $referenceNumber = $request->query('reference_number') ?? $request->input('reference_number');
+            $payment = $this->ottuPaymentProcessor->findOttuPayment(
+                $sessionId,
+                is_string($referenceNumber) ? $referenceNumber : null
+            );
             if ($payment && $payment->status === Payment::STATUS_COMPLETED) {
                 return true;
             }
@@ -818,7 +830,11 @@ class PaymentController extends BaseApiController
             }
         }
         if ($sessionId) {
-            $payment = Payment::where('gateway', 'ottu')->where('track_id', $sessionId)->first();
+            $referenceNumber = $request->query('reference_number') ?? $request->input('reference_number');
+            $payment = $this->ottuPaymentProcessor->findOttuPayment(
+                $sessionId,
+                is_string($referenceNumber) ? $referenceNumber : null
+            );
             if ($payment) {
                 if ($payment->order_checkout_id) {
                     $checkout = OrderCheckout::query()->find($payment->order_checkout_id);

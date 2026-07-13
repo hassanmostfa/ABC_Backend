@@ -48,7 +48,7 @@ class OrderController extends BaseApiController
         $request->validate([
             'search' => 'nullable|string|max:1000',
             'status' => 'nullable|in:pending,processing,completed,cancelled',
-            'payment_method' => 'nullable|in:cash,wallet',
+            'payment_method' => 'nullable|in:cash,wallet,online_link',
             'delivery_type' => 'nullable|in:pickup,delivery',
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date|after_or_equal:date_from',

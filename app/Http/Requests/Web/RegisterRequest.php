@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Web;
 
+use App\Rules\CustomerName;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\Password;
 
@@ -15,6 +16,17 @@ class RegisterRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('name')) {
+            $this->merge(['name' => CustomerName::normalize($this->input('name'))]);
+        }
+
+        if ($this->has('phone')) {
+            $this->merge(['phone' => \App\Support\KuwaitPhone::normalize($this->input('phone'))]);
+        }
+    }
+
     /**
      * Get the validation rules that apply to the request.
      *
@@ -23,7 +35,7 @@ class RegisterRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255', new CustomerName()],
             'email' => ['required', 'email', 'max:255', 'unique:customers,email'],
             'phone' => ['required', 'string', 'max:20', 'unique:customers,phone'],
             'password' => ['required', 'confirmed', Password::defaults()],
@@ -41,6 +53,7 @@ class RegisterRequest extends FormRequest
             'name.required' => 'The name field is required.',
             'name.string' => 'The name must be a string.',
             'name.max' => 'The name may not be greater than 255 characters.',
+            'name' => 'The name may only contain English or Arabic letters.',
             'email.required' => 'The email field is required.',
             'email.email' => 'The email must be a valid email address.',
             'email.max' => 'The email may not be greater than 255 characters.',

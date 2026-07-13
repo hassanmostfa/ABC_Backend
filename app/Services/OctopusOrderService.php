@@ -13,6 +13,7 @@ use App\Repositories\OrderRepositoryInterface;
 use App\Repositories\InvoiceRepositoryInterface;
 use App\Repositories\OrderItemRepositoryInterface;
 use App\Support\PaymentCreatorResolver;
+use App\Support\KuwaitPhone;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -256,10 +257,10 @@ class OctopusOrderService
      */
     protected function findOrCreateCustomer(array $data): Customer
     {
-        $phone = $data['phone'];
+        $phone = KuwaitPhone::normalize($data['phone'] ?? '');
         $name = $data['name'] ?? 'Octopus Customer';
 
-        $customer = Customer::where('phone', $phone)->first();
+        $customer = KuwaitPhone::findCustomer($phone);
 
         if (!$customer) {
             $customer = Customer::create([
@@ -269,6 +270,8 @@ class OctopusOrderService
                 'is_completed' => true,
                 'points' => 0,
             ]);
+        } else {
+            KuwaitPhone::ensureStoredFormat($customer);
         }
 
         return $customer;

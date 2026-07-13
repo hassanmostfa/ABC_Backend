@@ -6,6 +6,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Auth\AuthenticationException;
 use App\Http\Middleware\ApiAuth;
 use App\Http\Middleware\CheckAdminPermission;
+use App\Http\Middleware\EnsureCustomerAccountCompleted;
 use App\Http\Middleware\PreventUpdateCompletedOrder;
 use App\Http\Middleware\VerifyOctopusApiToken;
 use Illuminate\Validation\ValidationException;
@@ -25,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.permission' => CheckAdminPermission::class,
             'api.auth' => ApiAuth::class,
             'prevent.update.completed.order' => PreventUpdateCompletedOrder::class,
+            'customer.account.completed' => EnsureCustomerAccountCompleted::class,
             'octopus.token' => VerifyOctopusApiToken::class,
         ]);
         

@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Mobile;
 
+use App\Rules\CustomerName;
+
 class CompleteRegistrationRequest extends MobileFormRequest
 {
     public function authorize(): bool
@@ -9,10 +11,19 @@ class CompleteRegistrationRequest extends MobileFormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        parent::prepareForValidation();
+
+        if ($this->has('name')) {
+            $this->merge(['name' => CustomerName::normalize($this->input('name'))]);
+        }
+    }
+
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255', new CustomerName()],
             'email' => ['nullable', 'email', 'max:255', 'unique:customers,email'],
             'current_language' => ['required', 'in:en,ar'],
             'device_token' => ['required', 'string', 'max:1000'],
@@ -25,6 +36,7 @@ class CompleteRegistrationRequest extends MobileFormRequest
             'name.required' => $this->msg('The name field is required.', 'حقل الاسم مطلوب.'),
             'name.string' => $this->msg('The name must be a string.', 'يجب أن يكون الاسم نصاً.'),
             'name.max' => $this->msg('The name may not be greater than 255 characters.', 'الاسم لا يجوز أن يتجاوز 255 حرفاً.'),
+            'name' => $this->msg('The name may only contain English or Arabic letters.', 'الاسم يجب أن يحتوي على حروف إنجليزية أو عربية فقط.'),
             'email.email' => $this->msg('The email must be a valid email address.', 'يجب أن يكون البريد الإلكتروني صالحاً.'),
             'email.max' => $this->msg('The email may not be greater than 255 characters.', 'البريد الإلكتروني لا يجوز أن يتجاوز 255 حرفاً.'),
             'email.unique' => $this->msg('The email has already been taken.', 'البريد الإلكتروني مستخدم مسبقاً.'),
@@ -36,4 +48,3 @@ class CompleteRegistrationRequest extends MobileFormRequest
         ];
     }
 }
-

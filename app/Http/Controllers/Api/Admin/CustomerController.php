@@ -9,7 +9,9 @@ use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Repositories\CustomerRepositoryInterface;
+use App\Rules\CustomerName;
 use App\Services\ErpCustomerService;
+use App\Support\KuwaitPhone;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Rule;
@@ -88,8 +90,12 @@ class CustomerController extends BaseApiController
      */
     public function store(Request $request): JsonResponse
     {
+        if ($request->filled('phone')) {
+            $request->merge(['phone' => KuwaitPhone::normalize($request->input('phone'))]);
+        }
+
         $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => ['required', 'string', 'max:255', new CustomerName()],
             'phone' => 'required|string|max:20|unique:customers,phone',
             'email' => 'nullable|email|max:255|unique:customers,email',
             'is_active' => 'boolean',
@@ -114,6 +120,10 @@ class CustomerController extends BaseApiController
         ]);
 
         $customerData = $request->except('addresses');
+        if (isset($customerData['name'])) {
+            $customerData['name'] = CustomerName::normalize($customerData['name']);
+        }
+        $customerData['is_completed'] = true;
         $customer = $this->customerRepository->create($customerData);
         
         // Create addresses if provided
@@ -161,8 +171,12 @@ class CustomerController extends BaseApiController
      */
     public function update(Request $request, int $id): JsonResponse
     {
+        if ($request->filled('phone')) {
+            $request->merge(['phone' => KuwaitPhone::normalize($request->input('phone'))]);
+        }
+
         $request->validate([
-            'name' => 'sometimes|required|string|max:255',
+            'name' => ['sometimes', 'required', 'string', 'max:255', new CustomerName()],
             'phone' => 'sometimes|required|string|max:20|unique:customers,phone,' . $id,
             'email' => 'nullable|email|max:255|unique:customers,email,' . $id,
             'is_active' => 'boolean',
@@ -197,7 +211,12 @@ class CustomerController extends BaseApiController
             return $this->notFoundResponse('Customer not found');
         }
 
-        $customer = $this->customerRepository->update($id, $request->except('addresses'));
+        $updateData = $request->except('addresses');
+        if (array_key_exists('name', $updateData)) {
+            $updateData['name'] = CustomerName::normalize($updateData['name']);
+        }
+
+        $customer = $this->customerRepository->update($id, $updateData);
 
         if ($request->has('addresses') && is_array($request->addresses)) {
             $this->syncCustomerAddresses($customer, $request->addresses);

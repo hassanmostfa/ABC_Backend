@@ -280,7 +280,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
             // Orders Management
       Route::controller(OrderController::class)->prefix('orders')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:orders,view');
-         Route::post('/', 'store')->middleware('admin.permission:orders,add');
+         Route::post('/', 'store')->middleware(['admin.permission:orders,add', 'customer.account.completed']);
          Route::patch('/bulk-status', 'bulkUpdateStatus')->middleware('admin.permission:orders,edit');
          Route::get('/{id}', 'show')->middleware('admin.permission:orders,view');
          Route::put('/{id}', 'update')->middleware(['admin.permission:orders,edit', 'prevent.update.completed.order']);
@@ -538,7 +538,7 @@ Route::prefix('mobile/categories')->group(function () {
 // ================== Mobile Order Routes (Protected) ======================================================
 // =====================================================================================================
 Route::middleware('api.auth')->prefix('mobile/orders')->group(function () {
-   Route::post('/', [MobileOrderController::class, 'store']);
+   Route::post('/', [MobileOrderController::class, 'store'])->middleware('customer.account.completed');
    Route::get('/', [MobileOrderController::class, 'index']);
    Route::get('/{id}', [MobileOrderController::class, 'show']);
    Route::patch('/{id}/cancel', [MobileOrderController::class, 'cancel']);
@@ -548,7 +548,7 @@ Route::middleware('api.auth')->prefix('mobile/orders')->group(function () {
 
 // Website customer orders (same contract as mobile; order numbers use WEB- prefix; Upayments return/cancel URLs point at the marketing site)
 Route::middleware('api.auth')->prefix('web/orders')->group(function () {
-   Route::post('/', [WebOrderController::class, 'store']);
+   Route::post('/', [WebOrderController::class, 'store'])->middleware('customer.account.completed');
    Route::get('/', [WebOrderController::class, 'index']);
    Route::get('/{id}', [WebOrderController::class, 'show']);
    Route::patch('/{id}/cancel', [WebOrderController::class, 'cancel']);

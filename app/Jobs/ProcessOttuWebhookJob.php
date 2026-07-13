@@ -54,6 +54,14 @@ class ProcessOttuWebhookJob
             $statusResult['requested_order_id'] = $orderNo;
         }
 
+        $referenceNumber = $payload['reference_number'] ?? null;
+        if (is_string($referenceNumber) && trim($referenceNumber) !== '') {
+            $statusResult['reference_number'] = trim($referenceNumber);
+            if (empty($statusResult['payment_id'])) {
+                $statusResult['payment_id'] = trim($referenceNumber);
+            }
+        }
+
         try {
             $processResult = $ottuPaymentProcessor->processVerifiedPayment(
                 $sessionId,

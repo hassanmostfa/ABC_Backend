@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api;
 
+use App\Rules\CustomerName;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreOctopusOrderRequest extends FormRequest
@@ -27,13 +28,17 @@ class StoreOctopusOrderRequest extends FormRequest
         if (!$this->has('src') || $this->input('src') === null) {
             $this->merge(['src' => 'octopus']);
         }
+
+        if ($this->has('name')) {
+            $this->merge(['name' => CustomerName::normalize($this->input('name'))]);
+        }
     }
 
     public function rules(): array
     {
         return [
             'phone' => 'required|string|max:20',
-            'name' => 'required|string|max:255',
+            'name' => ['required', 'string', 'max:255', new CustomerName()],
             'payment_method' => 'required|in:cash,online_link',
             'address' => 'required|string|max:1000',
             'note' => 'nullable|string|max:1000',

@@ -742,13 +742,16 @@ class OttuService
     }
 
     /**
-     * @return array{gateway_status_raw: mixed, is_success: bool, is_failed: bool, amount: float|null, currency: string|null, track_id: string, receipt_id: string|null, payment_id: string|null, tran_id: string|null, requested_order_id: string|null}
+     * @return array{gateway_status_raw: mixed, is_success: bool, is_failed: bool, amount: float|null, currency: string|null, track_id: string, reference_number: string|null, receipt_id: string|null, payment_id: string|null, tran_id: string|null, requested_order_id: string|null}
      */
     protected function buildStatusResultFromCheckoutBody(array $body, string $sessionId): array
     {
         $result = $body['result'] ?? null;
         $state = $body['state'] ?? null;
         $pgParams = is_array($body['pg_params'] ?? null) ? $body['pg_params'] : [];
+        $referenceNumber = isset($body['reference_number']) && (string) $body['reference_number'] !== ''
+            ? (string) $body['reference_number']
+            : null;
 
         return [
             'gateway_status_raw' => $result ?? $state,
@@ -757,9 +760,10 @@ class OttuService
             'amount' => isset($body['amount']) ? (float) $body['amount'] : null,
             'currency' => isset($body['currency_code']) ? (string) $body['currency_code'] : null,
             'track_id' => $sessionId,
+            'reference_number' => $referenceNumber,
             'receipt_id' => $pgParams['receipt_no'] ?? $pgParams['receipt_id'] ?? null,
             'payment_id' => $pgParams['payment_id']
-                ?? (isset($body['reference_number']) ? (string) $body['reference_number'] : null),
+                ?? $referenceNumber,
             'tran_id' => $pgParams['transaction_id']
                 ?? $pgParams['tran_id']
                 ?? $pgParams['ref']

@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\DeviceToken;
 use App\Models\Setting;
 use App\Http\Resources\Mobile\CustomerResource;
+use App\Support\KuwaitPhone;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 
@@ -40,10 +41,8 @@ class OtpService
             ];
         }
 
-        // Combine phone_code and phone for lookup
-        $fullPhone = $phoneCode . $phone;
-        // Remove + from phone_code if present for lookup
-        $fullPhone = str_replace('+', '', $fullPhone);
+        // Combine phone_code and phone for lookup / storage format
+        $normalizedPhone = KuwaitPhone::normalize($phoneCode . $phone);
 
         // Delete any existing unused OTPs for this phone to allow new requests
         Otp::where('phone', $phone)
@@ -54,7 +53,7 @@ class OtpService
 
         // For login type, check if customer exists and is active
         if ($otpType === 'login') {
-            $customer = Customer::where('phone', $fullPhone)->first();
+            $customer = KuwaitPhone::findCustomer($normalizedPhone);
 
             $locale = $this->getLocale();
 
@@ -72,11 +71,13 @@ class OtpService
                     'message' => $locale === 'ar' ? 'الحساب غير نشط. يرجى الاتصال بالدعم.' : 'Account is inactive. Please contact support.'
                 ];
             }
+
+            KuwaitPhone::ensureStoredFormat($customer);
         }
 
         // For register type, check if customer already exists
         if ($otpType === 'register') {
-            $existingCustomer = Customer::where('phone', $fullPhone)->first();
+            $existingCustomer = KuwaitPhone::findCustomer($normalizedPhone);
 
             $locale = $this->getLocale();
 
@@ -205,13 +206,11 @@ class OtpService
             ];
         }
 
-        // Combine phone_code and phone for storage
-        $fullPhone = $otp->phone_code . $otp->phone;
-        // Remove + from phone_code if present for storage
-        $fullPhone = str_replace('+', '', $fullPhone);
+        // Store customer phone in dashboard format: +965 76858548
+        $fullPhone = KuwaitPhone::normalize($otp->phone_code . $otp->phone);
 
         // Find or create customer
-        $customer = Customer::where('phone', $fullPhone)->first();
+        $customer = KuwaitPhone::findCustomer($fullPhone);
 
         // For login type, customer must exist
         if ($otp->otp_type === 'login' && !$customer) {
@@ -233,6 +232,8 @@ class OtpService
             ]);
             // Assign welcome coupon (valid for one month) for first registration
             app(\App\Services\CouponService::class)->createWelcomeCouponForCustomer($customer);
+        } elseif ($customer) {
+            KuwaitPhone::ensureStoredFormat($customer);
         }
 
         // Store device token if provided

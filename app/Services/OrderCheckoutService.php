@@ -311,6 +311,7 @@ class OrderCheckoutService
                 'reference' => $order->order_number,
                 'status' => 'completed',
                 'paid_at' => now('Asia/Kuwait'),
+                'track_id' => $this->resolveCompletedTrackId($statusResult, $payment),
                 'tran_id' => $statusResult['tran_id'] ?? $payment->tran_id,
                 'payment_id' => $statusResult['payment_id'] ?? $payment->payment_id,
                 'receipt_id' => $statusResult['receipt_id'] ?? $payment->receipt_id,
@@ -349,6 +350,19 @@ class OrderCheckoutService
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Prefer Ottu reference_number as track_id when payment completes.
+     */
+    protected function resolveCompletedTrackId(array $statusResult, Payment $payment): string
+    {
+        $referenceNumber = $statusResult['reference_number'] ?? null;
+        if (is_string($referenceNumber) && trim($referenceNumber) !== '') {
+            return trim($referenceNumber);
+        }
+
+        return (string) ($payment->track_id ?? '');
     }
 
     /**

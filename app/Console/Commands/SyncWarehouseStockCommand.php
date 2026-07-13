@@ -60,11 +60,10 @@ class SyncWarehouseStockCommand extends Command
         $stockData = $result['body']['data'] ?? [];
 
         if (empty($stockData)) {
-            $this->warn("[!] No stock data returned from warehouse API.");
-            return self::SUCCESS;
+            $this->warn("[!] No stock data returned from warehouse API. Local variants not in ERP will be set to 0.");
+        } else {
+            $this->line("[i] Raw stock entries: " . count($stockData));
         }
-
-        $this->line("[i] Raw stock entries: " . count($stockData));
 
         $quantityByItemCode = $warehouseStockService->aggregateQuantitiesByItemCode($stockData);
 
@@ -72,7 +71,9 @@ class SyncWarehouseStockCommand extends Command
         $this->line("[~] Matching with product variants in database...");
 
         $apiSkus = array_keys($quantityByItemCode);
-        $variants = ProductVariant::whereIn('sku', $apiSkus)->get();
+        $variants = $apiSkus === []
+            ? collect()
+            : ProductVariant::whereIn('sku', $apiSkus)->get();
 
         $this->line("[i] Variants matched in DB: " . $variants->count());
 
@@ -97,11 +98,28 @@ class SyncWarehouseStockCommand extends Command
             }
         }
 
+        // Variants present locally but missing from ERP stock → quantity 0
+        $missingQuery = ProductVariant::query()->where('quantity', '!=', 0);
+        if ($apiSkus !== []) {
+            $missingQuery->whereNotIn('sku', $apiSkus);
+        }
+
+        $missingVariants = $missingQuery->get(['id', 'sku', 'quantity']);
+        $zeroed = 0;
+
+        foreach ($missingVariants as $variant) {
+            $oldQty = $variant->quantity;
+            $variant->update(['quantity' => 0]);
+            $this->line("  [0] {$variant->sku}: {$oldQty} -> 0 (not in ERP)");
+            $zeroed++;
+        }
+
         $notFound = count($quantityByItemCode) - $variants->count();
 
         $this->line('');
         $this->info("[=] Sync Summary:");
         $this->line("  [+] Updated:    {$updated}");
+        $this->line("  [0] Zeroed:     {$zeroed}");
         $this->line("  [-] Unchanged:  {$skipped}");
         $this->line("  [?] Not in DB:  {$notFound}");
         $this->info("[*] Warehouse Stock Sync Completed");
@@ -113,6 +131,7 @@ class SyncWarehouseStockCommand extends Command
             'aggregated_skus' => count($quantityByItemCode),
             'variants_found' => $variants->count(),
             'updated' => $updated,
+            'zeroed' => $zeroed,
             'skipped' => $skipped,
             'not_in_db' => $notFound,
         ]);

@@ -2,6 +2,8 @@
 
 namespace App\Repositories;
 
+use App\Models\Admin;
+use App\Models\Customer;
 use App\Models\Order;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -114,6 +116,18 @@ class OrderRepository implements OrderRepositoryInterface
                 ->orWhereHas('charity', function (Builder $charityQuery) use ($search) {
                     $charityQuery->where('name_en', 'LIKE', "%{$search}%")
                         ->orWhere('name_ar', 'LIKE', "%{$search}%");
+                })
+                ->orWhereHasMorph('createdBy', [Admin::class, Customer::class], function (Builder $creatorQuery, string $type) use ($search) {
+                    $creatorQuery->where(function (Builder $match) use ($search, $type) {
+                        $match->where('name', 'LIKE', "%{$search}%")
+                            ->orWhere('email', 'LIKE', "%{$search}%")
+                            ->orWhere('phone', 'LIKE', "%{$search}%");
+
+                        if ($type === Admin::class) {
+                            $match->orWhere('employee_code', 'LIKE', "%{$search}%")
+                                ->orWhere('admin_id', 'LIKE', "%{$search}%");
+                        }
+                    });
                 });
         });
     }

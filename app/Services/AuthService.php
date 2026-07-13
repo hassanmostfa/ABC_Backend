@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Customer;
 use App\Jobs\DispatchErpCustomerJob;
 use App\Services\ErpCustomerService;
+use App\Support\KuwaitPhone;
 use Illuminate\Support\Facades\Auth;
 use App\Services\CouponService;
 use Illuminate\Support\Facades\Hash;
@@ -17,40 +18,36 @@ class AuthService
      */
     public function register(array $data): array
     {
-        // Check if customer already exists with email or phone
-        $existingCustomer = Customer::where('email', $data['email'])
-            ->orWhere('phone', $data['phone'])
-            ->first();
+        $data['phone'] = KuwaitPhone::normalize($data['phone'] ?? '');
 
-        if ($existingCustomer) {
-            if ($existingCustomer->email === $data['email']) {
-                throw ValidationException::withMessages([
-                    'email' => ['The email has already been taken.']
-                ]);
-            }
-            if ($existingCustomer->phone === $data['phone']) {
-                throw ValidationException::withMessages([
-                    'phone' => ['The phone has already been taken.']
-                ]);
-            }
+        $existingByEmail = Customer::where('email', $data['email'])->first();
+        if ($existingByEmail) {
+            throw ValidationException::withMessages([
+                'email' => ['The email has already been taken.']
+            ]);
         }
 
-        // Create new customer
+        $existingByPhone = KuwaitPhone::findCustomer($data['phone']);
+        if ($existingByPhone) {
+            throw ValidationException::withMessages([
+                'phone' => ['The phone has already been taken.']
+            ]);
+        }
+
         $customer = Customer::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'phone' => $data['phone'],
             'password' => Hash::make($data['password']),
             'is_active' => true,
+            'is_completed' => true,
             'points' => 0,
         ]);
 
-        // Assign welcome coupon (valid for one month) for first registration
         app(CouponService::class)->createWelcomeCouponForCustomer($customer);
 
         DispatchErpCustomerJob::dispatchAfterResponse($customer->id, ErpCustomerService::SOURCE_WEB);
 
-        // Generate token
         $token = $customer->createToken('auth_token')->plainTextToken;
 
         return [
@@ -65,11 +62,16 @@ class AuthService
      */
     public function login(array $credentials): array
     {
-        // Determine if login is by email or phone
         $field = filter_var($credentials['login'], FILTER_VALIDATE_EMAIL) ? 'email' : 'phone';
-        
-        // Find customer by email or phone
-        $customer = Customer::where($field, $credentials['login'])->first();
+
+        if ($field === 'email') {
+            $customer = Customer::where('email', $credentials['login'])->first();
+        } else {
+            $customer = KuwaitPhone::findCustomer($credentials['login']);
+            if ($customer) {
+                KuwaitPhone::ensureStoredFormat($customer);
+            }
+        }
 
         if (!$customer || !Hash::check($credentials['password'], $customer->password)) {
             throw ValidationException::withMessages([
@@ -83,10 +85,8 @@ class AuthService
             ]);
         }
 
-        // Delete existing tokens
         $customer->tokens()->delete();
 
-        // Generate new token
         $token = $customer->createToken('auth_token')->plainTextToken;
 
         return [
@@ -101,9 +101,8 @@ class AuthService
      */
     public function logout(Customer $customer): bool
     {
-        // Delete all tokens for the customer
         $customer->tokens()->delete();
-        
+
         return true;
     }
 
@@ -120,9 +119,11 @@ class AuthService
      */
     public function customerExists(string $email, string $phone): bool
     {
-        return Customer::where('email', $email)
-            ->orWhere('phone', $phone)
-            ->exists();
+        if (Customer::where('email', $email)->exists()) {
+            return true;
+        }
+
+        return KuwaitPhone::findCustomer($phone) !== null;
     }
 
     /**
@@ -134,7 +135,6 @@ class AuthService
             'password' => Hash::make($newPassword)
         ]);
 
-        // Delete all existing tokens to force re-login
         $customer->tokens()->delete();
 
         return true;

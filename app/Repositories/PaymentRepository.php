@@ -69,6 +69,16 @@ class PaymentRepository implements PaymentRepositoryInterface
             $query->where('method', $filters['method']);
         }
 
+        // Filter by checkout source (app / web / call_center); omit to return all
+        if (isset($filters['source']) && !empty(trim($filters['source']))) {
+            $source = $this->normalizePaymentSource((string) $filters['source']);
+            if ($source !== null) {
+                $query->whereHas('orderCheckout', function (Builder $checkoutQuery) use ($source) {
+                    $checkoutQuery->where('source', $source);
+                });
+            }
+        }
+
         // Filter by amount range
         if (isset($filters['min_amount']) && is_numeric($filters['min_amount'])) {
             $query->where('amount', '>=', $filters['min_amount']);
@@ -114,6 +124,21 @@ class PaymentRepository implements PaymentRepositoryInterface
         $query->orderBy($sortBy, $sortOrder);
 
         return $query->paginate($perPage);
+    }
+
+    /**
+     * Normalize API source aliases to stored checkout source values.
+     */
+    protected function normalizePaymentSource(string $source): ?string
+    {
+        $source = strtolower(trim($source));
+
+        return match ($source) {
+            'app' => 'app',
+            'web', 'website' => 'web',
+            'call_center', 'calls', 'cals' => 'call_center',
+            default => null,
+        };
     }
 
     protected function applyPaymentSearch(Builder $query, string $search): void

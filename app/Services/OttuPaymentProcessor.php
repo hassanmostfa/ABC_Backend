@@ -132,17 +132,6 @@ class OttuPaymentProcessor
             return (string) $pending->track_id;
         }
 
-        $completed = Payment::query()
-            ->where('gateway', 'ottu')
-            ->where('invoice_id', $invoice->id)
-            ->whereNotNull('track_id')
-            ->orderByDesc('id')
-            ->first();
-
-        if ($completed?->track_id) {
-            return (string) $completed->track_id;
-        }
-
         if (is_string($invoice->payment_link) && $invoice->payment_link !== '') {
             return $this->ottuService->extractSessionIdFromUrl($invoice->payment_link);
         }
@@ -151,14 +140,55 @@ class OttuPaymentProcessor
     }
 
     /**
+     * Find an Ottu payment by session id and/or gateway reference_number.
+     * Pending rows use session_id as track_id; completed rows store reference_number as track_id.
+     */
+    public function findOttuPayment(string $sessionId, ?string $referenceNumber = null): ?Payment
+    {
+        $payment = Payment::query()
+            ->where('gateway', 'ottu')
+            ->where('track_id', $sessionId)
+            ->first();
+
+        if ($payment) {
+            return $payment;
+        }
+
+        $referenceNumber = is_string($referenceNumber) ? trim($referenceNumber) : '';
+        if ($referenceNumber === '') {
+            return null;
+        }
+
+        return Payment::query()
+            ->where('gateway', 'ottu')
+            ->where(function ($q) use ($referenceNumber) {
+                $q->where('track_id', $referenceNumber)
+                    ->orWhere('payment_id', $referenceNumber);
+            })
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
+     * Prefer Ottu reference_number as stored track_id once payment succeeds.
+     */
+    protected function resolveStoredTrackId(array $statusResult, string $sessionId): string
+    {
+        $referenceNumber = $statusResult['reference_number'] ?? null;
+        if (is_string($referenceNumber) && trim($referenceNumber) !== '') {
+            return trim($referenceNumber);
+        }
+
+        return $sessionId;
+    }
+
+    /**
      * @return array{processed: bool, idempotent?: bool, order?: Order, payment_status?: string, reason?: string}
      */
     public function processVerifiedCheckoutPayment(string $trackId, array $statusResult): array
     {
-        $payment = Payment::query()
-            ->where('gateway', 'ottu')
-            ->where('track_id', $trackId)
-            ->first();
+        $referenceNumber = isset($statusResult['reference_number']) ? (string) $statusResult['reference_number'] : null;
+        $payment = $this->findOttuPayment($trackId, $referenceNumber);
 
         if (!$payment || $payment->type !== Payment::TYPE_ORDER_CHECKOUT) {
             $checkout = null;
@@ -256,10 +286,8 @@ class OttuPaymentProcessor
         ?string $receiptId = null,
         ?string $fallbackOrderNumber = null
     ): array {
-        $existingPayment = Payment::query()
-            ->where('gateway', 'ottu')
-            ->where('track_id', $trackId)
-            ->first();
+        $referenceNumber = isset($statusResult['reference_number']) ? (string) $statusResult['reference_number'] : null;
+        $existingPayment = $this->findOttuPayment($trackId, $referenceNumber);
 
         if ($existingPayment && $existingPayment->type === Payment::TYPE_ORDER_CHECKOUT) {
             return $this->processVerifiedCheckoutPayment($trackId, $statusResult);
@@ -285,10 +313,7 @@ class OttuPaymentProcessor
         }
 
         if (!($statusResult['is_success'] ?? false) && $this->shouldAllowPaymentRetry()) {
-            $existingPayment = Payment::query()
-                ->where('gateway', 'ottu')
-                ->where('track_id', $trackId)
-                ->first();
+            $existingPayment = $this->findOttuPayment($trackId, $referenceNumber);
 
             if ($existingPayment && $existingPayment->status === Payment::STATUS_COMPLETED) {
                 return [
@@ -314,10 +339,13 @@ class OttuPaymentProcessor
         $newStatus = $this->resolvePaymentStatus($statusResult);
         $amount = $statusResult['amount'] ?? (float) $invoice->amount_due;
         $orderFields = $this->orderPaymentFields($order, $invoice, $amount, $statusResult, $receiptId);
+        $storedTrackId = $newStatus === Payment::STATUS_COMPLETED
+            ? $this->resolveStoredTrackId($statusResult, $trackId)
+            : $trackId;
 
         DB::beginTransaction();
         try {
-            $payment = Payment::where('gateway', $gateway)->where('track_id', $trackId)->first();
+            $payment = $this->findOttuPayment($trackId, $referenceNumber);
             if ($payment) {
                 if ($payment->status === 'completed') {
                     DB::commit();
@@ -330,6 +358,7 @@ class OttuPaymentProcessor
                     ];
                 }
                 $payment->update(array_merge($orderFields, [
+                    'track_id' => $storedTrackId,
                     'status' => $newStatus,
                     'paid_at' => $newStatus === 'completed' ? now('Asia/Kuwait') : null,
                     'tran_id' => $statusResult['tran_id'] ?? $payment->tran_id,
@@ -341,7 +370,7 @@ class OttuPaymentProcessor
                 $payment = Payment::create(array_merge($orderFields, [
                     'payment_number' => $this->generatePaymentNumber(),
                     'gateway' => $gateway,
-                    'track_id' => $trackId,
+                    'track_id' => $storedTrackId,
                     'status' => $newStatus,
                     'paid_at' => $newStatus === 'completed' ? now('Asia/Kuwait') : null,
                 ]));
@@ -369,7 +398,7 @@ class OttuPaymentProcessor
                     DispatchErpOrderJob::dispatchAfterResponse($order->id);
                 } catch (\Exception $e) {
                     Log::warning('Ottu payment recorded but post-payment dispatch failed', [
-                        'track_id' => $trackId,
+                        'track_id' => $storedTrackId,
                         'order_id' => $order->id,
                         'message' => $e->getMessage(),
                     ]);
@@ -414,7 +443,7 @@ class OttuPaymentProcessor
                 }
             } catch (\Exception $e) {
                 Log::warning('Failed to dispatch verified payment notification', [
-                    'track_id' => $trackId,
+                    'track_id' => $storedTrackId,
                     'order_number' => $orderNumber,
                     'message' => $e->getMessage(),
                 ]);
