@@ -32,6 +32,7 @@ class OrderService
     protected $ottuService;
     protected $ottuPaymentProcessor;
     protected $couponService;
+    protected OrderCancellationService $orderCancellationService;
 
     public function __construct(
         OrderRepositoryInterface $orderRepository,
@@ -44,10 +45,12 @@ class OrderService
         CustomerRepositoryInterface $customerRepository,
         OttuService $ottuService,
         OttuPaymentProcessor $ottuPaymentProcessor,
-        CouponService $couponService
+        CouponService $couponService,
+        OrderCancellationService $orderCancellationService
     ) {
         $this->orderRepository = $orderRepository;
         $this->invoiceRepository = $invoiceRepository;
+        $this->orderCancellationService = $orderCancellationService;
         $this->orderItemService = $orderItemService;
         $this->offerService = $offerService;
         $this->invoiceService = $invoiceService;
@@ -221,7 +224,20 @@ class OrderService
         }
 
         $source = $data['source'] ?? 'call_center';
-        $orderData = Arr::except($data, ['items', 'source', 'offer_ids', 'offers', 'src', 'coupons_discount', 'coupon_code']);
+        $orderData = Arr::except($data, [
+            'items',
+            'source',
+            'offer_ids',
+            'offers',
+            'src',
+            'coupons_discount',
+            'coupon_code',
+            'acting_admin_id',
+            'created_by_id',
+            'created_by_type',
+            'order_number',
+            'reason',
+        ]);
 
         if (isset($orderData['delivery_type']) && $orderData['delivery_type'] === 'delivery') {
             unset($orderData['delivery_type']);
@@ -244,15 +260,26 @@ class OrderService
             $orderData['payment_gateway_src'] = $paymentGatewaySrc;
         }
 
-        $actingAdminId = isset($data['acting_admin_id']) ? (int) $data['acting_admin_id'] : null;
-        $creator = PaymentCreatorResolver::resolveForOrder(
-            $customerId ? (int) $customerId : null,
-            $source,
-            $actingAdminId > 0 ? $actingAdminId : null
-        );
-        if ($creator['creator_id'] !== null && $creator['creator_type'] !== null) {
-            $orderData['created_by_id'] = $creator['creator_id'];
-            $orderData['created_by_type'] = $creator['creator_type'];
+        $explicitCreatorId = isset($data['created_by_id']) ? (int) $data['created_by_id'] : null;
+        $explicitCreatorType = $data['created_by_type'] ?? null;
+        if (
+            $explicitCreatorId > 0
+            && is_string($explicitCreatorType)
+            && in_array($explicitCreatorType, [\App\Models\Admin::class, \App\Models\Customer::class], true)
+        ) {
+            $orderData['created_by_id'] = $explicitCreatorId;
+            $orderData['created_by_type'] = $explicitCreatorType;
+        } else {
+            $actingAdminId = isset($data['acting_admin_id']) ? (int) $data['acting_admin_id'] : null;
+            $creator = PaymentCreatorResolver::resolveForOrder(
+                $customerId ? (int) $customerId : null,
+                $source,
+                $actingAdminId > 0 ? $actingAdminId : null
+            );
+            if ($creator['creator_id'] !== null && $creator['creator_type'] !== null) {
+                $orderData['created_by_id'] = $creator['creator_id'];
+                $orderData['created_by_type'] = $creator['creator_type'];
+            }
         }
 
         if (array_key_exists('note', $orderData)) {
@@ -815,6 +842,93 @@ class OrderService
      *
      * @return array{success: bool, message: string, payment_link?: string, order?: Order}
      */
+    /**
+     * Cancel a cash-on-delivery order by order number and create a replacement with the same creator.
+     *
+     * @param array<string, mixed> $newOrderData
+     * @return array{success: bool, message: string, cancelled_order?: Order, order?: Order, is_checkout?: bool, checkout?: mixed}
+     */
+    public function recreateCashOrder(string $orderNumber, array $newOrderData, ?string $reason = null): array
+    {
+        $existingOrder = $this->orderRepository->findByOrderNumber($orderNumber);
+        if (!$existingOrder) {
+            return ['success' => false, 'message' => 'Order not found'];
+        }
+
+        if ($existingOrder->payment_method !== 'cash') {
+            return ['success' => false, 'message' => 'Only cash on delivery orders can be recreated'];
+        }
+
+        if ($existingOrder->status === 'cancelled') {
+            return ['success' => false, 'message' => 'Order is already cancelled'];
+        }
+
+        if ($existingOrder->status === 'completed') {
+            return ['success' => false, 'message' => 'Completed orders cannot be recreated'];
+        }
+
+        $creator = PaymentCreatorResolver::fromOrder($existingOrder);
+        $existingOrderId = $existingOrder->id;
+
+        $cancelResult = $this->orderCancellationService->cancelOrder(
+            $existingOrderId,
+            $reason ?? 'Order recreated with new data'
+        );
+
+        if (!$cancelResult['success']) {
+            return ['success' => false, 'message' => $cancelResult['message']];
+        }
+
+        $this->orderItemService->restoreStockForOrder($existingOrderId);
+
+        $newOrderData['source'] = $newOrderData['source'] ?? $this->inferSourceFromOrderNumber($orderNumber);
+        $newOrderData['payment_method'] = $newOrderData['payment_method'] ?? 'cash';
+
+        if ($creator['creator_id'] !== null && $creator['creator_type'] !== null) {
+            $newOrderData['created_by_id'] = $creator['creator_id'];
+            $newOrderData['created_by_type'] = $creator['creator_type'];
+        }
+
+        // Do not let the current admin override the original creator.
+        unset($newOrderData['acting_admin_id']);
+
+        $createResult = $this->createOrder($newOrderData);
+
+        $cancelledOrder = $this->orderRepository->findById($existingOrderId);
+        if ($cancelledOrder) {
+            $cancelledOrder->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice', 'customerAddress', 'createdBy']);
+        }
+
+        if (!empty($createResult['is_checkout'])) {
+            return [
+                'success' => true,
+                'message' => 'Cash order cancelled and replacement checkout created',
+                'cancelled_order' => $cancelledOrder,
+                'is_checkout' => true,
+                'checkout' => $createResult['checkout'],
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Cash order cancelled and recreated successfully',
+            'cancelled_order' => $cancelledOrder,
+            'order' => $createResult['order'],
+        ];
+    }
+
+    protected function inferSourceFromOrderNumber(string $orderNumber): string
+    {
+        if (str_starts_with($orderNumber, 'APP-')) {
+            return 'app';
+        }
+        if (str_starts_with($orderNumber, 'WEB-')) {
+            return 'web';
+        }
+
+        return 'call_center';
+    }
+
     public function switchCashOrderToOnlinePayment(int $orderId, string $paymentGatewaySrc): array
     {
         $order = Order::with(['invoice.payments', 'items', 'customer'])->find($orderId);

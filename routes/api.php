@@ -281,6 +281,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
       Route::controller(OrderController::class)->prefix('orders')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:orders,view');
          Route::post('/', 'store')->middleware(['admin.permission:orders,add', 'customer.account.completed']);
+         Route::post('/recreate-cash', 'recreateCash')->middleware(['admin.permission:orders,add', 'customer.account.completed']);
          Route::patch('/bulk-status', 'bulkUpdateStatus')->middleware('admin.permission:orders,edit');
          Route::get('/{id}', 'show')->middleware('admin.permission:orders,view');
          Route::put('/{id}', 'update')->middleware(['admin.permission:orders,edit', 'prevent.update.completed.order']);

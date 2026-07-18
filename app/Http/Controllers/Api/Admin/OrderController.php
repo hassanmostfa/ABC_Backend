@@ -6,6 +6,7 @@ use App\Exceptions\PendingOnlineInvoiceException;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Controllers\Concerns\HandlesOrderCheckouts;
 use App\Http\Requests\Admin\BulkUpdateOrderStatusRequest;
+use App\Http\Requests\Admin\RecreateCashOrderRequest;
 use App\Http\Requests\Admin\StoreOrderRequest;
 use App\Http\Requests\Admin\UpdateOrderRequest;
 use App\Http\Resources\Admin\OrderResource;
@@ -132,6 +133,59 @@ class OrderController extends BaseApiController
             }
 
             return $this->createdResponse(new OrderResource($result['order']), 'Order created successfully');
+        } catch (PendingOnlineInvoiceException $e) {
+            return $this->pendingOnlineInvoiceResponse($e, $request, $e->getMessage());
+        } catch (\Exception $e) {
+            $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 500;
+            return $this->errorResponse($e->getMessage(), $code);
+        }
+    }
+
+    /**
+     * Cancel a cash-on-delivery order by order number and create a new order with the same creator.
+     */
+    public function recreateCash(RecreateCashOrderRequest $request): JsonResponse
+    {
+        try {
+            $orderData = $request->validated();
+            $orderNumber = $orderData['order_number'];
+            $reason = $orderData['reason'] ?? null;
+            unset($orderData['order_number'], $orderData['reason']);
+
+            $result = $this->orderService->recreateCashOrder($orderNumber, $orderData, $reason);
+
+            if (!$result['success']) {
+                $code = in_array($result['message'], ['Order not found'], true) ? 404 : 400;
+                return $this->errorResponse($result['message'], $code);
+            }
+
+            if (!empty($result['is_checkout'])) {
+                $checkout = $result['checkout'];
+                $checkout->load('customer');
+                logAdminActivity('recreated cash order as checkout', 'OrderCheckout', $checkout->id, [
+                    'cancelled_order_id' => $result['cancelled_order']?->id,
+                    'cancelled_order_number' => $orderNumber,
+                ]);
+
+                return $this->createdResponse([
+                    'cancelled_order' => $result['cancelled_order']
+                        ? new OrderResource($result['cancelled_order'])
+                        : null,
+                    'order' => new CheckoutAsOrderResource($checkout),
+                ], $result['message']);
+            }
+
+            logAdminActivity('recreated cash order', 'Order', $result['order']->id, [
+                'cancelled_order_id' => $result['cancelled_order']?->id,
+                'cancelled_order_number' => $orderNumber,
+            ]);
+
+            return $this->createdResponse([
+                'cancelled_order' => $result['cancelled_order']
+                    ? new OrderResource($result['cancelled_order'])
+                    : null,
+                'order' => new OrderResource($result['order']),
+            ], $result['message']);
         } catch (PendingOnlineInvoiceException $e) {
             return $this->pendingOnlineInvoiceResponse($e, $request, $e->getMessage());
         } catch (\Exception $e) {

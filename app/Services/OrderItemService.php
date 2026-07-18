@@ -443,5 +443,27 @@ class OrderItemService
             $this->orderItemRepository->delete($currentItem->id);
         }
     }
+
+    /**
+     * Restore variant stock for an order's items without deleting the items.
+     */
+    public function restoreStockForOrder(int $orderId): void
+    {
+        $currentItems = $this->orderItemRepository->getByOrder($orderId);
+        $quantityByVariant = $currentItems->groupBy('variant_id')->map(fn ($rows) => (int) $rows->sum('quantity'));
+
+        if ($quantityByVariant->isEmpty()) {
+            return;
+        }
+
+        $variants = ProductVariant::whereIn('id', $quantityByVariant->keys()->all())->get()->keyBy('id');
+
+        foreach ($quantityByVariant as $variantId => $qty) {
+            $variant = $variants->get($variantId);
+            if ($variant) {
+                $variant->update(['quantity' => ($variant->quantity ?? 0) + $qty]);
+            }
+        }
+    }
 }
 
