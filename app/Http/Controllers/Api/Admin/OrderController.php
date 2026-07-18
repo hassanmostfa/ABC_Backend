@@ -18,6 +18,7 @@ use App\Models\OrderCheckout;
 use App\Repositories\OrderRepositoryInterface;
 use App\Services\OrderCancellationService;
 use App\Services\OrderService;
+use App\Services\RefundRequestService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -29,15 +30,18 @@ class OrderController extends BaseApiController
     protected $orderRepository;
     protected $orderService;
     protected $orderCancellationService;
+    protected RefundRequestService $refundRequestService;
 
     public function __construct(
         OrderRepositoryInterface $orderRepository,
         OrderService $orderService,
-        OrderCancellationService $orderCancellationService
+        OrderCancellationService $orderCancellationService,
+        RefundRequestService $refundRequestService
     ) {
         $this->orderRepository = $orderRepository;
         $this->orderService = $orderService;
         $this->orderCancellationService = $orderCancellationService;
+        $this->refundRequestService = $refundRequestService;
     }
 
     /**
@@ -48,7 +52,7 @@ class OrderController extends BaseApiController
         // Validate filter parameters
         $request->validate([
             'search' => 'nullable|string|max:1000',
-            'status' => 'nullable|in:pending,processing,completed,cancelled',
+            'status' => 'nullable|in:pending,processing,completed,cancelled,refund',
             'payment_method' => 'nullable|in:cash,wallet,online_link',
             'delivery_type' => 'nullable|in:pickup,delivery',
             'date_from' => 'nullable|date',
@@ -243,6 +247,31 @@ class OrderController extends BaseApiController
                 ];
 
                 if (isset($result['refund_request']) && $result['refund_request']) {
+                    $response['refund_request'] = new RefundRequestResource($result['refund_request']);
+                }
+
+                return $this->updatedResponse($response, $result['message']);
+            } catch (\Exception $e) {
+                $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 500;
+                return $this->errorResponse($e->getMessage(), $code);
+            }
+        }
+
+        if ($newStatus === 'refund' && $order->status !== 'refund') {
+            try {
+                $result = $this->refundRequestService->requestForPaidOrder($id, $request->input('reason'));
+
+                if (!$result['success']) {
+                    return $this->errorResponse($result['message'], 400);
+                }
+
+                logAdminActivity('requested refund', 'Order', $id);
+
+                $response = [
+                    'order' => new OrderResource($result['order']),
+                ];
+
+                if (!empty($result['refund_request'])) {
                     $response['refund_request'] = new RefundRequestResource($result['refund_request']);
                 }
 
@@ -484,7 +513,7 @@ class OrderController extends BaseApiController
 
         $skippedOrderIds = Order::query()
             ->whereIn('id', $existingOrderIds)
-            ->whereIn('status', ['completed', 'cancelled'])
+            ->whereIn('status', ['completed', 'cancelled', 'refund'])
             ->pluck('id')
             ->all();
 
@@ -509,6 +538,26 @@ class OrderController extends BaseApiController
                     $updatedOrderIds[] = $orderId;
 
                     if (isset($result['refund_request']) && $result['refund_request']) {
+                        $refundRequestIds[] = $result['refund_request']->id;
+                    }
+                } catch (\Exception $e) {
+                    $failedOrderIds[] = $orderId;
+                }
+            }
+        } elseif ($status === 'refund') {
+            foreach ($updatableOrderIds as $orderId) {
+                try {
+                    $result = $this->refundRequestService->requestForPaidOrder($orderId, $reason);
+
+                    if (!$result['success']) {
+                        $failedOrderIds[] = $orderId;
+                        continue;
+                    }
+
+                    $updatedCount++;
+                    $updatedOrderIds[] = $orderId;
+
+                    if (!empty($result['refund_request'])) {
                         $refundRequestIds[] = $result['refund_request']->id;
                     }
                 } catch (\Exception $e) {

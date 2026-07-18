@@ -2,8 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Order;
-use App\Models\RefundRequest;
 use App\Repositories\OrderRepositoryInterface;
 use App\Repositories\InvoiceRepositoryInterface;
 use Illuminate\Support\Facades\DB;
@@ -20,14 +18,15 @@ class OrderCancellationService
     ) {}
 
     /**
-     * Cancel an order. Handles refund based on payment method if invoice was paid.
+     * Cancel an order.
      *
-     * @param int $orderId
-     * @param string|null $reason Optional reason for cancellation
-     * @return array{success: bool, message: string, refund_request?: RefundRequest}
+     * Paid orders cannot be cancelled directly — move them to refund status first.
+     * After a refund request is approved, call with $fromRefundApproval = true.
+     *
+     * @return array{success: bool, message: string}
      * @throws \Exception
      */
-    public function cancelOrder(int $orderId, ?string $reason = null): array
+    public function cancelOrder(int $orderId, ?string $reason = null, bool $fromRefundApproval = false): array
     {
         $order = $this->orderRepository->findById($orderId);
         if (!$order) {
@@ -39,74 +38,40 @@ class OrderCancellationService
         }
 
         $invoice = $this->invoiceRepository->getByOrder($orderId);
-        $paymentMethod = $order->payment_method;
         $isPaid = $invoice && $invoice->status === 'paid';
-        $hasOnlineCompletedPayment = false;
+        $invoiceAlreadyRefunded = $invoice && $invoice->status === 'refunded';
 
-        if ($invoice) {
-            $hasOnlineCompletedPayment = $invoice->payments()
-                ->where('status', 'completed')
-                ->whereIn('method', ['online', 'card', 'bank_transfer'])
-                ->exists();
+        if ($isPaid && !$fromRefundApproval) {
+            return [
+                'success' => false,
+                'message' => 'Cannot cancel a paid order. Set status to refund instead.',
+            ];
         }
 
-        $refundRequest = null;
+        if ($order->status === 'refund' && !$fromRefundApproval) {
+            return [
+                'success' => false,
+                'message' => 'Order has a pending refund. Approve or reject the refund request instead.',
+            ];
+        }
 
         try {
             DB::beginTransaction();
 
-            // Refund points if used
+            // Refund points if used (skip if invoice already handled and points were cleared — still safe to refund once)
             if ($invoice && $invoice->used_points > 0 && $order->customer_id) {
                 $this->pointsService->refundPoints($order->customer_id, $invoice->used_points);
             }
 
-            if ($isPaid) {
-                switch ($paymentMethod) {
-                    case 'cash':
-                        // Cash on delivery - do nothing with money, just mark invoice cancelled
-                        $this->invoiceService->markAsCancelled($invoice->id);
-                        break;
-
-                    case 'wallet':
-                        // Return money to wallet
-                        $this->walletService->addBalance($order->customer_id, $invoice->amount_due);
-                        $this->invoiceService->markAsRefunded($invoice->id);
-                        break;
-
-                    default:
-                        // For online gateway payments, create refund request for admin approval.
-                        // This covers online_link orders and legacy/normalized payment method values.
-                        if ($paymentMethod === 'online_link' || $hasOnlineCompletedPayment) {
-                            $refundRequest = RefundRequest::where('order_id', $order->id)
-                                ->where('invoice_id', $invoice->id)
-                                ->where('status', RefundRequest::STATUS_PENDING)
-                                ->first();
-
-                            if (!$refundRequest) {
-                                $refundRequest = RefundRequest::create([
-                                    'order_id' => $order->id,
-                                    'invoice_id' => $invoice->id,
-                                    'customer_id' => $order->customer_id,
-                                    'amount' => $invoice->amount_due,
-                                    'status' => RefundRequest::STATUS_PENDING,
-                                    'reason' => $reason,
-                                ]);
-                            }
-
-                            $refundRequest->load(['order', 'customer']);
-                            $this->invoiceService->markAsCancelled($invoice->id);
-                            break;
-                        }
-
-                        // Unknown payment method with no online completed payment evidence: treat as cash.
-                        $this->invoiceService->markAsCancelled($invoice->id);
-                        break;
-                }
-            } else {
-                // Invoice not paid - just mark as cancelled
-                if ($invoice) {
+            if ($fromRefundApproval) {
+                // Money already credited and invoice marked refunded by RefundRequestService::approve.
+                // Only finalize order cancellation here.
+                if ($invoice && !$invoiceAlreadyRefunded && $invoice->status !== 'cancelled') {
                     $this->invoiceService->markAsCancelled($invoice->id);
                 }
+            } elseif ($invoice) {
+                // Unpaid (or non-paid) invoice — cancel invoice only
+                $this->invoiceService->markAsCancelled($invoice->id);
             }
 
             $this->orderRepository->update($orderId, ['status' => 'cancelled']);
@@ -140,23 +105,6 @@ class OrderCancellationService
                         "تم إلغاء الطلب رقم {$order->order_number}."
                     );
                 }
-
-                if ($refundRequest) {
-                    sendNotification(
-                        null,
-                        null,
-                        'Refund Request Created',
-                        "Refund request #{$refundRequest->id} was created for order {$refundRequest->order?->order_number}.",
-                        'payment',
-                        [
-                            'refund_request_id' => $refundRequest->id,
-                            'order_id' => $refundRequest->order_id,
-                            'invoice_id' => $refundRequest->invoice_id,
-                        ],
-                        'تم إنشاء طلب استرجاع',
-                        "تم إنشاء طلب استرجاع رقم {$refundRequest->id} للطلب {$refundRequest->order?->order_number}."
-                    );
-                }
             } catch (\Exception $e) {
                 Log::warning('Failed to dispatch cancellation notifications', [
                     'order_id' => $orderId,
@@ -166,10 +114,7 @@ class OrderCancellationService
 
             return [
                 'success' => true,
-                'message' => $paymentMethod === 'online_link' && $isPaid
-                    ? 'Order cancelled. Refund request created and pending admin approval.'
-                    : 'Order cancelled successfully',
-                'refund_request' => $refundRequest,
+                'message' => 'Order cancelled successfully',
             ];
         } catch (\Exception $e) {
             DB::rollBack();

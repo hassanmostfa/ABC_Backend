@@ -50,7 +50,7 @@ class UpdateOrderRequest extends FormRequest
                 'max:255',
                 Rule::unique('orders', 'order_number')->ignore($orderId)
             ],
-            'status' => 'sometimes|required|in:pending,processing,completed,cancelled',
+            'status' => 'sometimes|required|in:pending,processing,completed,cancelled,refund',
             'offer_ids' => 'sometimes|nullable|array', // Backward compatibility: simple array of IDs
             'offer_ids.*' => 'required_with:offer_ids|integer|exists:offers,id',
             'offers' => 'sometimes|nullable|array', // New format: array of objects with offer_id and quantity
@@ -147,7 +147,7 @@ class UpdateOrderRequest extends FormRequest
             'order_number.max' => 'The order number may not be greater than 255 characters.',
             'order_number.unique' => 'The order number has already been taken.',
             'status.required' => 'The status is required.',
-            'status.in' => 'The status must be one of: pending, processing, completed, cancelled.',
+            'status.in' => 'The status must be one of: pending, processing, completed, cancelled, refund.',
             'delivery_type.in' => 'The delivery type must be either pickup or delivery.',
             'offer_ids.array' => 'The offer IDs must be an array.',
             'offer_ids.*.integer' => 'Each offer ID must be a valid integer.',

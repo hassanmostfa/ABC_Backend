@@ -110,7 +110,7 @@ class OrderController extends BaseApiController
     {
         $request->validate([
             'search' => 'nullable|string|max:1000',
-            'status' => 'nullable|in:pending,processing,completed,cancelled',
+            'status' => 'nullable|in:pending,processing,completed,cancelled,refund',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 

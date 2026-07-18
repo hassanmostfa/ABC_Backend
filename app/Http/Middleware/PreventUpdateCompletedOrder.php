@@ -23,8 +23,8 @@ class PreventUpdateCompletedOrder
             $order = Order::find($orderId);
             
             if ($order) {
-                // Check if order status is completed or cancelled
-                if (in_array($order->status, ['completed', 'cancelled'])) {
+                // Check if order status is locked
+                if (in_array($order->status, ['completed', 'cancelled', 'refund'], true)) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Cannot update order. Order status is ' . $order->status . '. Only orders with status "pending" or "processing" can be updated.'
