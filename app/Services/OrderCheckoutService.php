@@ -290,13 +290,11 @@ class OrderCheckoutService
                 }
             }
 
+            // Use the draft locked at checkout creation — do not re-validate stock or offer active status after payment.
             $storedDraft = OrderDraft::fromPayloadArray($locked->draft());
-            $freshDraft = $this->orderService
-                ->prepareOrderDraft($storedDraft->requestData)
-                ->withCreatedByFrom($storedDraft);
 
             $order = $this->orderService->createOrderFromDraft(
-                $freshDraft,
+                $storedDraft,
                 markInvoicePaid: true,
                 reservedOrderNumber: $locked->order_number
             );

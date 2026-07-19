@@ -105,26 +105,11 @@ class OrderDraft
 
     public static function fromPayloadArray(array $payload): self
     {
-        $offersToProcess = [];
-        if (!empty($payload['offersData']) && is_array($payload['offersData'])) {
-            foreach ($payload['offersData'] as $offerData) {
-                $offerId = (int) ($offerData['offer_id'] ?? 0);
-                $quantity = (int) ($offerData['quantity'] ?? 1);
-                if ($offerId > 0) {
-                    $offer = \App\Models\Offer::find($offerId);
-                    if ($offer) {
-                        for ($i = 0; $i < $quantity; $i++) {
-                            $offersToProcess[] = $offer;
-                        }
-                    }
-                }
-            }
-        }
-
+        // Do not reload/re-validate offers from DB (active dates/status). Use frozen draft lines only.
         return new self(
             requestData: $payload['requestData'] ?? [],
             offersData: $payload['offersData'] ?? [],
-            offersToProcess: $offersToProcess,
+            offersToProcess: [],
             offersToAttach: $payload['offersToAttach'] ?? [],
             orderItemsData: $payload['orderItemsData'] ?? [],
             totalAmount: (float) ($payload['totalAmount'] ?? 0),

@@ -872,7 +872,9 @@ class OrderService
 
         $cancelResult = $this->orderCancellationService->cancelOrder(
             $existingOrderId,
-            $reason ?? 'Order recreated with new data'
+            $reason ?? 'Order recreated with new data',
+            false,
+            true // allow paid cash cancel for recreate only
         );
 
         if (!$cancelResult['success']) {

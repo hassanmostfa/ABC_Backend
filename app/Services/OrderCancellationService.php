@@ -22,11 +22,17 @@ class OrderCancellationService
      *
      * Paid orders cannot be cancelled directly — move them to refund status first.
      * After a refund request is approved, call with $fromRefundApproval = true.
+     * For cash recreate flows, call with $allowPaidCancel = true.
      *
      * @return array{success: bool, message: string}
      * @throws \Exception
      */
-    public function cancelOrder(int $orderId, ?string $reason = null, bool $fromRefundApproval = false): array
+    public function cancelOrder(
+        int $orderId,
+        ?string $reason = null,
+        bool $fromRefundApproval = false,
+        bool $allowPaidCancel = false
+    ): array
     {
         $order = $this->orderRepository->findById($orderId);
         if (!$order) {
@@ -41,7 +47,7 @@ class OrderCancellationService
         $isPaid = $invoice && $invoice->status === 'paid';
         $invoiceAlreadyRefunded = $invoice && $invoice->status === 'refunded';
 
-        if ($isPaid && !$fromRefundApproval) {
+        if ($isPaid && !$fromRefundApproval && !$allowPaidCancel) {
             return [
                 'success' => false,
                 'message' => 'Cannot cancel a paid order. Set status to refund instead.',
@@ -70,7 +76,7 @@ class OrderCancellationService
                     $this->invoiceService->markAsCancelled($invoice->id);
                 }
             } elseif ($invoice) {
-                // Unpaid (or non-paid) invoice — cancel invoice only
+                // Unpaid invoice, or paid cancel allowed (e.g. cash recreate): cancel invoice only
                 $this->invoiceService->markAsCancelled($invoice->id);
             }
 
