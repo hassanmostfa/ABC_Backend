@@ -20,7 +20,8 @@ class OrderCancellationService
     /**
      * Cancel an order.
      *
-     * Paid orders cannot be cancelled directly — move them to refund status first.
+     * Paid online/wallet orders cannot be cancelled directly — move them to refund status first.
+     * Cash on delivery orders can be cancelled even when the invoice is paid.
      * After a refund request is approved, call with $fromRefundApproval = true.
      * For cash recreate flows, call with $allowPaidCancel = true.
      *
@@ -46,8 +47,9 @@ class OrderCancellationService
         $invoice = $this->invoiceRepository->getByOrder($orderId);
         $isPaid = $invoice && $invoice->status === 'paid';
         $invoiceAlreadyRefunded = $invoice && $invoice->status === 'refunded';
+        $isCashOnDelivery = $order->payment_method === 'cash';
 
-        if ($isPaid && !$fromRefundApproval && !$allowPaidCancel) {
+        if ($isPaid && !$fromRefundApproval && !$allowPaidCancel && !$isCashOnDelivery) {
             return [
                 'success' => false,
                 'message' => 'Cannot cancel a paid order. Set status to refund instead.',
@@ -76,7 +78,7 @@ class OrderCancellationService
                     $this->invoiceService->markAsCancelled($invoice->id);
                 }
             } elseif ($invoice) {
-                // Unpaid invoice, or paid cancel allowed (e.g. cash recreate): cancel invoice only
+                // Unpaid invoice, cash on delivery, or paid cancel allowed (e.g. cash recreate): cancel invoice only
                 $this->invoiceService->markAsCancelled($invoice->id);
             }
 
