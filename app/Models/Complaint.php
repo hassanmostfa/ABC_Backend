@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
+use App\Enums\ComplaintPaymentMethod;
 use App\Enums\ComplaintReceivingChannel;
 use App\Enums\ComplaintSeverity;
 use App\Enums\ComplaintStatus;
 use App\Enums\ComplaintType;
 use App\Enums\ContainmentAction;
-use App\Enums\NonFoodCategory;
 use App\Enums\ProductRetentionStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -27,15 +27,21 @@ class Complaint extends Model
         'status',
         'severity',
         'description',
+        'against',
         'customer_id',
         'customer_name',
         'customer_email',
         'customer_phone',
+        'customer_address',
         'order_id',
         'product_id',
         'product_name',
         'batch_number',
         'department',
+        'payment_method',
+        'total_value',
+        'delivered_by',
+        'system_user_id',
         'food_safety_indicators',
         'product_retention_status',
         'qa_notified_at',
@@ -44,6 +50,7 @@ class Complaint extends Model
         'qa_signed_off',
         'qa_signed_off_by',
         'qa_signed_off_at',
+        'qa_signoff_notes',
         'non_food_category',
         'forwarded_department',
         'responsible_person_name',
@@ -82,6 +89,7 @@ class Complaint extends Model
         'preventive_action_completed_at' => 'date',
         'retention_until' => 'date',
         'food_safety_indicators' => 'array',
+        'non_food_category' => 'array',
         'qa_signed_off' => 'boolean',
         'consumer_health_risk' => 'boolean',
         'qa_notified_at' => 'datetime',
@@ -92,8 +100,8 @@ class Complaint extends Model
         'complaint_type' => ComplaintType::class,
         'receiving_channel' => ComplaintReceivingChannel::class,
         'severity' => ComplaintSeverity::class,
+        'payment_method' => ComplaintPaymentMethod::class,
         'product_retention_status' => ProductRetentionStatus::class,
-        'non_food_category' => NonFoodCategory::class,
         'containment_action' => ContainmentAction::class,
     ];
 
@@ -129,11 +137,6 @@ class Complaint extends Model
     public function createdBy()
     {
         return $this->belongsTo(Admin::class, 'created_by');
-    }
-
-    public function assignedTo()
-    {
-        return $this->belongsTo(Admin::class, 'assigned_to');
     }
 
     public function closedBy()

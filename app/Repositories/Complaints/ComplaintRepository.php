@@ -30,7 +30,7 @@ class ComplaintRepository implements ComplaintRepositoryInterface
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
         $query = $this->model->newQuery()
-            ->with(['customer', 'product', 'createdBy', 'assignedTo'])
+            ->with(['customer', 'product', 'createdBy'])
             ->orderByDesc('id');
 
         if (!empty($filters['status'])) {
@@ -55,7 +55,14 @@ class ComplaintRepository implements ComplaintRepositoryInterface
             $query->where('department', $filters['department']);
         }
         if (!empty($filters['non_food_category'])) {
-            $query->where('non_food_category', $filters['non_food_category']);
+            $categories = is_array($filters['non_food_category'])
+                ? $filters['non_food_category']
+                : [$filters['non_food_category']];
+            $query->where(function ($q) use ($categories) {
+                foreach ($categories as $category) {
+                    $q->orWhereJsonContains('non_food_category', $category);
+                }
+            });
         }
         if (!empty($filters['date_from'])) {
             $query->whereDate('complaint_date', '>=', $filters['date_from']);
@@ -70,6 +77,8 @@ class ComplaintRepository implements ComplaintRepositoryInterface
                     ->orWhere('customer_name', 'like', "%{$search}%")
                     ->orWhere('customer_email', 'like', "%{$search}%")
                     ->orWhere('customer_phone', 'like', "%{$search}%")
+                    ->orWhere('customer_address', 'like', "%{$search}%")
+                    ->orWhere('against', 'like', "%{$search}%")
                     ->orWhere('batch_number', 'like', "%{$search}%")
                     ->orWhere('product_name', 'like', "%{$search}%")
                     ->orWhere('description', 'like', "%{$search}%");
@@ -125,16 +134,22 @@ class ComplaintRepository implements ComplaintRepositoryInterface
                 'status' => ComplaintStatus::Open,
                 'severity' => $data['severity'] ?? null,
                 'description' => $data['description'],
+                'against' => $data['against'] ?? null,
                 'customer_id' => $data['customer_id'] ?? null,
                 'customer_name' => $data['customer_name'] ?? null,
                 'customer_email' => $data['customer_email'] ?? null,
                 'customer_phone' => $data['customer_phone'] ?? null,
+                'customer_address' => $data['customer_address'] ?? null,
                 'order_id' => $data['order_id'] ?? null,
                 'product_id' => $data['product_id'] ?? null,
                 'product_name' => $data['product_name'] ?? null,
                 'batch_number' => $data['batch_number'] ?? null,
                 'department' => $data['department'] ?? null,
-                'created_by' => $adminId,
+                'payment_method' => $data['payment_method'] ?? null,
+                'total_value' => $data['total_value'] ?? null,
+                'delivered_by' => $data['delivered_by'] ?? null,
+                'system_user_id' => isset($data['system_user_id']) ? (string) $data['system_user_id'] : null,
+                'created_by' => $adminId, // call center / admin who created the complaint
                 'assigned_to' => $data['assigned_to'] ?? null,
                 'retention_until' => $now->copy()->addYears(5)->toDateString(),
                 'food_safety_indicators' => $data['food_safety_indicators'] ?? null,
@@ -384,6 +399,7 @@ class ComplaintRepository implements ComplaintRepositoryInterface
             'qa_signed_off' => true,
             'qa_signed_off_by' => $adminId,
             'qa_signed_off_at' => now(),
+            'qa_signoff_notes' => $notes,
         ]);
 
         ComplaintAudit::create([
@@ -554,7 +570,6 @@ class ComplaintRepository implements ComplaintRepositoryInterface
             'product',
             'order',
             'createdBy',
-            'assignedTo',
             'closedBy',
             'qaSignedOffBy',
             'attachments',

@@ -37,17 +37,23 @@ return new class extends Migration
 
             // Immutable after create
             $table->text('description');
+            $table->text('against')->nullable();
 
             // Customer / order / product
             $table->foreignId('customer_id')->nullable()->constrained('customers')->nullOnDelete();
             $table->string('customer_name')->nullable();
             $table->string('customer_email')->nullable();
             $table->string('customer_phone', 50)->nullable();
-            $table->foreignId('order_id')->nullable()->constrained('orders')->nullOnDelete();
-            $table->foreignId('product_id')->nullable()->constrained('products')->nullOnDelete();
+            $table->text('customer_address')->nullable();
+            $table->unsignedBigInteger('order_id')->nullable()->index();
+            $table->unsignedBigInteger('product_id')->nullable()->index();
             $table->string('product_name')->nullable();
             $table->string('batch_number')->nullable();
             $table->string('department')->nullable();
+            $table->string('payment_method', 50)->nullable();
+            $table->string('total_value', 100)->nullable();
+            $table->string('delivered_by')->nullable();
+            $table->string('system_user_id', 100)->nullable();
 
             // Food safety fields
             $table->json('food_safety_indicators')->nullable();
@@ -63,16 +69,10 @@ return new class extends Migration
             $table->boolean('qa_signed_off')->default(false);
             $table->foreignId('qa_signed_off_by')->nullable()->constrained('admins')->nullOnDelete();
             $table->dateTime('qa_signed_off_at')->nullable();
+            $table->text('qa_signoff_notes')->nullable();
 
-            // Non-food safety fields
-            $table->enum('non_food_category', [
-                'packaging',
-                'labelling',
-                'delivery',
-                'service',
-                'marketing',
-                'other',
-            ])->nullable();
+            // Non-food safety fields (multi-select)
+            $table->json('non_food_category')->nullable();
             $table->string('forwarded_department')->nullable();
             $table->string('responsible_person_name')->nullable();
             $table->date('expected_response_date')->nullable();
@@ -101,8 +101,9 @@ return new class extends Migration
             $table->text('containment_notes')->nullable();
 
             // Ownership / closure / retention
+            // created_by = authenticated call-center/admin who submitted the complaint
             $table->foreignId('created_by')->nullable()->constrained('admins')->nullOnDelete();
-            $table->foreignId('assigned_to')->nullable()->constrained('admins')->nullOnDelete();
+            $table->string('assigned_to')->nullable(); // free-text "handled by"
             $table->foreignId('closed_by')->nullable()->constrained('admins')->nullOnDelete();
             $table->dateTime('closed_at')->nullable();
             $table->date('retention_until');
@@ -112,7 +113,7 @@ return new class extends Migration
 
             $table->index(['status', 'complaint_type']);
             $table->index(['complaint_date']);
-            $table->index(['product_id', 'batch_number']);
+            $table->index(['batch_number']);
             $table->index(['department']);
             $table->index(['receiving_channel']);
         });
