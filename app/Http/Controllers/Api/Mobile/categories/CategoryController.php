@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Api\Mobile\categories;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Resources\Mobile\CategoryResource;
 use App\Http\Resources\Mobile\SubcategoryResource;
-use App\Repositories\CategoryRepositoryInterface;
-use App\Repositories\SubcategoryRepositoryInterface;
+use App\Repositories\Categories\CategoryRepositoryInterface;
+use App\Repositories\Subcategories\SubcategoryRepositoryInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

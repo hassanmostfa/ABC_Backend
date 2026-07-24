@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
-use App\Repositories\CharityRepositoryInterface;
+use App\Repositories\Charities\CharityRepositoryInterface;
 use App\Http\Resources\Admin\CharityResource;
 use App\Http\Requests\Admin\CharityRequest;
 use Illuminate\Http\Request;

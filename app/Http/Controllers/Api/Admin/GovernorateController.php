@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
-use App\Repositories\GovernorateRepositoryInterface;
+use App\Repositories\Governorates\GovernorateRepositoryInterface;
 use App\Http\Resources\Admin\GovernorateResource;
 use App\Http\Requests\Admin\GovernorateRequest;
 use Illuminate\Http\Request;

@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\Mobile\payments;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Resources\Admin\PaymentResource;
-use App\Repositories\PaymentRepositoryInterface;
+use App\Repositories\Payments\PaymentRepositoryInterface;
 use App\Models\Payment;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;

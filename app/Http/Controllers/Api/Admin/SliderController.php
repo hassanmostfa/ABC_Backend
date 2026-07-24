@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
-use App\Repositories\SliderRepositoryInterface;
+use App\Repositories\Sliders\SliderRepositoryInterface;
 use App\Http\Resources\Admin\SliderResource;
 use App\Http\Requests\Admin\SliderRequest;
 use App\Traits\ManagesFileUploads;

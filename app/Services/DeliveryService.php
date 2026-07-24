@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Repositories\DeliveryRepositoryInterface;
+use App\Repositories\Deliveries\DeliveryRepositoryInterface;
 use App\Models\CustomerAddress;
 use App\Models\Order;
 

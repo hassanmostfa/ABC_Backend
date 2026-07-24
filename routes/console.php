@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('warehouse:sync-stock')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('orders:expire-checkouts')->hourly()->withoutOverlapping();
+Schedule::command('complaints:send-target-reminders')->dailyAt('09:00')->withoutOverlapping();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());

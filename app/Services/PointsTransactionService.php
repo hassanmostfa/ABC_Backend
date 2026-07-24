@@ -4,7 +4,7 @@ namespace App\Services;
 
 use App\Models\PointsTransaction;
 use App\Models\Setting;
-use App\Repositories\CustomerRepositoryInterface;
+use App\Repositories\Customers\CustomerRepositoryInterface;
 use Illuminate\Support\Facades\DB;
 
 class PointsTransactionService

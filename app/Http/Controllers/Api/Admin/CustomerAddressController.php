@@ -6,7 +6,7 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Admin\StoreCustomerAddressRequest;
 use App\Http\Requests\Admin\UpdateCustomerAddressRequest;
 use App\Http\Resources\Admin\CustomerAddressResource;
-use App\Repositories\CustomerAddressRepositoryInterface;
+use App\Repositories\Customers\CustomerAddressRepositoryInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 

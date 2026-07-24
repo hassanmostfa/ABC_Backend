@@ -7,7 +7,7 @@ use App\Http\Requests\Mobile\ConvertPointsToWalletRequest;
 use App\Http\Resources\Mobile\CustomerResource;
 use App\Http\Resources\Mobile\PointsTransactionResource;
 use App\Models\Setting;
-use App\Repositories\CustomerRepositoryInterface;
+use App\Repositories\Customers\CustomerRepositoryInterface;
 use App\Services\PointsTransactionService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;

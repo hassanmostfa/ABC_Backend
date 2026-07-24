@@ -7,7 +7,7 @@ use App\Http\Resources\Mobile\FaqResource;
 use App\Http\Resources\Web\WebSocialMediaLinkResource;
 use App\Models\Faq;
 use App\Models\Setting;
-use App\Repositories\SocialMediaLinkRepositoryInterface;
+use App\Repositories\SocialMediaLinks\SocialMediaLinkRepositoryInterface;
 use App\Services\DeliverySlotService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;

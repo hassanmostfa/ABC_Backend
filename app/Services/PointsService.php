@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Repositories\CustomerRepositoryInterface;
+use App\Repositories\Customers\CustomerRepositoryInterface;
 use App\Models\Setting;
 
 class PointsService

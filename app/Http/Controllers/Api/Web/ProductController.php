@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\BaseApiController;
-use App\Repositories\ProductRepositoryInterface;
+use App\Repositories\Products\ProductRepositoryInterface;
 use App\Http\Resources\Admin\ProductResource;
 use App\Http\Resources\Web\WebProductResource;
 use App\Http\Resources\Web\WebProductDetailsResource;

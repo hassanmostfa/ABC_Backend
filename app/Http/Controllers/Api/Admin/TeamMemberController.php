@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
-use App\Repositories\TeamMemberRepositoryInterface;
+use App\Repositories\TeamMembers\TeamMemberRepositoryInterface;
 use App\Http\Resources\Admin\TeamMemberResource;
 use App\Http\Requests\Admin\TeamMemberRequest;
 use App\Traits\ManagesFileUploads;

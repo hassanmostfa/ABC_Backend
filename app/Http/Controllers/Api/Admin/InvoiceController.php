@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Admin\UpdateInvoiceRequest;
 use App\Http\Resources\Admin\InvoiceResource;
-use App\Repositories\InvoiceRepositoryInterface;
+use App\Repositories\Invoices\InvoiceRepositoryInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 

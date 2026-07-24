@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
-use App\Repositories\OfferRepositoryInterface;
+use App\Repositories\Offers\OfferRepositoryInterface;
 use App\Http\Requests\OfferListFilterRequest;
 use App\Http\Resources\Admin\OfferResource;
 use App\Http\Requests\Admin\OfferRequest;

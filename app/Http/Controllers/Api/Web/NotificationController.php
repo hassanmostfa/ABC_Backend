@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Models\Customer;
-use App\Repositories\NotificationRepositoryInterface;
+use App\Repositories\Notifications\NotificationRepositoryInterface;
 use App\Http\Resources\Web\CustomerNotificationResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;

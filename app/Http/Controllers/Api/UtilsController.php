@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Api\BaseApiController;
-use App\Repositories\CategoryRepositoryInterface;
-use App\Repositories\SubcategoryRepositoryInterface;
+use App\Repositories\Categories\CategoryRepositoryInterface;
+use App\Repositories\Subcategories\SubcategoryRepositoryInterface;
 use App\Http\Resources\Admin\CategoryResource;
 use App\Http\Resources\Admin\SubcategoryResource;
 use Illuminate\Http\Request;

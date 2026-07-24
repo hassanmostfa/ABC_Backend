@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
-use App\Repositories\AreaRepositoryInterface;
+use App\Repositories\Areas\AreaRepositoryInterface;
 use App\Http\Resources\Admin\AreaResource;
 use App\Http\Requests\Admin\AreaRequest;
 use Illuminate\Http\Request;

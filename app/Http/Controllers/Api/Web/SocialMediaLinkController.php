@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\BaseApiController;
-use App\Repositories\SocialMediaLinkRepositoryInterface;
+use App\Repositories\SocialMediaLinks\SocialMediaLinkRepositoryInterface;
 use App\Http\Resources\Web\WebSocialMediaLinkResource;
 use Illuminate\Http\JsonResponse;
 

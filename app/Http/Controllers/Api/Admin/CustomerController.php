@@ -8,7 +8,7 @@ use App\Jobs\DispatchErpCustomerJob;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Payment;
-use App\Repositories\CustomerRepositoryInterface;
+use App\Repositories\Customers\CustomerRepositoryInterface;
 use App\Rules\CustomerName;
 use App\Services\ErpCustomerService;
 use App\Support\KuwaitPhone;

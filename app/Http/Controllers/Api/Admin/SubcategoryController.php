@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Models\Subcategory;
-use App\Repositories\SubcategoryRepositoryInterface;
+use App\Repositories\Subcategories\SubcategoryRepositoryInterface;
 use App\Http\Resources\Admin\SubcategoryResource;
 use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;

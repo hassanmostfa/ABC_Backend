@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Repositories\OrderRepositoryInterface;
+use App\Repositories\Orders\OrderRepositoryInterface;
 use App\Services\OttuPaymentProcessor;
 use App\Services\OttuService;
 use App\Models\Payment;

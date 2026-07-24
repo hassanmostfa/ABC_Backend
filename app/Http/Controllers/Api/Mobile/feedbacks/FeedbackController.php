@@ -6,7 +6,7 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Mobile\StoreFeedbackRequest;
 use App\Http\Resources\Mobile\FeedbackResource;
 use App\Models\Order;
-use App\Repositories\FeedbackRepositoryInterface;
+use App\Repositories\Feedbacks\FeedbackRepositoryInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;

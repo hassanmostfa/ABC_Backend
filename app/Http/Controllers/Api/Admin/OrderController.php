@@ -15,7 +15,7 @@ use App\Http\Resources\CheckoutAsOrderResource;
 use App\Models\Admin;
 use App\Models\Order;
 use App\Models\OrderCheckout;
-use App\Repositories\OrderRepositoryInterface;
+use App\Repositories\Orders\OrderRepositoryInterface;
 use App\Services\OrderCancellationService;
 use App\Services\OrderService;
 use App\Services\RefundRequestService;

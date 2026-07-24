@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Repositories\OrderItemRepositoryInterface;
+use App\Repositories\Orders\OrderItemRepositoryInterface;
 use App\Models\OrderItem;
 use App\Models\ProductVariant;
 use Illuminate\Support\Facades\DB;

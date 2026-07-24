@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Models\Admin;
-use App\Repositories\NotificationRepositoryInterface;
+use App\Repositories\Notifications\NotificationRepositoryInterface;
 use App\Http\Resources\Admin\NotificationResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;

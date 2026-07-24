@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
-use App\Repositories\CareerRepositoryInterface;
+use App\Repositories\Careers\CareerRepositoryInterface;
 use App\Http\Resources\Admin\CareerResource;
 use App\Http\Requests\Admin\CareerRequest;
 use App\Traits\ManagesFileUploads;

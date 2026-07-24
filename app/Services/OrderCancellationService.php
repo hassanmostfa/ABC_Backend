@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
-use App\Repositories\OrderRepositoryInterface;
-use App\Repositories\InvoiceRepositoryInterface;
+use App\Repositories\Orders\OrderRepositoryInterface;
+use App\Repositories\Invoices\InvoiceRepositoryInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 

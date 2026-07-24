@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
-use App\Repositories\OrderRepositoryInterface;
-use App\Repositories\InvoiceRepositoryInterface;
-use App\Repositories\CustomerRepositoryInterface;
+use App\Repositories\Orders\OrderRepositoryInterface;
+use App\Repositories\Invoices\InvoiceRepositoryInterface;
+use App\Repositories\Customers\CustomerRepositoryInterface;
 use App\Models\Order;
 use App\Models\Invoice;
 use App\Models\Offer;

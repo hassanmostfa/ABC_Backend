@@ -7,7 +7,7 @@ use App\Http\Requests\OfferListFilterRequest;
 use App\Http\Resources\Mobile\OfferListResource;
 use App\Http\Resources\Mobile\OfferResource;
 use App\Models\Setting;
-use App\Repositories\OfferRepositoryInterface;
+use App\Repositories\Offers\OfferRepositoryInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

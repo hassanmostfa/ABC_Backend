@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Repositories\OrderItemRepositoryInterface;
+use App\Repositories\Orders\OrderItemRepositoryInterface;
 use App\Models\Offer;
 use App\Models\OrderItem;
 use App\Models\ProductVariant;
@@ -434,7 +434,7 @@ class OfferService
      * Add offer points to customer when order is completed
      *
      * @param \App\Models\Order $order
-     * @param \App\Repositories\CustomerRepositoryInterface $customerRepository
+     * @param \App\Repositories\Customers\CustomerRepositoryInterface $customerRepository
      * @return void
      */
     public function addOfferPointsToCustomer($order, $customerRepository): void

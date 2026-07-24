@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Repositories\InvoiceRepositoryInterface;
+use App\Repositories\Invoices\InvoiceRepositoryInterface;
 use App\Models\Setting;
 
 class InvoiceService

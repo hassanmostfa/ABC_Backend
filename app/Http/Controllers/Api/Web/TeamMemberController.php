@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\BaseApiController;
-use App\Repositories\TeamMemberRepositoryInterface;
+use App\Repositories\TeamMembers\TeamMemberRepositoryInterface;
 use App\Http\Resources\Web\WebTeamMemberResource;
 use Illuminate\Http\JsonResponse;
 

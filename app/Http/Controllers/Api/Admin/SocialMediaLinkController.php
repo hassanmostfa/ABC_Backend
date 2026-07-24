@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Models\SocialMediaLink;
-use App\Repositories\SocialMediaLinkRepositoryInterface;
+use App\Repositories\SocialMediaLinks\SocialMediaLinkRepositoryInterface;
 use App\Http\Resources\Admin\SocialMediaLinkResource;
 use App\Http\Requests\Admin\SocialMediaLinkRequest;
 use App\Traits\ManagesFileUploads;

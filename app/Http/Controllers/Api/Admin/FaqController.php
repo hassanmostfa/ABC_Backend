@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Admin\FaqRequest;
 use App\Http\Resources\Admin\FaqResource;
-use App\Repositories\FaqRepositoryInterface;
+use App\Repositories\Faqs\FaqRepositoryInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 

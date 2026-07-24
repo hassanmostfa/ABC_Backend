@@ -46,6 +46,7 @@ class PermissionSeeder extends Seeder
                     ['name' => 'Invoices', 'slug' => 'invoices', 'sort_order' => 0],
                     ['name' => 'Transactions', 'slug' => 'transactions', 'sort_order' => 0],
                     ['name' => 'Refund Requests', 'slug' => 'refund_requests', 'sort_order' => 0],
+                    ['name' => 'Complaints', 'slug' => 'complaints', 'sort_order' => 1],
                 ],
             ],
             [

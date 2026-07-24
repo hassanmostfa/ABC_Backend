@@ -2,7 +2,7 @@
 
 use App\Models\Admin;
 use App\Models\Customer;
-use App\Repositories\NotificationRepositoryInterface;
+use App\Repositories\Notifications\NotificationRepositoryInterface;
 use App\Services\FirebaseService;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Log;

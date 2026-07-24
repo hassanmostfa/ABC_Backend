@@ -10,7 +10,7 @@ use App\Http\Resources\Admin\OrderResource;
 use App\Http\Resources\CheckoutAsOrderResource;
 use App\Http\Resources\Admin\RefundRequestResource;
 use App\Models\Setting;
-use App\Repositories\OrderRepositoryInterface;
+use App\Repositories\Orders\OrderRepositoryInterface;
 use App\Services\OrderCancellationService;
 use App\Services\OrderService;
 use App\Jobs\SendOrderCreatedNotificationsJob;

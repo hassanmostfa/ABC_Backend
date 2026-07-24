@@ -6,7 +6,7 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Resources\Mobile\MobileProductResource;
 use App\Models\OrderItem;
 use App\Models\Product;
-use App\Repositories\ProductRepositoryInterface;
+use App\Repositories\Products\ProductRepositoryInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;

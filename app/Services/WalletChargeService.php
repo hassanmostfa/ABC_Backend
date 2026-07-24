@@ -4,8 +4,8 @@ namespace App\Services;
 
 use App\Models\Payment;
 use App\Models\Setting;
-use App\Repositories\CustomerRepositoryInterface;
-use App\Repositories\PaymentRepositoryInterface;
+use App\Repositories\Customers\CustomerRepositoryInterface;
+use App\Repositories\Payments\PaymentRepositoryInterface;
 use App\Support\PaymentCreatorResolver;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;

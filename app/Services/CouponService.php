@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Setting;
-use App\Repositories\CouponRepositoryInterface;
+use App\Repositories\Coupons\CouponRepositoryInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 

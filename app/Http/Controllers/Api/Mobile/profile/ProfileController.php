@@ -8,7 +8,7 @@ use App\Http\Requests\Mobile\UpdateCurrentLanguageRequest;
 use App\Http\Requests\Mobile\UpdateProfileRequest;
 use App\Http\Resources\Mobile\CustomerResource;
 use App\Models\Customer;
-use App\Repositories\CustomerRepositoryInterface;
+use App\Repositories\Customers\CustomerRepositoryInterface;
 use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;

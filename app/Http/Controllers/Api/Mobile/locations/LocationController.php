@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api\Mobile\locations;
 
 use App\Http\Controllers\Api\BaseApiController;
-use App\Repositories\CountryRepositoryInterface;
-use App\Repositories\GovernorateRepositoryInterface;
-use App\Repositories\AreaRepositoryInterface;
+use App\Repositories\Countries\CountryRepositoryInterface;
+use App\Repositories\Governorates\GovernorateRepositoryInterface;
+use App\Repositories\Areas\AreaRepositoryInterface;
 use App\Http\Resources\Admin\CountryResource;
 use App\Http\Resources\Admin\GovernorateResource;
 use App\Http\Resources\Admin\AreaResource;

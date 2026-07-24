@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\Admin\SocialMediaLinkController;
 use App\Http\Controllers\Api\Admin\CareerController;
 use App\Http\Controllers\Api\Admin\OrderController;
 use App\Http\Controllers\Api\Admin\RefundRequestController;
+use App\Http\Controllers\Api\Admin\ComplaintController;
 use App\Http\Controllers\Api\Admin\InvoiceController;
 use App\Http\Controllers\Api\Admin\PaymentController;
 use App\Http\Controllers\Api\Admin\PointsTransactionController;
@@ -299,6 +300,19 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::get('/{id}', 'show')->middleware('admin.permission:refund_requests,view');
          Route::patch('/{id}/approve', 'approve')->middleware('admin.permission:refund_requests,edit');
          Route::patch('/{id}/reject', 'reject')->middleware('admin.permission:refund_requests,edit');
+      });
+
+      // Complaints Management
+      Route::controller(ComplaintController::class)->prefix('complaints')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:complaints,view');
+         Route::get('/trends', 'trends')->middleware('admin.permission:complaints,view');
+         Route::post('/', 'store')->middleware('admin.permission:complaints,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:complaints,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:complaints,edit');
+         Route::patch('/{id}/status', 'updateStatus')->middleware('admin.permission:complaints,edit');
+         Route::patch('/{id}/qa-signoff', 'qaSignOff')->middleware('admin.permission:complaints,edit');
+         Route::post('/{id}/attachments', 'storeAttachment')->middleware('admin.permission:complaints,edit');
+         Route::post('/{id}/communications', 'storeCommunication')->middleware('admin.permission:complaints,edit');
       });
 
       // Invoices Management

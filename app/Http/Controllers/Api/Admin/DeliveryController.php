@@ -6,7 +6,7 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Admin\StoreDeliveryRequest;
 use App\Http\Requests\Admin\UpdateDeliveryRequest;
 use App\Http\Resources\Admin\DeliveryResource;
-use App\Repositories\DeliveryRepositoryInterface;
+use App\Repositories\Deliveries\DeliveryRepositoryInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 

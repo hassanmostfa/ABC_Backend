@@ -7,7 +7,7 @@ use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderCheckout;
 use App\Models\Payment;
-use App\Repositories\OrderRepositoryInterface;
+use App\Repositories\Orders\OrderRepositoryInterface;
 use App\Support\PaymentCreatorResolver;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
