@@ -628,40 +628,38 @@ class ErpOrderService
         $parts = [];
 
         if ($governorateName = $this->localizedArabicName($addr->governorate)) {
-            $parts[] = $governorateName;
+            $parts[] = 'محافظة ' . $governorateName;
         }
         if ($areaName = $this->localizedArabicName($addr->area)) {
-            $parts[] = $areaName;
+            $parts[] = 'منطقة : ' . $areaName;
         }
-        if (!empty($addr->type)) {
-            $parts[] = $this->translateAddressType((string) $addr->type);
+        if (!empty($addr->block)) {
+            $parts[] = 'قطعة ' . $addr->block;
+        }
+        if (!empty($addr->street)) {
+            $parts[] = 'شارع ' . $addr->street;
         }
         if (!empty($addr->building_name)) {
-            $parts[] = (string) $addr->building_name;
+            $parts[] = 'مبنى ' . $addr->building_name;
         }
         if (!empty($addr->apartment_number)) {
             $parts[] = 'شقة ' . $addr->apartment_number;
         }
-        if (!empty($addr->company)) {
-            $parts[] = (string) $addr->company;
-        }
-        if (!empty($addr->street)) {
-            $parts[] = (string) $addr->street;
-        }
         if (!empty($addr->house)) {
-            $parts[] = (string) $addr->house;
+            $parts[] = 'منزل ' . $addr->house;
         }
-        if (!empty($addr->block)) {
-            $parts[] = 'قطعة ' . $addr->block;
+        if (!empty($addr->company)) {
+            $parts[] = 'شركة ' . $addr->company;
         }
 
         $addressText = implode(' | ', array_filter($parts));
 
         $customerPhone = trim((string) ($order->customer?->phone ?? ''));
         if ($customerPhone !== '') {
+            $phonePart = 'الهاتف - ' . $customerPhone;
             $addressText = $addressText !== ''
-                ? $addressText . ' | هاتف: ' . $customerPhone
-                : 'هاتف: ' . $customerPhone;
+                ? $addressText . ' | ' . $phonePart
+                : $phonePart;
         }
 
         return $this->formatNotes($customerName, $addressText, $order);
@@ -721,16 +719,6 @@ class ErpOrderService
         $arabic = trim((string) ($model->name_ar ?? ''));
 
         return $arabic !== '' ? $arabic : trim((string) ($model->name_en ?? ''));
-    }
-
-    private function translateAddressType(string $type): string
-    {
-        return match (strtolower(trim($type))) {
-            'apartment' => 'شقة',
-            'house' => 'منزل',
-            'office' => 'مكتب',
-            default => $type,
-        };
     }
 
     /**
