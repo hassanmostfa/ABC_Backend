@@ -606,89 +606,117 @@ class ErpOrderService
     }
 
     /**
-     * ERP Notes: customer name plus address text (order.address or customer-address detail),
-     * with payment type appended. Labels and location names are in Arabic.
+     * ERP Notes: labeled Arabic fields (customer, address, payment).
+     * Mixed Latin values are LTR-isolated so the string stays RTL-safe.
      */
     private function resolveNotes(Order $order): string
     {
         $order->loadMissing('customer');
         $customerName = trim((string) ($order->customer?->name ?? ''));
 
+        $parts = [];
+        if ($customerName !== '') {
+            $parts[] = 'الاسم: ' . $this->embedLtr($customerName);
+        }
+
         $direct = trim((string) ($order->address ?? ''));
         if ($direct !== '') {
-            return $this->formatNotes($customerName, $direct, $order);
+            $parts[] = 'العنوان: ' . $this->embedLtr($direct);
+            return $this->formatNotes($parts, $order);
         }
 
         $order->loadMissing('customerAddress.country', 'customerAddress.governorate', 'customerAddress.area');
         $addr = $order->customerAddress;
-        if (!$addr) {
-            return $this->formatNotes($customerName, '', $order);
+        if ($addr) {
+            if ($governorateName = $this->localizedArabicName($addr->governorate)) {
+                $parts[] = 'المحافظة: ' . $this->embedLtr($governorateName);
+            }
+            if ($areaName = $this->localizedArabicName($addr->area)) {
+                $parts[] = 'المنطقة: ' . $this->embedLtr($areaName);
+            }
+            if (!empty($addr->block)) {
+                $parts[] = 'القطعة: ' . $this->embedLtr((string) $addr->block);
+            }
+            if (!empty($addr->street)) {
+                $parts[] = 'الشارع: ' . $this->embedLtr((string) $addr->street);
+            }
+            if (!empty($addr->building_name)) {
+                $parts[] = 'المبنى: ' . $this->embedLtr((string) $addr->building_name);
+            }
+            if (!empty($addr->apartment_number)) {
+                $parts[] = 'الشقة: ' . $this->embedLtr((string) $addr->apartment_number);
+            }
+            if (!empty($addr->house)) {
+                $parts[] = 'المنزل: ' . $this->embedLtr((string) $addr->house);
+            }
+            if (!empty($addr->company)) {
+                $parts[] = 'الشركة: ' . $this->embedLtr((string) $addr->company);
+            }
+            if ($addressLabel = trim((string) ($addr->address_label ?? ''))) {
+                $parts[] = 'التسمية: ' . $this->embedLtr($addressLabel);
+            }
+            if ($directions = trim((string) ($addr->additional_directions ?? ''))) {
+                $parts[] = 'التوجيهات: ' . $this->embedLtr($directions);
+            }
         }
-
-        $parts = [];
-
-        if ($governorateName = $this->localizedArabicName($addr->governorate)) {
-            $parts[] = 'محافظة ' . $governorateName;
-        }
-        if ($areaName = $this->localizedArabicName($addr->area)) {
-            $parts[] = 'منطقة : ' . $areaName;
-        }
-        if (!empty($addr->block)) {
-            $parts[] = 'قطعة ' . $addr->block;
-        }
-        if (!empty($addr->street)) {
-            $parts[] = 'شارع ' . $addr->street;
-        }
-        if (!empty($addr->building_name)) {
-            $parts[] = 'مبنى ' . $addr->building_name;
-        }
-        if (!empty($addr->apartment_number)) {
-            $parts[] = 'شقة ' . $addr->apartment_number;
-        }
-        if (!empty($addr->house)) {
-            $parts[] = 'منزل ' . $addr->house;
-        }
-        if (!empty($addr->company)) {
-            $parts[] = 'شركة ' . $addr->company;
-        }
-
-        $addressText = implode(' | ', array_filter($parts));
 
         $customerPhone = trim((string) ($order->customer?->phone ?? ''));
         if ($customerPhone !== '') {
-            $phonePart = 'الهاتف - ' . $customerPhone;
-            $addressText = $addressText !== ''
-                ? $addressText . ' | ' . $phonePart
-                : $phonePart;
+            $parts[] = 'الهاتف: ' . $this->embedLtr($customerPhone);
         }
 
-        return $this->formatNotes($customerName, $addressText, $order);
+        return $this->formatNotes($parts, $order);
     }
 
-    private function formatNotes(string $customerName, string $addressText, Order $order): string
+    /**
+     * @param  list<string>  $parts
+     */
+    private function formatNotes(array $parts, Order $order): string
     {
-        $paymentType = $this->resolvePaymentType($order);
-
-        $baseParts = [];
-        if ($customerName !== '') {
-            $baseParts[] = $customerName;
-        }
-        if ($addressText !== '') {
-            $baseParts[] = $addressText;
-        }
-
-        $baseNotes = implode(' | ', $baseParts);
-
         $userNote = trim((string) ($order->note ?? ''));
         if ($userNote !== '') {
-            $baseNotes = $baseNotes !== '' ? $baseNotes . ' | ' . $userNote : $userNote;
+            $parts[] = 'ملاحظة: ' . $this->embedLtr($userNote);
         }
 
+        $paymentType = $this->resolvePaymentType($order);
         if ($paymentType !== '') {
-            return $baseNotes !== '' ? $baseNotes . ' | الدفع: ' . $paymentType : 'الدفع: ' . $paymentType;
+            $parts[] = 'الدفع: ' . $paymentType;
         }
 
-        return $baseNotes;
+        // RLM after each separator keeps Arabic labels flowing RTL around Latin values.
+        return $this->forceRtl(implode(" |\u{200F} ", array_filter($parts)));
+    }
+
+    /**
+     * Isolate a value as LTR so Latin/English text does not reverse surrounding Arabic.
+     */
+    private function embedLtr(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        // Only isolate when Latin letters or leading phone/+digits are present.
+        if (!preg_match('/[A-Za-z]|\+?\d/', $value)) {
+            return $value;
+        }
+
+        // LRI ... PDI
+        return "\u{2066}" . $value . "\u{2069}";
+    }
+
+    /**
+     * Force the whole Notes string to render with RTL base direction.
+     */
+    private function forceRtl(string $notes): string
+    {
+        if ($notes === '') {
+            return '';
+        }
+
+        // RLI ... PDI
+        return "\u{2067}" . $notes . "\u{2069}";
     }
 
     private function resolvePaymentType(Order $order): string
