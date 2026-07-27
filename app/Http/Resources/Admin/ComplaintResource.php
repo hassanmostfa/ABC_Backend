@@ -104,14 +104,6 @@ class ComplaintResource extends JsonResource
                 'phone' => $this->customer->phone,
                 'email' => $this->customer->email ?? null,
             ] : null),
-            'product' => $this->whenLoaded('product', fn () => $this->product ? [
-                'id' => $this->product->id,
-                'name' => $this->product->name_en ?? $this->product->name ?? null,
-            ] : null),
-            'order' => $this->whenLoaded('order', fn () => $this->order ? [
-                'id' => $this->order->id,
-                'order_number' => $this->order->order_number,
-            ] : null),
             'qa_signed_off_by_admin' => $this->whenLoaded('qaSignedOffBy', fn () => $this->qaSignedOffBy ? [
                 'id' => $this->qaSignedOffBy->id,
                 'name' => $this->qaSignedOffBy->name,

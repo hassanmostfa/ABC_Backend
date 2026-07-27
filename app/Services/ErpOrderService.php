@@ -606,8 +606,7 @@ class ErpOrderService
     }
 
     /**
-     * ERP Notes: labeled Arabic fields (customer, address, payment).
-     * Mixed Latin values are LTR-isolated so the string stays RTL-safe.
+     * ERP Notes: one field per line (LTR-friendly, no Unicode bidi marks).
      */
     private function resolveNotes(Order $order): string
     {
@@ -616,12 +615,12 @@ class ErpOrderService
 
         $parts = [];
         if ($customerName !== '') {
-            $parts[] = 'الاسم: ' . $this->embedLtr($customerName);
+            $parts[] = $this->noteField('الاسم', $customerName);
         }
 
         $direct = trim((string) ($order->address ?? ''));
         if ($direct !== '') {
-            $parts[] = 'العنوان: ' . $this->embedLtr($direct);
+            $parts[] = $this->noteField('العنوان', $direct);
             return $this->formatNotes($parts, $order);
         }
 
@@ -629,40 +628,40 @@ class ErpOrderService
         $addr = $order->customerAddress;
         if ($addr) {
             if ($governorateName = $this->localizedArabicName($addr->governorate)) {
-                $parts[] = 'المحافظة: ' . $this->embedLtr($governorateName);
+                $parts[] = $this->noteField('محافظة', $governorateName);
             }
             if ($areaName = $this->localizedArabicName($addr->area)) {
-                $parts[] = 'المنطقة: ' . $this->embedLtr($areaName);
+                $parts[] = $this->noteField('منطقة', $areaName);
             }
             if (!empty($addr->block)) {
-                $parts[] = 'القطعة: ' . $this->embedLtr((string) $addr->block);
+                $parts[] = $this->noteField('قطعة', (string) $addr->block);
             }
             if (!empty($addr->street)) {
-                $parts[] = 'الشارع: ' . $this->embedLtr((string) $addr->street);
+                $parts[] = $this->noteField('شارع', (string) $addr->street);
             }
             if (!empty($addr->building_name)) {
-                $parts[] = 'المبنى: ' . $this->embedLtr((string) $addr->building_name);
+                $parts[] = $this->noteField('مبنى', (string) $addr->building_name);
             }
             if (!empty($addr->apartment_number)) {
-                $parts[] = 'الشقة: ' . $this->embedLtr((string) $addr->apartment_number);
+                $parts[] = $this->noteField('شقة', (string) $addr->apartment_number);
             }
             if (!empty($addr->house)) {
-                $parts[] = 'المنزل: ' . $this->embedLtr((string) $addr->house);
+                $parts[] = $this->noteField('منزل', (string) $addr->house);
             }
             if (!empty($addr->company)) {
-                $parts[] = 'الشركة: ' . $this->embedLtr((string) $addr->company);
+                $parts[] = $this->noteField('شركة', (string) $addr->company);
             }
             if ($addressLabel = trim((string) ($addr->address_label ?? ''))) {
-                $parts[] = 'التسمية: ' . $this->embedLtr($addressLabel);
+                $parts[] = $this->noteField('التسمية', $addressLabel);
             }
             if ($directions = trim((string) ($addr->additional_directions ?? ''))) {
-                $parts[] = 'التوجيهات: ' . $this->embedLtr($directions);
+                $parts[] = $this->noteField('التوجيهات', $directions);
             }
         }
 
         $customerPhone = trim((string) ($order->customer?->phone ?? ''));
         if ($customerPhone !== '') {
-            $parts[] = 'الهاتف: ' . $this->embedLtr($customerPhone);
+            $parts[] = $this->noteField('الهاتف', $customerPhone);
         }
 
         return $this->formatNotes($parts, $order);
@@ -675,48 +674,25 @@ class ErpOrderService
     {
         $userNote = trim((string) ($order->note ?? ''));
         if ($userNote !== '') {
-            $parts[] = 'ملاحظة: ' . $this->embedLtr($userNote);
+            $parts[] = $this->noteField('ملاحظة', $userNote);
         }
 
         $paymentType = $this->resolvePaymentType($order);
         if ($paymentType !== '') {
-            $parts[] = 'الدفع: ' . $paymentType;
+            $parts[] = $this->noteField('الدفع', $paymentType);
         }
 
-        // RLM after each separator keeps Arabic labels flowing RTL around Latin values.
-        return $this->forceRtl(implode(" |\u{200F} ", array_filter($parts)));
+        return implode("\n", array_filter($parts));
     }
 
-    /**
-     * Isolate a value as LTR so Latin/English text does not reverse surrounding Arabic.
-     */
-    private function embedLtr(string $value): string
+    private function noteField(string $label, string $value): string
     {
         $value = trim($value);
         if ($value === '') {
             return '';
         }
 
-        // Only isolate when Latin letters or leading phone/+digits are present.
-        if (!preg_match('/[A-Za-z]|\+?\d/', $value)) {
-            return $value;
-        }
-
-        // LRI ... PDI
-        return "\u{2066}" . $value . "\u{2069}";
-    }
-
-    /**
-     * Force the whole Notes string to render with RTL base direction.
-     */
-    private function forceRtl(string $notes): string
-    {
-        if ($notes === '') {
-            return '';
-        }
-
-        // RLI ... PDI
-        return "\u{2067}" . $notes . "\u{2069}";
+        return $label . ': ' . $value;
     }
 
     private function resolvePaymentType(Order $order): string

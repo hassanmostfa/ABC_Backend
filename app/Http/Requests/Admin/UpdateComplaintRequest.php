@@ -30,8 +30,9 @@ class UpdateComplaintRequest extends FormRequest
             'customer_email' => 'sometimes|nullable|email|max:255',
             'customer_phone' => 'sometimes|nullable|string|max:50',
             'customer_address' => 'sometimes|nullable|string',
-            'order_id' => 'sometimes|nullable',
-            'product_id' => 'sometimes|nullable',
+            // Free-text refs — not validated against orders/products tables
+            'order_id' => 'sometimes|nullable|string|max:100',
+            'product_id' => 'sometimes|nullable|string|max:100',
             'product_name' => 'sometimes|nullable|string|max:255',
             'batch_number' => 'sometimes|nullable|string|max:100',
             'department' => 'sometimes|nullable|string|max:255',

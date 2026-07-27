@@ -33,7 +33,7 @@ class ComplaintController extends BaseApiController
             'complaint_type' => ['nullable', Rule::enum(ComplaintType::class)],
             'receiving_channel' => ['nullable', Rule::enum(ComplaintReceivingChannel::class)],
             'severity' => ['nullable', Rule::enum(ComplaintSeverity::class)],
-            'product_id' => 'nullable|exists:products,id',
+            'product_id' => 'nullable|string|max:100',
             'batch_number' => 'nullable|string|max:100',
             'department' => 'nullable|string|max:255',
             'non_food_category' => ['nullable', Rule::enum(NonFoodCategory::class)],

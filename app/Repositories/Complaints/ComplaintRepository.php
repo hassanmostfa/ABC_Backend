@@ -30,7 +30,7 @@ class ComplaintRepository implements ComplaintRepositoryInterface
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
         $query = $this->model->newQuery()
-            ->with(['customer', 'product', 'createdBy'])
+            ->with(['customer', 'createdBy'])
             ->orderByDesc('id');
 
         if (!empty($filters['status'])) {
@@ -140,8 +140,8 @@ class ComplaintRepository implements ComplaintRepositoryInterface
                 'customer_email' => $data['customer_email'] ?? null,
                 'customer_phone' => $data['customer_phone'] ?? null,
                 'customer_address' => $data['customer_address'] ?? null,
-                'order_id' => $data['order_id'] ?? null,
-                'product_id' => $data['product_id'] ?? null,
+                'order_id' => isset($data['order_id']) ? (string) $data['order_id'] : null,
+                'product_id' => isset($data['product_id']) ? (string) $data['product_id'] : null,
                 'product_name' => $data['product_name'] ?? null,
                 'batch_number' => $data['batch_number'] ?? null,
                 'department' => $data['department'] ?? null,
@@ -194,7 +194,7 @@ class ComplaintRepository implements ComplaintRepositoryInterface
             DB::commit();
 
             $complaint->load([
-                'customer', 'product', 'order', 'createdBy',
+                'customer', 'createdBy',
                 'attachments', 'statusHistories', 'communications',
             ]);
 
@@ -567,8 +567,6 @@ class ComplaintRepository implements ComplaintRepositoryInterface
     {
         return [
             'customer',
-            'product',
-            'order',
             'createdBy',
             'closedBy',
             'qaSignedOffBy',

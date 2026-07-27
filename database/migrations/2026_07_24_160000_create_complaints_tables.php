@@ -45,8 +45,9 @@ return new class extends Migration
             $table->string('customer_email')->nullable();
             $table->string('customer_phone', 50)->nullable();
             $table->text('customer_address')->nullable();
-            $table->unsignedBigInteger('order_id')->nullable()->index();
-            $table->unsignedBigInteger('product_id')->nullable()->index();
+            // Free-text refs — may not exist as orders/products in this system
+            $table->string('order_id', 100)->nullable()->index();
+            $table->string('product_id', 100)->nullable()->index();
             $table->string('product_name')->nullable();
             $table->string('batch_number')->nullable();
             $table->string('department')->nullable();

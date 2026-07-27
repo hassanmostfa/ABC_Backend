@@ -40,8 +40,9 @@ class StoreComplaintRequest extends FormRequest
             'customer_phone' => 'nullable|string|max:50',
             'customer_address' => 'nullable|string',
 
-            'order_id' => 'nullable',
-            'product_id' => 'nullable',
+            // Free-text refs — not validated against orders/products tables
+            'order_id' => 'nullable|string|max:100',
+            'product_id' => 'nullable|string|max:100',
             'product_name' => 'nullable|string|max:255',
             'batch_number' => 'nullable|string|max:100',
             'department' => 'nullable|string|max:255',
@@ -71,7 +72,7 @@ class StoreComplaintRequest extends FormRequest
         if ($type === ComplaintType::FoodSafety->value) {
             $rules = array_merge($rules, [
                 'batch_number' => 'required|string|max:100',
-                'product_id' => 'required_without:product_name|nullable',
+                'product_id' => 'required_without:product_name|nullable|string|max:100',
                 'product_name' => 'required_without:product_id|nullable|string|max:255',
                 'qa_notified_at' => 'required|date',
                 'qa_notify_method' => 'required|string|max:255',

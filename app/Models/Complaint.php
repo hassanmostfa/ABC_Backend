@@ -124,16 +124,6 @@ class Complaint extends Model
         return $this->belongsTo(Customer::class);
     }
 
-    public function order()
-    {
-        return $this->belongsTo(Order::class);
-    }
-
-    public function product()
-    {
-        return $this->belongsTo(Product::class);
-    }
-
     public function createdBy()
     {
         return $this->belongsTo(Admin::class, 'created_by');
