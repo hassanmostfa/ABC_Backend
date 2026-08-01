@@ -353,11 +353,13 @@ class ErpOrderService
         }
 
         $previousStatus = $order->status;
+        $erpData = $this->extractErpOrderPayloadData($result['body'] ?? null);
+        $updateData = $this->buildOrderUpdateFromErpData($order, $localStatus, $erpData);
 
-        if ($previousStatus === $localStatus) {
+        if ($updateData === []) {
             return [
                 'success' => true,
-                'message' => 'Order status already up to date',
+                'message' => 'Order already up to date with ERP',
                 'updated' => false,
                 'order' => $order,
                 'previous_status' => $previousStatus,
@@ -368,19 +370,24 @@ class ErpOrderService
             ];
         }
 
-        $order->update(['status' => $localStatus]);
+        $order->update($updateData);
 
-        Log::channel('erp')->info('Order status synced from ERP', [
+        Log::channel('erp')->info('Order synced from ERP', [
             'order_id' => $order->id,
             'order_number' => $order->order_number,
             'previous_status' => $previousStatus,
             'erp_status' => $erpStatus,
             'local_status' => $localStatus,
+            'updated_fields' => array_keys($updateData),
         ]);
+
+        $statusChanged = array_key_exists('status', $updateData);
 
         return [
             'success' => true,
-            'message' => 'Order status updated from ERP',
+            'message' => $statusChanged
+                ? 'Order status updated from ERP'
+                : 'Order delivery details updated from ERP',
             'updated' => true,
             'order' => $order->fresh(),
             'previous_status' => $previousStatus,
@@ -392,21 +399,112 @@ class ErpOrderService
     }
 
     /**
-     * Sync all pending/processing orders from ERP.
+     * Build local order fields to update from ERP GetOrderStatus payload.
+     *
+     * @param  array<string, mixed>  $erpData
+     * @return array<string, mixed>
+     */
+    private function buildOrderUpdateFromErpData(Order $order, string $localStatus, array $erpData): array
+    {
+        $updateData = [];
+
+        if ($order->status !== $localStatus) {
+            $updateData['status'] = $localStatus;
+        }
+
+        // Only update delivery when ERP provides a valid scheduleDate; otherwise keep current values.
+        $schedule = $this->parseErpScheduleDate($erpData['scheduleDate'] ?? $erpData['schedule_date'] ?? null);
+        if ($schedule !== null) {
+            if ((string) ($order->delivery_date?->format('Y-m-d') ?? '') !== $schedule['date']) {
+                $updateData['delivery_date'] = $schedule['date'];
+            }
+            if ((string) ($order->delivery_time ?? '') !== $schedule['time']) {
+                $updateData['delivery_time'] = $schedule['time'];
+            }
+        }
+
+        $invoiceNo = $erpData['invoiceNo'] ?? $erpData['invoice_no'] ?? null;
+        if (is_string($invoiceNo) || is_numeric($invoiceNo)) {
+            $invoiceNo = trim((string) $invoiceNo);
+            if ($invoiceNo !== '' && (string) ($order->erp_invoice_no ?? '') !== $invoiceNo) {
+                $updateData['erp_invoice_no'] = $invoiceNo;
+            }
+        }
+
+        return $updateData;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function extractErpOrderPayloadData(mixed $body): array
+    {
+        if (!is_array($body)) {
+            return [];
+        }
+
+        if (isset($body['data']) && is_array($body['data'])) {
+            return $body['data'];
+        }
+
+        return $body;
+    }
+
+    /**
+     * @return array{date: string, time: string}|null
+     */
+    private function parseErpScheduleDate(mixed $scheduleDate): ?array
+    {
+        if (!is_string($scheduleDate) || trim($scheduleDate) === '') {
+            return null;
+        }
+
+        $scheduleDate = trim($scheduleDate);
+
+        try {
+            $parsed = \Carbon\Carbon::parse($scheduleDate);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        // Ignore ERP placeholder dates.
+        if ((int) $parsed->year < 2000) {
+            return null;
+        }
+
+        return [
+            'date' => $parsed->format('Y-m-d'),
+            'time' => $parsed->format('H:i:s'),
+        ];
+    }
+
+    /**
+     * Sync pending/processing orders that were already sent to ERP.
+     * Limited per run so large pending queues are not all hit at once.
      *
      * @return array{
      *   checked: int,
      *   updated: int,
      *   unchanged: int,
      *   failed: int,
+     *   limit: int,
+     *   eligible_total: int,
      *   results: list<array<string, mixed>>
      * }
      */
-    public function syncPendingAndProcessingOrderStatuses(): array
+    public function syncPendingAndProcessingOrderStatuses(?int $limit = null): array
     {
-        $orders = Order::query()
+        $limit = max(1, $limit ?? (int) config('services.erp.status_sync_limit', 50));
+
+        $baseQuery = Order::query()
             ->whereIn('status', ['pending', 'processing'])
+            ->where('is_sent_to_erp', true);
+
+        $eligibleTotal = (clone $baseQuery)->count();
+
+        $orders = (clone $baseQuery)
             ->orderBy('id')
+            ->limit($limit)
             ->get();
 
         $summary = [
@@ -414,6 +512,8 @@ class ErpOrderService
             'updated' => 0,
             'unchanged' => 0,
             'failed' => 0,
+            'limit' => $limit,
+            'eligible_total' => $eligibleTotal,
             'results' => [],
         ];
 

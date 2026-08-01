@@ -562,6 +562,40 @@ class OrderController extends BaseApiController
     }
 
     /**
+     * Sync pending/processing orders from ERP (same as orders:sync-erp-status).
+     * Only orders already sent to ERP, limited per run (default 50).
+     */
+    public function syncAllErpStatuses(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'limit' => 'nullable|integer|min:1|max:200',
+        ]);
+
+        $summary = $this->erpOrderService->syncPendingAndProcessingOrderStatuses(
+            $validated['limit'] ?? null
+        );
+
+        logAdminActivity('bulk synced statuses from ERP', 'Order', null, [
+            'checked' => $summary['checked'],
+            'updated' => $summary['updated'],
+            'unchanged' => $summary['unchanged'],
+            'failed' => $summary['failed'],
+            'limit' => $summary['limit'],
+            'eligible_total' => $summary['eligible_total'],
+        ]);
+
+        return $this->successResponse([
+            'checked' => $summary['checked'],
+            'updated' => $summary['updated'],
+            'unchanged' => $summary['unchanged'],
+            'failed' => $summary['failed'],
+            'limit' => $summary['limit'],
+            'eligible_total' => $summary['eligible_total'],
+            'results' => $summary['results'],
+        ], 'Pending/processing ERP-sent orders synced from ERP');
+    }
+
+    /**
      * Switch cash-on-delivery order to online payment and return a new payment link.
      */
     public function switchToPaymentLink(Request $request, int $id): JsonResponse

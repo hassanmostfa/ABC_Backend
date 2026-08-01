@@ -48,6 +48,8 @@ return [
         // Laravel HTTP client often hangs on this ERP host; use stream/curl like warehouse stock.
         'driver'          => env('ERP_DRIVER', 'stream'),
         'curl_path'       => env('ERP_CURL_PATH', 'curl'),
+        // Max pending/processing orders to sync per cron/API run (avoids hammering ERP).
+        'status_sync_limit' => (int) env('ERP_STATUS_SYNC_LIMIT', 50),
     ],
 
     'warehouse_stock' => [

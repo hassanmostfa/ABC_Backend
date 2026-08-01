@@ -284,6 +284,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::post('/', 'store')->middleware(['admin.permission:orders,add', 'customer.account.completed']);
          Route::post('/recreate-cash', 'recreateCash')->middleware(['admin.permission:orders,add', 'customer.account.completed']);
          Route::patch('/bulk-status', 'bulkUpdateStatus')->middleware('admin.permission:orders,edit');
+         Route::post('/sync-erp-status', 'syncAllErpStatuses')->middleware('admin.permission:orders,edit');
          Route::get('/{id}', 'show')->middleware('admin.permission:orders,view');
          Route::put('/{id}', 'update')->middleware(['admin.permission:orders,edit', 'prevent.update.completed.order']);
          Route::patch('/{id}/cancel', 'cancel')->middleware('admin.permission:orders,edit');

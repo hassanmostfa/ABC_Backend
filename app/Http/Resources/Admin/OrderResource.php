@@ -56,6 +56,7 @@ class OrderResource extends JsonResource
             'cancellation_reason' => $this->cancellation_reason,
             'feedback_submited' => $this->hasSubmittedFeedback(),
             'is_sent_to_erp' => (bool) $this->is_sent_to_erp,
+            'erp_invoice_no' => $this->erp_invoice_no,
             'created_by_type' => $this->created_by_type ? strtolower(class_basename($this->created_by_type)) : null,
             'total_amount' => (float) $this->total_amount,
             'offer_snapshot' => $this->offer_snapshot,

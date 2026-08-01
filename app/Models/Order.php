@@ -26,6 +26,7 @@ class Order extends Model
         'payment_method',
         'payment_gateway_src',
         'is_sent_to_erp',
+        'erp_invoice_no',
         'created_by_id',
         'created_by_type',
     ];

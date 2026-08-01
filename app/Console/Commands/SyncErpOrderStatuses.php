@@ -8,16 +8,21 @@ use Illuminate\Support\Facades\Log;
 
 class SyncErpOrderStatuses extends Command
 {
-    protected $signature = 'orders:sync-erp-status';
+    protected $signature = 'orders:sync-erp-status {--limit= : Max orders to sync this run (default from ERP_STATUS_SYNC_LIMIT)}';
 
-    protected $description = 'Sync pending/processing order statuses from ERP GetOrderStatus';
+    protected $description = 'Sync pending/processing ERP-sent order statuses (limited batch per run)';
 
     public function handle(ErpOrderService $erpOrderService): int
     {
-        $this->info('Syncing pending/processing order statuses from ERP...');
+        $limit = $this->option('limit');
+        $limit = $limit !== null && $limit !== '' ? (int) $limit : null;
 
-        $summary = $erpOrderService->syncPendingAndProcessingOrderStatuses();
+        $this->info('Syncing pending/processing ERP-sent order statuses...');
 
+        $summary = $erpOrderService->syncPendingAndProcessingOrderStatuses($limit);
+
+        $this->line("Eligible (sent to ERP): {$summary['eligible_total']}");
+        $this->line("Limit this run: {$summary['limit']}");
         $this->line("Checked: {$summary['checked']}");
         $this->line("Updated: {$summary['updated']}");
         $this->line("Unchanged: {$summary['unchanged']}");
@@ -28,6 +33,8 @@ class SyncErpOrderStatuses extends Command
             'updated' => $summary['updated'],
             'unchanged' => $summary['unchanged'],
             'failed' => $summary['failed'],
+            'limit' => $summary['limit'],
+            'eligible_total' => $summary['eligible_total'],
         ]);
 
         foreach ($summary['results'] as $result) {
