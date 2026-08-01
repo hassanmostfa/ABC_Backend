@@ -21,6 +21,7 @@ class CustomerResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'phone' => $this->phone,
+            'customer_code' => $this->customer_code,
             'email' => $this->email,
             'points' => (int) ($this->points ?? 0),
             'current_language' => $this->current_language ?? 'en',

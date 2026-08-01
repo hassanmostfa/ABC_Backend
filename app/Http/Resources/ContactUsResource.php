@@ -18,6 +18,8 @@ class ContactUsResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'email' => $this->email,
+            'phone_code' => $this->phone_code,
+            'phone' => $this->phone,
             'message' => $this->message,
             'is_read' => (bool) $this->is_read,
             'created_at' => \format_datetime_app_tz($this->created_at),

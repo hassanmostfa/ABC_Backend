@@ -17,6 +17,7 @@ class Order extends Model
         'note',
         'order_number',
         'status',
+        'cancellation_reason',
         'total_amount',
         'offer_snapshot',
         'delivery_type',

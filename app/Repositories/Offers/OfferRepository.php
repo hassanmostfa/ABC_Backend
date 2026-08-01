@@ -160,7 +160,7 @@ class OfferRepository implements OfferRepositoryInterface
     }
 
     /**
-     * Get offers related to a product variant (where variant appears in conditions or rewards).
+     * Get offers related to a product variant (where variant appears in conditions only).
      * Matches only the specific variant ID.
      */
     public function getByProductVariantId(int $productVariantId, bool $activeOnly = true): Collection
@@ -171,13 +171,8 @@ class OfferRepository implements OfferRepositoryInterface
             'rewards.product',
             'rewards.productVariant',
             'charity'
-        ])->where(function ($q) use ($productVariantId) {
-            $conditionMatch = function ($subQuery) use ($productVariantId) {
-                $subQuery->where('product_variant_id', $productVariantId);
-            };
-
-            $q->whereHas('conditions', $conditionMatch)
-              ->orWhereHas('rewards', $conditionMatch);
+        ])->whereHas('conditions', function ($subQuery) use ($productVariantId) {
+            $subQuery->where('product_variant_id', $productVariantId);
         });
 
         if ($activeOnly) {

@@ -24,6 +24,8 @@ class ContactUsRequest extends FormRequest
         return [
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255',
+            'phone_code' => 'nullable|string|max:10',
+            'phone' => 'nullable|string|max:20',
             'message' => 'required|string|max:1000',
         ];
     }
@@ -42,6 +44,11 @@ class ContactUsRequest extends FormRequest
             'email.required' => 'The email field is required.',
             'email.email' => 'The email must be a valid email address.',
             'email.max' => 'The email may not be greater than 255 characters.',
+            'phone_code.string' => 'The phone code must be a string.',
+            'phone_code.max' => 'The phone code may not be greater than 10 characters.',
+            'phone.nullable' => 'The phone field is nullable.',
+            'phone.string' => 'The phone must be a string.',
+            'phone.max' => 'The phone may not be greater than 20 characters.',
             'message.required' => 'The message field is required.',
             'message.string' => 'The message must be a string.',
             'message.max' => 'The message may not be greater than 1000 characters.',

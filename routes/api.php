@@ -290,6 +290,8 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::post('/{id}/regenerate-payment-link', 'regeneratePaymentLink')->middleware('admin.permission:orders,edit');
          Route::post('/{id}/sync-payment', 'syncPayment')->middleware('admin.permission:orders,edit');
          Route::post('/{id}/resend-to-erp', 'resendToErp')->middleware('admin.permission:orders,edit');
+         Route::get('/{id}/erp-status', 'getErpStatus')->middleware('admin.permission:orders,view');
+         Route::post('/{id}/sync-erp-status', 'syncErpStatus')->middleware('admin.permission:orders,edit');
          Route::post('/{id}/switch-to-payment-link', 'switchToPaymentLink')->middleware('admin.permission:orders,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:orders,delete');
       });
@@ -415,6 +417,7 @@ Route::controller(CareerController::class)->prefix('careers')->group(function ()
 // Protected ERP endpoint: send order payload and return ERP response.
 // Requires octopus.token middleware (Authorization: Bearer abc_... or X-Access-Token header)
 Route::post('/erp/orders/send', [PublicErpOrderController::class, 'sendOrder']);
+Route::get('/erp/orders/status', [PublicErpOrderController::class, 'getOrderStatus']);
 
 // Protected Warehouse Stock endpoints: require admin authentication with product view permission.
 Route::controller(WarehouseStockController::class)->prefix('warehouse')->group(function () {

@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Admin;
 use App\Models\Order;
 use App\Models\Setting;
-use App\Support\KuwaitPhone;
 use GuzzleHttp\TransferStats;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -220,6 +219,268 @@ class ErpOrderService
                 'query'  => $query,
             ],
         ]);
+    }
+
+    /**
+     * ERP → local order status mapping.
+     *
+     * @var array<string, string>
+     */
+    public const ERP_STATUS_MAP = [
+        'scheduled' => 'processing',
+        'delivered' => 'completed',
+        'cancelled' => 'cancelled',
+        'canceled'  => 'cancelled',
+        'pending'   => 'pending',
+    ];
+
+    /**
+     * Fetch order status from ERP: GET /API/Order/GetOrderStatus?OrderNumber=...
+     *
+     * @return array{
+     *   success: bool,
+     *   status: int|null,
+     *   body: mixed,
+     *   error: string|null,
+     *   erp_status: string|null,
+     *   local_status: string|null
+     * }
+     */
+    public function getOrderStatus(string $orderNumber): array
+    {
+        $orderNumber = trim($orderNumber);
+        if ($orderNumber === '') {
+            return [
+                'success' => false,
+                'status' => null,
+                'body' => null,
+                'error' => 'Order number is required',
+                'erp_status' => null,
+                'local_status' => null,
+            ];
+        }
+
+        $result = $this->get('/API/Order/GetOrderStatus', [
+            'OrderNumber' => $orderNumber,
+        ]);
+
+        $erpStatus = $this->extractErpOrderStatus($result['body'] ?? null);
+        $localStatus = $this->mapErpStatusToLocal($erpStatus);
+
+        // GetOrderStatus returns the delivery status as a string in "status".
+        // evaluateErpBusinessResponse treats non-numeric status as success when HTTP is OK.
+        if ($result['success'] && $erpStatus === null) {
+            return [
+                'success' => false,
+                'status' => $result['status'],
+                'body' => $result['body'],
+                'error' => 'ERP response did not include a recognized order status',
+                'erp_status' => null,
+                'local_status' => null,
+            ];
+        }
+
+        return array_merge($result, [
+            'erp_status' => $erpStatus,
+            'local_status' => $localStatus,
+        ]);
+    }
+
+    /**
+     * Map ERP status string to local orders.status value.
+     */
+    public function mapErpStatusToLocal(?string $erpStatus): ?string
+    {
+        if ($erpStatus === null || trim($erpStatus) === '') {
+            return null;
+        }
+
+        $key = strtolower(trim($erpStatus));
+
+        return self::ERP_STATUS_MAP[$key] ?? null;
+    }
+
+    /**
+     * Sync a single local order status from ERP.
+     *
+     * @return array{
+     *   success: bool,
+     *   message: string,
+     *   updated: bool,
+     *   order?: Order,
+     *   previous_status?: string,
+     *   erp_status?: string|null,
+     *   local_status?: string|null,
+     *   erp_response?: mixed,
+     *   erp_http_status?: int|null
+     * }
+     */
+    public function syncOrderStatusFromErp(Order $order): array
+    {
+        $result = $this->getOrderStatus($order->order_number);
+
+        if (!$result['success']) {
+            return [
+                'success' => false,
+                'message' => $result['error'] ?? 'Failed to fetch order status from ERP',
+                'updated' => false,
+                'erp_status' => $result['erp_status'] ?? null,
+                'local_status' => $result['local_status'] ?? null,
+                'erp_response' => $result['body'] ?? null,
+                'erp_http_status' => $result['status'] ?? null,
+            ];
+        }
+
+        $erpStatus = $result['erp_status'];
+        $localStatus = $result['local_status'];
+
+        if ($localStatus === null) {
+            return [
+                'success' => false,
+                'message' => 'Unsupported ERP status: ' . ($erpStatus ?? 'unknown'),
+                'updated' => false,
+                'order' => $order,
+                'previous_status' => $order->status,
+                'erp_status' => $erpStatus,
+                'local_status' => null,
+                'erp_response' => $result['body'],
+                'erp_http_status' => $result['status'],
+            ];
+        }
+
+        $previousStatus = $order->status;
+
+        if ($previousStatus === $localStatus) {
+            return [
+                'success' => true,
+                'message' => 'Order status already up to date',
+                'updated' => false,
+                'order' => $order,
+                'previous_status' => $previousStatus,
+                'erp_status' => $erpStatus,
+                'local_status' => $localStatus,
+                'erp_response' => $result['body'],
+                'erp_http_status' => $result['status'],
+            ];
+        }
+
+        $order->update(['status' => $localStatus]);
+
+        Log::channel('erp')->info('Order status synced from ERP', [
+            'order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'previous_status' => $previousStatus,
+            'erp_status' => $erpStatus,
+            'local_status' => $localStatus,
+        ]);
+
+        return [
+            'success' => true,
+            'message' => 'Order status updated from ERP',
+            'updated' => true,
+            'order' => $order->fresh(),
+            'previous_status' => $previousStatus,
+            'erp_status' => $erpStatus,
+            'local_status' => $localStatus,
+            'erp_response' => $result['body'],
+            'erp_http_status' => $result['status'],
+        ];
+    }
+
+    /**
+     * Sync all pending/processing orders from ERP.
+     *
+     * @return array{
+     *   checked: int,
+     *   updated: int,
+     *   unchanged: int,
+     *   failed: int,
+     *   results: list<array<string, mixed>>
+     * }
+     */
+    public function syncPendingAndProcessingOrderStatuses(): array
+    {
+        $orders = Order::query()
+            ->whereIn('status', ['pending', 'processing'])
+            ->orderBy('id')
+            ->get();
+
+        $summary = [
+            'checked' => $orders->count(),
+            'updated' => 0,
+            'unchanged' => 0,
+            'failed' => 0,
+            'results' => [],
+        ];
+
+        foreach ($orders as $order) {
+            $result = $this->syncOrderStatusFromErp($order);
+
+            $entry = [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'success' => $result['success'],
+                'updated' => $result['updated'],
+                'previous_status' => $result['previous_status'] ?? $order->status,
+                'erp_status' => $result['erp_status'] ?? null,
+                'local_status' => $result['local_status'] ?? null,
+                'message' => $result['message'],
+            ];
+
+            $summary['results'][] = $entry;
+
+            if (!$result['success']) {
+                $summary['failed']++;
+                continue;
+            }
+
+            if ($result['updated']) {
+                $summary['updated']++;
+            } else {
+                $summary['unchanged']++;
+            }
+        }
+
+        return $summary;
+    }
+
+    /**
+     * Pull ERP order status string from response body.
+     */
+    private function extractErpOrderStatus(mixed $body): ?string
+    {
+        if (!is_array($body)) {
+            return null;
+        }
+
+        $candidates = [
+            $body['status'] ?? null,
+            $body['Status'] ?? null,
+            $body['orderStatus'] ?? null,
+            $body['OrderStatus'] ?? null,
+            $body['data']['status'] ?? null,
+            $body['data']['Status'] ?? null,
+            $body['result']['status'] ?? null,
+            $body['Result']['status'] ?? null,
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (!is_string($candidate) && !is_numeric($candidate)) {
+                continue;
+            }
+
+            $value = trim((string) $candidate);
+            if ($value === '' || is_numeric($value)) {
+                // Numeric business codes (e.g. -1 / 0) are not delivery statuses.
+                continue;
+            }
+
+            if ($this->mapErpStatusToLocal($value) !== null) {
+                return $value;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -848,16 +1109,18 @@ class ErpOrderService
     }
 
     /**
-     * ERP CustomerCode: customer phone without country code (same as AddNewCustomer).
-     * Falls back to payment-method settings when the order has no customer phone.
+     * ERP CustomerCode: customer.customer_code when set, otherwise phone without country code.
+     * Falls back to payment-method settings when neither is available.
      */
     private function resolveCustomerCode(Order $order): string
     {
         $order->loadMissing('customer');
-        $customerCode = KuwaitPhone::withoutCountryCode($order->customer?->phone);
 
-        if ($customerCode !== '') {
-            return $customerCode;
+        if ($order->customer) {
+            $customerCode = $order->customer->resolveErpCustomerCode();
+            if ($customerCode !== '') {
+                return $customerCode;
+            }
         }
 
         $method = $order->payment_method;

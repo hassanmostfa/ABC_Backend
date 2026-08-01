@@ -94,10 +94,11 @@ class ErpCustomerService
     private function buildPayload(Customer $customer, string $source, int $createdBy = 0): array
     {
         $phoneWithoutCode = KuwaitPhone::withoutCountryCode($customer->phone);
+        $customerCode = $customer->resolveErpCustomerCode();
 
         return [
             'Name'         => (string) $customer->name,
-            'CustomerCode' => $phoneWithoutCode,
+            'CustomerCode' => $customerCode,
             'email'        => $this->resolveErpEmail($customer, $phoneWithoutCode),
             'source'       => $source,
             'CreatedBy'    => $this->resolveCreatedBy($source, $createdBy),

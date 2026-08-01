@@ -53,6 +53,7 @@ class OrderResource extends JsonResource
             'src' => $this->payment_gateway_src,
             'order_number' => $this->order_number,
             'status' => $this->status,
+            'cancellation_reason' => $this->cancellation_reason,
             'feedback_submited' => $this->hasSubmittedFeedback(),
             'is_sent_to_erp' => (bool) $this->is_sent_to_erp,
             'created_by_type' => $this->created_by_type ? strtolower(class_basename($this->created_by_type)) : null,

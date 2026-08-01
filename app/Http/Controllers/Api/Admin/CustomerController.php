@@ -97,6 +97,7 @@ class CustomerController extends BaseApiController
         $request->validate([
             'name' => ['required', 'string', 'max:255', new CustomerName()],
             'phone' => 'required|string|max:20|unique:customers,phone',
+            'customer_code' => 'nullable|string|max:100|unique:customers,customer_code',
             'email' => 'nullable|email|max:255|unique:customers,email',
             'is_active' => 'boolean',
             'points' => 'integer|min:0',
@@ -178,6 +179,7 @@ class CustomerController extends BaseApiController
         $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255', new CustomerName()],
             'phone' => 'sometimes|required|string|max:20|unique:customers,phone,' . $id,
+            'customer_code' => 'nullable|string|max:100|unique:customers,customer_code,' . $id,
             'email' => 'nullable|email|max:255|unique:customers,email,' . $id,
             'is_active' => 'boolean',
             'points' => 'integer|min:0',

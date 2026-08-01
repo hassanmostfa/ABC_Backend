@@ -82,7 +82,12 @@ class OrderCancellationService
                 $this->invoiceService->markAsCancelled($invoice->id);
             }
 
-            $this->orderRepository->update($orderId, ['status' => 'cancelled']);
+            $updateData = ['status' => 'cancelled'];
+            if ($reason !== null && $reason !== '') {
+                $updateData['cancellation_reason'] = $reason;
+            }
+
+            $this->orderRepository->update($orderId, $updateData);
 
             DB::commit();
 

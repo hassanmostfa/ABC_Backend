@@ -47,8 +47,8 @@ class AdminController extends Controller
                 ], 401);
             }
 
-            // Create Sanctum token (expires per config/sanctum.php — default 24 hours)
-            $tokenExpiresAt = now()->addMinutes((int) config('sanctum.expiration', 60 * 24));
+            // Create Sanctum token (expires per config/sanctum.php — default 30 days)
+            $tokenExpiresAt = now()->addMinutes((int) config('sanctum.expiration', 60 * 24 * 30));
             $token = $admin->createToken('admin-token', ['admin'], $tokenExpiresAt)->plainTextToken;
             
             $admin->load('role');

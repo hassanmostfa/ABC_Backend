@@ -49,4 +49,33 @@ class PublicErpOrderController extends BaseApiController
             'erp_status' => $result['status'],
         ], 'Order sent to ERP successfully');
     }
+
+    /**
+     * Public endpoint: get order status from ERP by OrderNumber.
+     */
+    public function getOrderStatus(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'OrderNumber' => 'required|string|max:100',
+        ]);
+
+        $result = $this->erpOrderService->getOrderStatus($validated['OrderNumber']);
+
+        if (!$result['success']) {
+            return $this->customResponse([
+                'order_number' => $validated['OrderNumber'],
+                'erp_status' => $result['erp_status'] ?? null,
+                'mapped_status' => $result['local_status'] ?? null,
+                'erp_response' => $result['body'] ?? null,
+                'erp_http_status' => $result['status'] ?? null,
+            ], $result['error'] ?? 'Failed to fetch order status from ERP', $result['status'] ?? 502);
+        }
+
+        return $this->successResponse([
+            'order_number' => $validated['OrderNumber'],
+            'erp_status' => $result['erp_status'],
+            'mapped_status' => $result['local_status'],
+            'erp_response' => $result['body'],
+        ], 'ERP order status retrieved successfully');
+    }
 }

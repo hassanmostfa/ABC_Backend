@@ -426,6 +426,7 @@ class PaymentController extends BaseApiController
     /**
      * Cancel a pending payment.
      * Only payments with 'pending' status can be cancelled.
+     * When the payment has an Ottu session, cancel it on the gateway first.
      */
     public function cancelPayment(int $id): JsonResponse
     {
@@ -443,10 +444,25 @@ class PaymentController extends BaseApiController
         }
 
         try {
+            $sessionId = trim((string) ($payment->track_id ?? ''));
+            $gateway = strtolower((string) ($payment->gateway ?? ''));
+
+            if ($sessionId !== '' && ($gateway === '' || $gateway === 'ottu')) {
+                $gatewayResult = $this->ottuService->cancelPaymentSession($sessionId);
+
+                if (!$gatewayResult['success']) {
+                    return $this->errorResponse(
+                        'Failed to cancel payment on gateway: ' . ($gatewayResult['error'] ?? 'Unknown error'),
+                        400
+                    );
+                }
+            }
+
             DB::beginTransaction();
 
             $payment = $this->paymentRepository->update($id, [
                 'status' => Payment::STATUS_CANCELLED,
+                'payment_link' => null,
             ]);
 
             if (!$payment) {

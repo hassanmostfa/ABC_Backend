@@ -25,7 +25,7 @@ class BulkUpdateOrderStatusRequest extends FormRequest
             'order_ids' => 'required|array|min:1',
             'order_ids.*' => 'required|integer|distinct',
             'status' => 'required|string|in:pending,processing,completed,cancelled,refund',
-            'reason' => 'nullable|string|max:1000',
+            'reason' => 'required_if:status,cancelled,refund|nullable|string|max:1000',
         ];
     }
 
@@ -45,6 +45,7 @@ class BulkUpdateOrderStatusRequest extends FormRequest
             'order_ids.*.distinct' => 'Order IDs must not contain duplicates.',
             'status.required' => 'Status is required.',
             'status.in' => 'Status must be one of: pending, processing, completed, cancelled, refund.',
+            'reason.required_if' => 'A reason is required when cancelling or refunding orders.',
             'reason.string' => 'Reason must be a string.',
             'reason.max' => 'Reason may not be greater than 1000 characters.',
         ];

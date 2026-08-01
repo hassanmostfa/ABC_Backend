@@ -97,6 +97,28 @@ class OttuService
     }
 
     /**
+     * Ottu Operations API endpoint (cancel, expire, refund, etc.).
+     */
+    protected function operationEndpoint(): string
+    {
+        return rtrim($this->domainRoot(), '/') . '/b/pbl/v2/operation/';
+    }
+
+    /**
+     * Domain root from configured Ottu URL (strips checkout path when present).
+     */
+    protected function domainRoot(): string
+    {
+        $base = $this->baseUrl();
+
+        if (preg_match('#(/b/checkout/v1/pymt-txn)/?$#', $base) === 1) {
+            return rtrim((string) preg_replace('#(/b/checkout/v1/pymt-txn)/?$#', '', $base), '/');
+        }
+
+        return rtrim($base, '/');
+    }
+
+    /**
      * Build checkout API URL. Accepts either a domain base (sandbox/live)
      * or a full URL that already includes /b/checkout/v1/pymt-txn.
      */
@@ -668,6 +690,119 @@ class OttuService
      *
      * @return array{gateway_status_raw: mixed, is_success: bool, is_failed: bool, amount: float|null, currency: string|null, track_id: string, receipt_id: string|null, payment_id: string|null, tran_id: string|null, requested_order_id: string|null}
      */
+    /**
+     * Cancel an unpaid Ottu checkout session (created / pending / attempted / cod).
+     *
+     * @return array{success: bool, already_cancelled: bool, status: int|null, body: mixed, error: string|null}
+     */
+    public function cancelPaymentSession(string $sessionId): array
+    {
+        $sessionId = trim($sessionId);
+        if ($sessionId === '') {
+            return [
+                'success' => false,
+                'already_cancelled' => false,
+                'status' => null,
+                'body' => null,
+                'error' => 'Session ID is required',
+            ];
+        }
+
+        $endpoint = $this->operationEndpoint();
+        $payload = [
+            'operation' => 'cancel',
+            'session_id' => $sessionId,
+        ];
+
+        try {
+            $timeout = (int) config('services.ottu.timeout', 60);
+            $connectTimeout = min(10, (int) config('services.ottu.connect_timeout', 15));
+
+            Log::info('Ottu cancel payment request', [
+                'endpoint' => $endpoint,
+                'session_id' => $sessionId,
+            ]);
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Api-Key ' . $this->apiKey(),
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+            ])->connectTimeout($connectTimeout)->timeout($timeout)->post($endpoint, $payload);
+
+            $body = $response->json();
+            $status = $response->status();
+
+            Log::info('Ottu cancel payment response', [
+                'session_id' => $sessionId,
+                'status' => $status,
+                'body' => $body,
+            ]);
+
+            if ($response->successful()) {
+                return [
+                    'success' => true,
+                    'already_cancelled' => false,
+                    'status' => $status,
+                    'body' => $body,
+                    'error' => null,
+                ];
+            }
+
+            $message = $this->resolveOttuErrorMessage($response);
+            $alreadyCancelled = $this->isAlreadyCancelledOrExpiredError($message, is_array($body) ? $body : []);
+
+            return [
+                'success' => $alreadyCancelled,
+                'already_cancelled' => $alreadyCancelled,
+                'status' => $status,
+                'body' => $body,
+                'error' => $alreadyCancelled ? null : $message,
+            ];
+        } catch (\Exception $e) {
+            Log::warning('Ottu cancel payment failed', [
+                'session_id' => $sessionId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'already_cancelled' => false,
+                'status' => null,
+                'body' => null,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     */
+    protected function isAlreadyCancelledOrExpiredError(string $message, array $body): bool
+    {
+        $haystack = strtolower($message . ' ' . json_encode($body));
+
+        foreach ([
+            'already canceled',
+            'already cancelled',
+            'already expired',
+            'is canceled',
+            'is cancelled',
+            'is expired',
+            'state is canceled',
+            'state is cancelled',
+            'state is expired',
+            '"state":"canceled"',
+            '"state":"cancelled"',
+            '"state":"expired"',
+        ] as $needle) {
+            if (str_contains($haystack, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function getPaymentStatus(string $sessionId): array
     {
         $url = $this->checkoutStatusEndpoint($sessionId);

@@ -51,6 +51,7 @@ class UpdateOrderRequest extends FormRequest
                 Rule::unique('orders', 'order_number')->ignore($orderId)
             ],
             'status' => 'sometimes|required|in:pending,processing,completed,cancelled,refund',
+            'reason' => 'required_if:status,cancelled,refund|nullable|string|max:1000',
             'offer_ids' => 'sometimes|nullable|array', // Backward compatibility: simple array of IDs
             'offer_ids.*' => 'required_with:offer_ids|integer|exists:offers,id',
             'offers' => 'sometimes|nullable|array', // New format: array of objects with offer_id and quantity
@@ -148,6 +149,9 @@ class UpdateOrderRequest extends FormRequest
             'order_number.unique' => 'The order number has already been taken.',
             'status.required' => 'The status is required.',
             'status.in' => 'The status must be one of: pending, processing, completed, cancelled, refund.',
+            'reason.required_if' => 'A reason is required when cancelling or refunding an order.',
+            'reason.string' => 'Reason must be a string.',
+            'reason.max' => 'Reason may not be greater than 1000 characters.',
             'delivery_type.in' => 'The delivery type must be either pickup or delivery.',
             'offer_ids.array' => 'The offer IDs must be an array.',
             'offer_ids.*.integer' => 'Each offer ID must be a valid integer.',
@@ -183,6 +187,7 @@ class UpdateOrderRequest extends FormRequest
             'customer_address_id' => 'customer address',
             'order_number' => 'order number',
             'status' => 'status',
+            'reason' => 'reason',
             'delivery_type' => 'delivery type',
             'delivery_date' => 'delivery date',
             'delivery_time' => 'delivery time',

@@ -6,6 +6,7 @@ use App\Exceptions\PendingOnlineInvoiceException;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Controllers\Concerns\HandlesOrderCheckouts;
 use App\Http\Requests\Admin\BulkUpdateOrderStatusRequest;
+use App\Http\Requests\Admin\CancelOrderRequest;
 use App\Http\Requests\Admin\RecreateCashOrderRequest;
 use App\Http\Requests\Admin\StoreOrderRequest;
 use App\Http\Requests\Admin\UpdateOrderRequest;
@@ -18,6 +19,7 @@ use App\Models\OrderCheckout;
 use App\Repositories\Orders\OrderRepositoryInterface;
 use App\Services\OrderCancellationService;
 use App\Services\OrderService;
+use App\Services\ErpOrderService;
 use App\Services\RefundRequestService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -31,17 +33,20 @@ class OrderController extends BaseApiController
     protected $orderService;
     protected $orderCancellationService;
     protected RefundRequestService $refundRequestService;
+    protected ErpOrderService $erpOrderService;
 
     public function __construct(
         OrderRepositoryInterface $orderRepository,
         OrderService $orderService,
         OrderCancellationService $orderCancellationService,
-        RefundRequestService $refundRequestService
+        RefundRequestService $refundRequestService,
+        ErpOrderService $erpOrderService
     ) {
         $this->orderRepository = $orderRepository;
         $this->orderService = $orderService;
         $this->orderCancellationService = $orderCancellationService;
         $this->refundRequestService = $refundRequestService;
+        $this->erpOrderService = $erpOrderService;
     }
 
     /**
@@ -298,12 +303,14 @@ class OrderController extends BaseApiController
     /**
      * Cancel the specified order.
      */
-    public function cancel(Request $request, int $id): JsonResponse
+    public function cancel(CancelOrderRequest $request, int $id): JsonResponse
     {
+        $reason = $request->validated('reason');
+
         $checkout = $this->checkoutResolver()->findCheckout($id);
         if ($checkout && !$checkout->order_id) {
             try {
-                $result = $this->checkoutResolver()->cancel($id, $request->input('reason'));
+                $result = $this->checkoutResolver()->cancel($id, $reason);
                 if (!$result['success']) {
                     return $this->errorResponse($result['message'], 400);
                 }
@@ -327,7 +334,7 @@ class OrderController extends BaseApiController
         }
 
         try {
-            $result = $this->orderCancellationService->cancelOrder($id, $request->input('reason'));
+            $result = $this->orderCancellationService->cancelOrder($id, $reason);
 
             if (!$result['success']) {
                 return $this->errorResponse($result['message'], 400);
@@ -462,6 +469,95 @@ class OrderController extends BaseApiController
             'order' => $order ? new OrderResource($order) : null,
             'erp_response' => $result['erp_response'] ?? null,
             'erp_status' => $result['erp_status'] ?? null,
+        ], $result['message']);
+    }
+
+    /**
+     * Get order status from ERP (does not update local status).
+     */
+    public function getErpStatus(int $id): JsonResponse
+    {
+        $order = $this->orderRepository->findById($id);
+
+        if (!$order) {
+            return $this->notFoundResponse('Order not found');
+        }
+
+        $result = $this->erpOrderService->getOrderStatus($order->order_number);
+
+        if (!$result['success']) {
+            return $this->errorResponse(
+                $result['error'] ?? 'Failed to fetch order status from ERP',
+                $result['status'] ?? 502,
+                [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'local_status' => $order->status,
+                    'erp_status' => $result['erp_status'] ?? null,
+                    'mapped_status' => $result['local_status'] ?? null,
+                    'erp_response' => $result['body'] ?? null,
+                ]
+            );
+        }
+
+        return $this->successResponse([
+            'order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'local_status' => $order->status,
+            'erp_status' => $result['erp_status'],
+            'mapped_status' => $result['local_status'],
+            'erp_response' => $result['body'],
+        ], 'ERP order status retrieved successfully');
+    }
+
+    /**
+     * Fetch status from ERP and update the local order when it differs.
+     */
+    public function syncErpStatus(int $id): JsonResponse
+    {
+        $order = $this->orderRepository->findById($id);
+
+        if (!$order) {
+            return $this->notFoundResponse('Order not found');
+        }
+
+        $result = $this->erpOrderService->syncOrderStatusFromErp($order);
+
+        if (!$result['success']) {
+            return $this->errorResponse(
+                $result['message'],
+                $result['erp_http_status'] ?? 400,
+                [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'previous_status' => $result['previous_status'] ?? $order->status,
+                    'erp_status' => $result['erp_status'] ?? null,
+                    'mapped_status' => $result['local_status'] ?? null,
+                    'erp_response' => $result['erp_response'] ?? null,
+                ]
+            );
+        }
+
+        if ($result['updated']) {
+            logAdminActivity('synced status from ERP', 'Order', $id, [
+                'previous_status' => $result['previous_status'] ?? null,
+                'erp_status' => $result['erp_status'] ?? null,
+                'local_status' => $result['local_status'] ?? null,
+            ]);
+        }
+
+        $fresh = $result['order'] ?? $this->orderRepository->findById($id);
+        if ($fresh) {
+            $fresh->load(['customer', 'charity', 'offers', 'items.product', 'items.variant', 'invoice.payments', 'customerAddress', 'createdBy']);
+        }
+
+        return $this->successResponse([
+            'updated' => $result['updated'],
+            'previous_status' => $result['previous_status'] ?? null,
+            'erp_status' => $result['erp_status'] ?? null,
+            'mapped_status' => $result['local_status'] ?? null,
+            'order' => $fresh ? new OrderResource($fresh) : null,
+            'erp_response' => $result['erp_response'] ?? null,
         ], $result['message']);
     }
 

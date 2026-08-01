@@ -14,6 +14,8 @@ class ContactUs extends Model
     protected $fillable = [
         'name',
         'email',
+        'phone_code',
+        'phone',
         'message',
         'is_read',
     ];

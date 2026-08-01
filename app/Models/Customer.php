@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Traits\ManagesFileUploads;
+use App\Support\KuwaitPhone;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -17,6 +18,7 @@ class Customer extends Authenticatable
     protected $fillable = [
         'name',
         'phone',
+        'customer_code',
         'email',
         'image',
         'password',
@@ -38,6 +40,19 @@ class Customer extends Authenticatable
         'is_completed' => 'boolean',
         'points' => 'integer',
     ];
+
+    /**
+     * ERP CustomerCode: stored code when set, otherwise phone without country code.
+     */
+    public function resolveErpCustomerCode(): string
+    {
+        $code = trim((string) ($this->customer_code ?? ''));
+        if ($code !== '') {
+            return $code;
+        }
+
+        return KuwaitPhone::withoutCountryCode($this->phone);
+    }
 
     /**
      * Get the profile image URL

@@ -82,7 +82,7 @@ class OfferController extends BaseApiController
     }
 
     /**
-     * Get offers related to a product variant (where variant appears in conditions or rewards).
+     * Get offers related to a product variant (where variant appears in conditions only).
      */
     public function getByProductVariant(Request $request, int $productVariantId): JsonResponse
     {
