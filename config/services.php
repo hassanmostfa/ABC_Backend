@@ -45,6 +45,9 @@ return [
         'retries'         => (int) env('ERP_RETRIES', 2),
         'retry_sleep_ms'  => (int) env('ERP_RETRY_SLEEP_MS', 1000),
         'log_failed_payload' => env('ERP_LOG_FAILED_PAYLOAD', false),
+        // Laravel HTTP client often hangs on this ERP host; use stream/curl like warehouse stock.
+        'driver'          => env('ERP_DRIVER', 'stream'),
+        'curl_path'       => env('ERP_CURL_PATH', 'curl'),
     ],
 
     'warehouse_stock' => [

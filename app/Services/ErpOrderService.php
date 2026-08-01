@@ -26,6 +26,8 @@ class ErpOrderService
     private int $retries;
     private int $retrySleepMs;
     private bool $logFailedPayload;
+    private string $driver;
+    private string $curlPath;
 
     public function __construct()
     {
@@ -37,6 +39,8 @@ class ErpOrderService
         $this->retries = (int) config('services.erp.retries', 2);
         $this->retrySleepMs = (int) config('services.erp.retry_sleep_ms', 1000);
         $this->logFailedPayload = (bool) config('services.erp.log_failed_payload', false);
+        $this->driver = (string) config('services.erp.driver', 'stream');
+        $this->curlPath = (string) config('services.erp.curl_path', 'curl');
     }
 
     /**
@@ -499,6 +503,24 @@ class ErpOrderService
         $logPayload  = $options['log_payload'] ?? $json;
         unset($options['method'], $options['query'], $options['json'], $options['body'], $options['log_payload']);
 
+        // Laravel HTTP client often hangs against this ERP host on GET.
+        // Prefer stream/curl (same approach as WarehouseStockService).
+        if ($method === 'GET') {
+            if ($this->driver === 'curl') {
+                return $this->finalizeDriverResponse(
+                    $this->requestUsingCurlBinary($url, $query, $logContext),
+                    $logContext
+                );
+            }
+
+            if ($this->driver === 'stream') {
+                return $this->finalizeDriverResponse(
+                    $this->requestUsingPhpStream($url, $query, $logContext),
+                    $logContext
+                );
+            }
+        }
+
         $maxAttempts = max(1, $this->retries + 1);
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
@@ -631,6 +653,207 @@ class ErpOrderService
             'body'    => null,
             'error'   => 'ERP request failed unexpectedly before execution.',
         ];
+    }
+
+    /**
+     * @param  array{success: bool, status: int|null, body: mixed, error: string|null}  $result
+     * @param  array<string, mixed>  $logContext
+     * @return array{success: bool, status: int|null, body: mixed, error: string|null}
+     */
+    private function finalizeDriverResponse(array $result, array $logContext): array
+    {
+        if (!$result['success']) {
+            return $result;
+        }
+
+        $businessResult = $this->evaluateErpBusinessResponse(
+            (int) ($result['status'] ?? 0),
+            $result['body']
+        );
+
+        if (!$businessResult['success']) {
+            Log::channel('erp')->warning('ERP business rejection', array_merge($logContext, [
+                'http_status' => $result['status'],
+                'error' => $businessResult['error'],
+                'response' => $result['body'],
+            ]));
+        }
+
+        return [
+            'success' => $businessResult['success'],
+            'status' => $result['status'],
+            'body' => $result['body'],
+            'error' => $businessResult['error'],
+        ];
+    }
+
+    /**
+     * @param  array<string, scalar|array|null>  $query
+     * @param  array<string, mixed>  $logContext
+     * @return array{success: bool, status: int|null, body: mixed, error: string|null}
+     */
+    private function requestUsingCurlBinary(string $url, array $query, array $logContext): array
+    {
+        if (!function_exists('exec')) {
+            return [
+                'success' => false,
+                'status' => null,
+                'body' => null,
+                'error' => 'PHP exec function is disabled; cannot run curl binary.',
+            ];
+        }
+
+        $fullUrl = $url;
+        if ($query !== []) {
+            $fullUrl .= (str_contains($url, '?') ? '&' : '?') . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+        }
+
+        $command = implode(' ', [
+            escapeshellcmd($this->curlPath),
+            '-sS',
+            '--connect-timeout',
+            escapeshellarg((string) $this->connectTimeout),
+            '--max-time',
+            escapeshellarg((string) $this->timeout),
+            '-H',
+            escapeshellarg('Accept: application/json'),
+            '-u',
+            escapeshellarg($this->username . ':' . $this->password),
+            '-w',
+            escapeshellarg("\n%{http_code}"),
+            escapeshellarg($fullUrl),
+        ]);
+
+        $startedAt = microtime(true);
+        $output = [];
+        $exitCode = 0;
+
+        exec($command . ' 2>&1', $output, $exitCode);
+
+        $durationMs = round((microtime(true) - $startedAt) * 1000, 2);
+        $statusLine = array_pop($output);
+        $rawBody = trim(implode("\n", $output));
+        $status = is_numeric($statusLine) ? (int) $statusLine : null;
+        $body = json_decode($rawBody, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $body = $rawBody !== '' ? $rawBody : null;
+        }
+
+        $success = $exitCode === 0 && $status !== null && $status >= 200 && $status < 300;
+
+        Log::channel('erp')->info('ERP GET curl', array_merge($logContext, [
+            'http_status' => $status,
+            'success' => $success,
+            'exit_code' => $exitCode,
+            'duration_ms' => $durationMs,
+            'query' => $query,
+            'response' => $body,
+        ]));
+
+        return [
+            'success' => $success,
+            'status' => $status,
+            'body' => $body,
+            'error' => $success ? null : 'ERP curl request failed with exit code ' . $exitCode,
+        ];
+    }
+
+    /**
+     * @param  array<string, scalar|array|null>  $query
+     * @param  array<string, mixed>  $logContext
+     * @return array{success: bool, status: int|null, body: mixed, error: string|null}
+     */
+    private function requestUsingPhpStream(string $url, array $query, array $logContext): array
+    {
+        if (!ini_get('allow_url_fopen')) {
+            return [
+                'success' => false,
+                'status' => null,
+                'body' => null,
+                'error' => 'PHP allow_url_fopen is disabled; cannot run stream request.',
+            ];
+        }
+
+        $fullUrl = $url;
+        if ($query !== []) {
+            $fullUrl .= (str_contains($url, '?') ? '&' : '?') . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+        }
+
+        $headers = [
+            'Accept: application/json',
+            'Authorization: Basic ' . base64_encode($this->username . ':' . $this->password),
+            'Connection: close',
+        ];
+
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'header' => implode("\r\n", $headers),
+                'timeout' => $this->timeout,
+                'ignore_errors' => true,
+                'protocol_version' => 1.1,
+            ],
+        ]);
+
+        $startedAt = microtime(true);
+        $rawBody = @file_get_contents($fullUrl, false, $context);
+        $durationMs = round((microtime(true) - $startedAt) * 1000, 2);
+        $status = $this->resolveStreamStatus($http_response_header ?? []);
+
+        if ($rawBody === false) {
+            $error = error_get_last();
+
+            Log::channel('erp')->error('ERP GET stream failed', array_merge($logContext, [
+                'http_status' => $status,
+                'duration_ms' => $durationMs,
+                'query' => $query,
+                'error' => $error['message'] ?? 'Unknown stream request error',
+            ]));
+
+            return [
+                'success' => false,
+                'status' => $status,
+                'body' => null,
+                'error' => $error['message'] ?? 'Unknown stream request error',
+            ];
+        }
+
+        $body = json_decode($rawBody, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $body = $rawBody !== '' ? $rawBody : null;
+        }
+
+        $success = $status !== null && $status >= 200 && $status < 300;
+
+        Log::channel('erp')->info('ERP GET stream', array_merge($logContext, [
+            'http_status' => $status,
+            'success' => $success,
+            'duration_ms' => $durationMs,
+            'query' => $query,
+            'response' => $body,
+        ]));
+
+        return [
+            'success' => $success,
+            'status' => $status,
+            'body' => $body,
+            'error' => $success ? null : 'ERP stream request failed with HTTP ' . ($status ?? 'unknown'),
+        ];
+    }
+
+    /**
+     * @param  array<int, string>  $headers
+     */
+    private function resolveStreamStatus(array $headers): ?int
+    {
+        foreach ($headers as $header) {
+            if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $header, $matches) === 1) {
+                return (int) $matches[1];
+            }
+        }
+
+        return null;
     }
 
     private function shouldLogFailedPayload(string $method, mixed $payload, ?string $body = null): bool
