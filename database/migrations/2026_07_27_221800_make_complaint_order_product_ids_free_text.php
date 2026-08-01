@@ -13,7 +13,9 @@ return new class extends Migration
             return;
         }
 
-        // Free-text references: may not exist as orders/products in this system.
+        // Production may still have FK constraints from the original create migration.
+        $this->dropForeignKeysIfExist(['order_id', 'product_id']);
+
         Schema::table('complaints', function (Blueprint $table) {
             if (Schema::hasColumn('complaints', 'order_id')) {
                 $table->string('order_id', 100)->nullable()->change();
@@ -52,5 +54,31 @@ return new class extends Migration
                 $table->unsignedBigInteger('product_id')->nullable()->change();
             }
         });
+    }
+
+    /**
+     * @param  list<string>  $columns
+     */
+    private function dropForeignKeysIfExist(array $columns): void
+    {
+        $database = DB::getDatabaseName();
+
+        foreach ($columns as $column) {
+            $constraints = DB::table('information_schema.KEY_COLUMN_USAGE')
+                ->select('CONSTRAINT_NAME')
+                ->where('TABLE_SCHEMA', $database)
+                ->where('TABLE_NAME', 'complaints')
+                ->where('COLUMN_NAME', $column)
+                ->whereNotNull('REFERENCED_TABLE_NAME')
+                ->pluck('CONSTRAINT_NAME')
+                ->unique()
+                ->values();
+
+            foreach ($constraints as $constraint) {
+                Schema::table('complaints', function (Blueprint $table) use ($constraint) {
+                    $table->dropForeign($constraint);
+                });
+            }
+        }
     }
 };
