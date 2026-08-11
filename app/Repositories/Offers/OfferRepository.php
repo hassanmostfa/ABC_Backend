@@ -34,6 +34,16 @@ class OfferRepository implements OfferRepositoryInterface
             $query->active();
         }
 
+        // Exclude subscription offers (for mobile and web APIs)
+        if (isset($filters['exclude_subscription']) && $filters['exclude_subscription'] === true) {
+            $query->where('is_subscription', false);
+        }
+
+        // Filter by subscription offers only (for admin subscription API)
+        if (isset($filters['is_subscription']) && $filters['is_subscription'] === true) {
+            $query->where('is_subscription', true);
+        }
+
         // Search functionality
         if (isset($filters['search']) && !empty(trim($filters['search']))) {
             $search = trim($filters['search']);
@@ -163,7 +173,7 @@ class OfferRepository implements OfferRepositoryInterface
      * Get offers related to a product variant (where variant appears in conditions only).
      * Matches only the specific variant ID.
      */
-    public function getByProductVariantId(int $productVariantId, bool $activeOnly = true): Collection
+    public function getByProductVariantId(int $productVariantId, bool $activeOnly = true, bool $excludeSubscription = true): Collection
     {
         $query = $this->model->with([
             'conditions.product',
@@ -177,6 +187,10 @@ class OfferRepository implements OfferRepositoryInterface
 
         if ($activeOnly) {
             $query->active();
+        }
+
+        if ($excludeSubscription) {
+            $query->where('is_subscription', false);
         }
 
         return $query->orderBy('created_at', 'desc')->get();

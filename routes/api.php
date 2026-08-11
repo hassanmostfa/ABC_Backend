@@ -9,8 +9,8 @@ use App\Http\Controllers\Api\Admin\CustomerController;
 use App\Http\Controllers\Api\Admin\CategoryController;
 use App\Http\Controllers\Api\Admin\SubcategoryController;
 use App\Http\Controllers\Api\Admin\ProductController;
-use App\Http\Controllers\Api\Admin\ProductVariantController;
 use App\Http\Controllers\Api\Admin\OfferController;
+use App\Http\Controllers\Api\Admin\SubscriptionController;
 use App\Http\Controllers\Api\Admin\CharityController;
 use App\Http\Controllers\Api\Admin\CountryController;
 use App\Http\Controllers\Api\Admin\GovernorateController;
@@ -23,7 +23,6 @@ use App\Http\Controllers\Api\Admin\ComplaintController;
 use App\Http\Controllers\Api\Admin\InvoiceController;
 use App\Http\Controllers\Api\Admin\PaymentController;
 use App\Http\Controllers\Api\Admin\PointsTransactionController;
-use App\Http\Controllers\Api\Admin\DeliveryController;
 use App\Http\Controllers\Api\Admin\SettingsController;
 use App\Http\Controllers\Api\Admin\CustomerAddressController;
 use App\Http\Controllers\Api\Admin\TeamMemberController;
@@ -33,7 +32,6 @@ use App\Http\Controllers\Api\Admin\CouponController as AdminCouponController;
 use App\Http\Controllers\Api\Admin\ActivityLogController;
 use App\Http\Controllers\Api\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\Api\Admin\StatisticsController;
-use App\Http\Controllers\Api\Shared\ImageController;
 use App\Http\Controllers\Api\Web\ProductController as WebProductController;
 use App\Http\Controllers\Api\Web\CategoryController as WebCategoryController;
 use App\Http\Controllers\Api\Web\AuthController;
@@ -188,10 +186,22 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
             // Offers Management
       Route::controller(OfferController::class)->prefix('offers')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:offers,view');
+         Route::get('/subscriptions', 'subscriptions')->middleware('admin.permission:offers,view');
          Route::post('/', 'store')->middleware('admin.permission:offers,add');
          Route::get('/{id}', 'show')->middleware('admin.permission:offers,view');
          Route::post('/{id}', 'update')->middleware('admin.permission:offers,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:offers,delete');
+      });
+
+            // Subscriptions Management
+      Route::controller(SubscriptionController::class)->prefix('subscriptions')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:subscriptions,view');
+         Route::get('/periods', 'periods')->middleware('admin.permission:subscriptions,view');
+         Route::post('/', 'store')->middleware('admin.permission:subscriptions,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:subscriptions,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:subscriptions,edit');
+         Route::patch('/{id}/toggle-active', 'toggleActive')->middleware('admin.permission:subscriptions,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:subscriptions,delete');
       });
 
             // Charities Management

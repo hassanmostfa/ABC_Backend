@@ -28,6 +28,9 @@ class OfferController extends BaseApiController
             $perPage = $request->input('per_page', 15);
             $filters = $request->offerFilters(activeOnly: true);
             
+            // Exclude subscription offers for mobile
+            $filters['exclude_subscription'] = true;
+            
             // Get offers using repository
             $offers = $this->offerRepository->getAllPaginated($filters, $perPage);
 
@@ -68,7 +71,7 @@ class OfferController extends BaseApiController
             // Find offer using repository
             $offer = $this->offerRepository->findById($id);
 
-            if (!$offer) {
+            if (!$offer || $offer->is_subscription) {
                 return $this->notFoundResponse('Offer not found');
             }
 

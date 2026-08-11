@@ -78,6 +78,9 @@ class AppContentController extends BaseApiController
             $perPage = $request->input('per_page', 15);
             $filters = $request->offerFilters(activeOnly: true);
 
+            // Exclude subscription offers for website
+            $filters['exclude_subscription'] = true;
+
             $offers = $this->offerRepository->getAllPaginated($filters, $perPage);
             $transformedOffers = OfferListResource::collection($offers->items());
 
@@ -114,7 +117,7 @@ class AppContentController extends BaseApiController
         try {
             $offer = $this->offerRepository->findById($id);
 
-            if (!$offer) {
+            if (!$offer || $offer->is_subscription) {
                 return $this->notFoundResponse('Offer not found');
             }
 

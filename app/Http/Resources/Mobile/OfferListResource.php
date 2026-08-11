@@ -101,6 +101,7 @@ class OfferListResource extends JsonResource
             'points' => (int) $this->points,
             'offer_start_date' => \format_date_app_tz($this->offer_start_date),
             'offer_end_date' => \format_date_app_tz($this->offer_end_date),
+            'is_subscription' => (bool) $this->is_subscription,
             'status' => $this->getOfferStatus(),
             'charity' => $this->whenLoaded('charity', function () use ($lang) {
                 return [

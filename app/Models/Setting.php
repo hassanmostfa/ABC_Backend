@@ -12,7 +12,7 @@ class Setting extends Model
     /**
      * Keys that use translations (en/ar)
      */
-    const TRANSLATABLE_KEYS = ['about', 'terms_and_conditions', 'app_ordering_disabled_message'];
+    const TRANSLATABLE_KEYS = ['about', 'terms_and_conditions', 'subscription_terms_and_conditions', 'app_ordering_disabled_message'];
 
     /**
      * The attributes that are mass assignable.

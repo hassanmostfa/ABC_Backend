@@ -26,6 +26,7 @@ class Offer extends Model
         'offer_start_date',
         'offer_end_date',
         'is_active',
+        'is_subscription',
         'image',
         'type',
         'points',
@@ -42,6 +43,7 @@ class Offer extends Model
         'offer_start_date' => 'datetime',
         'offer_end_date' => 'datetime',
         'is_active' => 'boolean',
+        'is_subscription' => 'boolean',
         'points' => 'integer',
     ];
 

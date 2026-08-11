@@ -152,6 +152,7 @@ class OfferResource extends JsonResource
             'offer_start_date' => \format_date_app_tz($this->offer_start_date),
             'offer_end_date' => \format_date_app_tz($this->offer_end_date),
             'is_active' => (bool) $this->is_active,
+            'is_subscription' => (bool) $this->is_subscription,
             'image' => $this->getFileUrl($this->image, 'public', 'no-image.png'),
             'type' => $this->type,
             'points' => (int) $this->points,

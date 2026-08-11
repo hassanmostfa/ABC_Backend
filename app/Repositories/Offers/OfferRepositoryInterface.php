@@ -41,5 +41,5 @@ interface OfferRepositoryInterface
     /**
      * Get offers related to a product variant (where variant appears in conditions only)
      */
-    public function getByProductVariantId(int $productVariantId, bool $activeOnly = true): Collection;
+    public function getByProductVariantId(int $productVariantId, bool $activeOnly = true, bool $excludeSubscription = true): Collection;
 }

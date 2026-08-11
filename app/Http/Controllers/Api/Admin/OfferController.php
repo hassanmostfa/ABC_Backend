@@ -59,6 +59,44 @@ class OfferController extends BaseApiController
     }
 
     /**
+     * Display a listing of subscription offers only with pagination and filters.
+     */
+    public function subscriptions(OfferListFilterRequest $request): JsonResponse
+    {
+        $perPage = $request->input('per_page', 15);
+        $filters = $request->offerFilters();
+        
+        // Add filter to get only subscription offers
+        $filters['is_subscription'] = true;
+        
+        $offers = $this->offerRepository->getAllPaginated($filters, $perPage);
+
+        // Transform data using OfferResource
+        $transformedOffers = OfferResource::collection($offers->items());
+
+        // Create a custom response with pagination and filters
+        $response = [
+            'success' => true,
+            'message' => 'Subscription offers retrieved successfully',
+            'data' => $transformedOffers,
+            'pagination' => [
+                'current_page' => $offers->currentPage(),
+                'last_page' => $offers->lastPage(),
+                'per_page' => $offers->perPage(),
+                'total' => $offers->total(),
+                'from' => $offers->firstItem(),
+                'to' => $offers->lastItem(),
+            ]
+        ];
+
+        if (!empty($filters)) {
+            $response['filters'] = $filters;
+        }
+
+        return response()->json($response);
+    }
+
+    /**
      * Store a newly created offer in storage.
      */
     public function store(OfferRequest $request): JsonResponse
