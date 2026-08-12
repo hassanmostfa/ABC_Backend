@@ -25,7 +25,7 @@ class RefundRequestController extends BaseApiController
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
-        $query = RefundRequest::with(['order', 'customer'])->orderBy('created_at', 'desc');
+        $query = RefundRequest::with(['order', 'customer', 'customerSubscription'])->orderBy('created_at', 'desc');
 
         if ($request->has('status')) {
             $query->where('status', $request->input('status'));
@@ -45,7 +45,7 @@ class RefundRequestController extends BaseApiController
      */
     public function show(int $id): JsonResponse
     {
-        $refundRequest = RefundRequest::with(['order', 'customer', 'invoice'])->find($id);
+        $refundRequest = RefundRequest::with(['order', 'customer', 'invoice', 'customerSubscription'])->find($id);
 
         if (!$refundRequest) {
             return $this->notFoundResponse('Refund request not found');

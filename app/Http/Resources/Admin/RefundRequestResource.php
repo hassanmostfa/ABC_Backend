@@ -17,6 +17,7 @@ class RefundRequestResource extends JsonResource
             'order_id' => $this->order_id,
             'invoice_id' => $this->invoice_id,
             'customer_id' => $this->customer_id,
+            'customer_subscription_id' => $this->customer_subscription_id,
             'amount' => (float) $this->amount,
             'status' => $this->status,
             'reason' => $this->reason,
@@ -24,10 +25,17 @@ class RefundRequestResource extends JsonResource
             'approved_by' => $this->approved_by,
             'approved_at' => \format_datetime_app_tz($this->approved_at),
             'created_at' => \format_datetime_app_tz($this->created_at),
+            'type' => $this->customer_subscription_id ? 'subscription' : 'order',
             'order' => $this->whenLoaded('order', fn () => $this->order ? [
                 'id' => $this->order->id,
                 'order_number' => $this->order->order_number,
                 'status' => $this->order->status,
+            ] : null),
+            'customer_subscription' => $this->whenLoaded('customerSubscription', fn () => $this->customerSubscription ? [
+                'id' => $this->customerSubscription->id,
+                'status' => $this->customerSubscription->status,
+                'total_amount' => (float) $this->customerSubscription->total_amount,
+                'total_orders' => $this->customerSubscription->total_orders,
             ] : null),
             'customer' => $this->whenLoaded('customer', fn () => $this->customer ? [
                 'id' => $this->customer->id,

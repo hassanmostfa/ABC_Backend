@@ -45,6 +45,7 @@ use App\Http\Controllers\Api\Shared\DeliverySlotController;
 use App\Http\Controllers\Api\UtilsController;
 use App\Http\Controllers\Api\Mobile\auth\AuthController as MobileAuthController;
 use App\Http\Controllers\Api\Mobile\offers\OfferController as MobileOfferController;
+use App\Http\Controllers\Api\Mobile\subscriptions\SubscriptionController as MobileSubscriptionController;
 use App\Http\Controllers\Api\Mobile\categories\CategoryController as MobileCategoryController;
 use App\Http\Controllers\Api\Mobile\orders\OrderController as MobileOrderController;
 use App\Http\Controllers\Api\Web\orders\OrderController as WebOrderController;
@@ -202,6 +203,13 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::put('/{id}', 'update')->middleware('admin.permission:subscriptions,edit');
          Route::patch('/{id}/toggle-active', 'toggleActive')->middleware('admin.permission:subscriptions,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:subscriptions,delete');
+      });
+
+            // Customer Subscriptions Management (purchased subscriptions)
+      Route::controller(SubscriptionController::class)->prefix('customer-subscriptions')->group(function () {
+         Route::get('/', 'customerSubscriptionsIndex')->middleware('admin.permission:subscriptions,view');
+         Route::get('/{id}', 'customerSubscriptionShow')->middleware('admin.permission:subscriptions,view');
+         Route::patch('/{id}/cancel', 'cancelCustomerSubscription')->middleware('admin.permission:subscriptions,edit');
       });
 
             // Charities Management
@@ -539,6 +547,20 @@ Route::prefix('mobile/offers')->group(function () {
       Route::get('/by-product-variant/{productVariantId}', [MobileOfferController::class, 'getByProductVariant']);
       Route::get('/{id}', [MobileOfferController::class, 'show']);
    });
+
+// Subscriptions Routes (Public & Protected) - Unified for Mobile & Web
+Route::prefix('subscriptions')->group(function () {
+   // Public routes
+   Route::get('/', [MobileSubscriptionController::class, 'index']);
+   Route::get('/{id}', [MobileSubscriptionController::class, 'show']);
+   
+   // Protected routes
+   Route::middleware('api.auth')->group(function () {
+      Route::post('/purchase', [MobileSubscriptionController::class, 'purchase'])->middleware('customer.account.completed');
+      Route::get('/my-subscriptions', [MobileSubscriptionController::class, 'mySubscriptions']);
+      Route::get('/my-subscriptions/{id}', [MobileSubscriptionController::class, 'mySubscriptionDetails']);
+   });
+});
 
 Route::prefix('mobile/app-content')->group(function () {
       Route::get('/about', [MobileAppContentController::class, 'getAbout']);

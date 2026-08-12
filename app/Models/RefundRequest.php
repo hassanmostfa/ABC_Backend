@@ -17,6 +17,7 @@ class RefundRequest extends Model
         'order_id',
         'invoice_id',
         'customer_id',
+        'customer_subscription_id',
         'amount',
         'status',
         'reason',
@@ -45,8 +46,18 @@ class RefundRequest extends Model
         return $this->belongsTo(Customer::class);
     }
 
+    public function customerSubscription()
+    {
+        return $this->belongsTo(CustomerSubscription::class);
+    }
+
     public function approvedBy()
     {
         return $this->belongsTo(Admin::class, 'approved_by');
+    }
+
+    public function isSubscriptionRefund(): bool
+    {
+        return !is_null($this->customer_subscription_id);
     }
 }
