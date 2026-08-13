@@ -103,16 +103,35 @@ class OrderItemService
     /**
      * Allocate order-level coupon discount across lines (same proportional rule as fixed discount rewards
      * in OfferService: each line gets share of net line amount / net subtotal).
+     * When $eligibleVariantIds is provided (product_variant coupons), only those lines receive discount.
+     *
+     * @param  array<int>|null  $eligibleVariantIds
      */
-    public function applyCouponDiscountToLines(array &$orderItemsData, float $couponsDiscount, float $totalAmount, float $offerDiscount): void
-    {
+    public function applyCouponDiscountToLines(
+        array &$orderItemsData,
+        float $couponsDiscount,
+        float $totalAmount,
+        float $offerDiscount,
+        ?array $eligibleVariantIds = null
+    ): void {
         if ($couponsDiscount <= 0 || empty($orderItemsData)) {
             return;
         }
 
+        $restrictToVariants = $eligibleVariantIds !== null;
+        $allowed = $restrictToVariants
+            ? array_map('intval', $eligibleVariantIds)
+            : [];
+
         $nets = [];
         $netSubtotal = 0.0;
         foreach ($orderItemsData as $i => $row) {
+            if ($restrictToVariants) {
+                $variantId = (int) ($row['variant_id'] ?? 0);
+                if ($variantId <= 0 || !in_array($variantId, $allowed, true)) {
+                    continue;
+                }
+            }
             $total = (float) ($row['total_price'] ?? 0);
             $disc = (float) ($row['discount'] ?? 0);
             $nets[$i] = max(0, $total - $disc);
@@ -123,8 +142,10 @@ class OrderItemService
             return;
         }
 
-        $remainingAfterOffer = max(0, $totalAmount - $offerDiscount);
-        $target = min($couponsDiscount, $remainingAfterOffer, $netSubtotal);
+        $cap = $restrictToVariants
+            ? $netSubtotal
+            : max(0, $totalAmount - $offerDiscount);
+        $target = min($couponsDiscount, $cap, $netSubtotal);
         if ($target <= 0) {
             return;
         }

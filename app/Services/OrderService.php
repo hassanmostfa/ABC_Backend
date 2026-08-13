@@ -171,7 +171,13 @@ class OrderService
         $couponResolution = $this->resolveCouponsDiscountForOrder($data, $totalAmount, $offerDiscount, $orderItemsData);
         $couponsDiscount = $couponResolution['coupons_discount'];
         $appliedCouponCode = $couponResolution['coupon_code'];
-        $this->orderItemService->applyCouponDiscountToLines($orderItemsData, $couponsDiscount, $totalAmount, $offerDiscount);
+        $this->orderItemService->applyCouponDiscountToLines(
+            $orderItemsData,
+            $couponsDiscount,
+            $totalAmount,
+            $offerDiscount,
+            $couponResolution['eligible_variant_ids']
+        );
         $this->orderItemService->applyLineTax($orderItemsData);
 
         $requestedPoints = $data['used_points'] ?? 0;
@@ -1014,7 +1020,7 @@ class OrderService
     /**
      * Resolve coupon discount from coupon_code only (never trust client coupons_discount).
      *
-     * @return array{coupons_discount: float, coupon_code: ?string}
+     * @return array{coupons_discount: float, coupon_code: ?string, eligible_variant_ids: ?array<int>}
      */
     protected function resolveCouponsDiscountForOrder(
         array $data,
@@ -1024,7 +1030,11 @@ class OrderService
     ): array {
         $couponCode = isset($data['coupon_code']) ? trim((string) $data['coupon_code']) : '';
         if ($couponCode === '') {
-            return ['coupons_discount' => 0.0, 'coupon_code' => null];
+            return [
+                'coupons_discount' => 0.0,
+                'coupon_code' => null,
+                'eligible_variant_ids' => null,
+            ];
         }
 
         $variantIds = [];
@@ -1040,12 +1050,16 @@ class OrderService
             $couponCode,
             $orderAmountAfterOffers,
             isset($data['customer_id']) ? (int) $data['customer_id'] : null,
-            ['variant_ids' => array_values(array_unique($variantIds))]
+            [
+                'variant_ids' => array_values(array_unique($variantIds)),
+                'order_items' => $orderItemsData,
+            ]
         );
 
         return [
             'coupons_discount' => $resolved['coupons_discount'],
             'coupon_code' => $resolved['coupon_code'],
+            'eligible_variant_ids' => $resolved['eligible_variant_ids'],
         ];
     }
 

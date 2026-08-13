@@ -180,9 +180,10 @@ class CouponService
 
     /**
      * Validate coupon and compute discount for order placement (never trust client coupons_discount).
+     * For product_variant coupons, discount is based only on eligible line nets (not full cart).
      *
-     * @param  array{variant_ids?: int[]}  $orderContext
-     * @return array{coupons_discount: float, coupon: Coupon, coupon_code: string}
+     * @param  array{variant_ids?: int[], order_items?: array<int, array{variant_id?: int, total_price?: float|int|string, discount?: float|int|string}>}  $orderContext
+     * @return array{coupons_discount: float, coupon: Coupon, coupon_code: string, eligible_variant_ids: ?array<int>}
      *
      * @throws \InvalidArgumentException
      */
@@ -208,13 +209,39 @@ class CouponService
         }
 
         $coupon = $validation['coupon'];
-        $discount = $this->calculateDiscount($coupon, $orderAmountAfterOffers);
-        $discount = min($discount, $orderAmountAfterOffers);
+        $eligibleVariantIds = null;
+        $discountBase = $orderAmountAfterOffers;
+
+        if ($coupon->type === Coupon::TYPE_PRODUCT_VARIANT) {
+            $allowedIds = $coupon->productVariants->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $eligibleVariantIds = $allowedIds;
+            $discountBase = 0.0;
+
+            foreach ($orderContext['order_items'] ?? [] as $row) {
+                $variantId = (int) ($row['variant_id'] ?? 0);
+                if ($variantId <= 0 || !in_array($variantId, $allowedIds, true)) {
+                    continue;
+                }
+                $lineTotal = (float) ($row['total_price'] ?? 0);
+                $lineDiscount = (float) ($row['discount'] ?? 0);
+                $discountBase += max(0, $lineTotal - $lineDiscount);
+            }
+
+            if ($discountBase <= 0) {
+                throw new \InvalidArgumentException(
+                    'This coupon applies only to specific products. Add an eligible product to your cart.'
+                );
+            }
+        }
+
+        $discount = $this->calculateDiscount($coupon, $discountBase);
+        $discount = min($discount, $discountBase);
 
         return [
             'coupons_discount' => round($discount, 3),
             'coupon' => $coupon,
             'coupon_code' => $coupon->code,
+            'eligible_variant_ids' => $eligibleVariantIds,
         ];
     }
 
