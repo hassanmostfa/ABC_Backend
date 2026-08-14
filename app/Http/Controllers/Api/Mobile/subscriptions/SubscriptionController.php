@@ -161,6 +161,7 @@ class SubscriptionController extends BaseApiController
 
             $subscription = CustomerSubscription::with([
                 'subscription.offer',
+                'orders' => fn ($q) => $q->orderBy('order_sequence'),
                 'orders.items.product',
                 'orders.items.productVariant',
                 'invoice',
@@ -169,7 +170,7 @@ class SubscriptionController extends BaseApiController
                 ->findOrFail($id);
 
             return $this->successResponse(
-                new CustomerSubscriptionResource($subscription),
+                (new CustomerSubscriptionResource($subscription))->withOrders(),
                 'Subscription details retrieved successfully'
             );
         } catch (\Exception $e) {
