@@ -238,6 +238,9 @@ class PaymentController extends BaseApiController
                 if ($invoiceAfter->order && $invoiceAfter->order->payment_method === 'online_link') {
                     DispatchErpOrderJob::dispatchAfterResponse($invoiceAfter->order->id);
                 }
+                if ($invoiceAfter->customer_subscription_id) {
+                    app(\App\Services\SubscriptionPurchaseService::class)->activateFromPaidInvoice($invoiceAfter);
+                }
             }
 
             // Reload with relationships
@@ -379,6 +382,9 @@ class PaymentController extends BaseApiController
                         $invoiceAfter->load('order');
                         if ($invoiceAfter->order && $invoiceAfter->order->payment_method === 'online_link') {
                             DispatchErpOrderJob::dispatchAfterResponse($invoiceAfter->order->id);
+                        }
+                        if ($invoiceAfter->customer_subscription_id) {
+                            app(\App\Services\SubscriptionPurchaseService::class)->activateFromPaidInvoice($invoiceAfter);
                         }
                     }
                 }
@@ -600,7 +606,7 @@ class PaymentController extends BaseApiController
                 return redirect()->away($this->websitePaymentRedirectUrl($showSuccess, $request, $orderNumber));
             }
 
-            if ($request->expectsJson()) {
+            if ($request->expectsJson() && !$showSuccess) {
                 return $this->errorResponse('Order not found', 404);
             }
 

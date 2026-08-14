@@ -550,16 +550,15 @@ Route::prefix('mobile/offers')->group(function () {
 
 // Subscriptions Routes (Public & Protected) - Unified for Mobile & Web
 Route::prefix('subscriptions')->group(function () {
-   // Public routes
    Route::get('/', [MobileSubscriptionController::class, 'index']);
-   Route::get('/{id}', [MobileSubscriptionController::class, 'show']);
-   
-   // Protected routes
+
    Route::middleware('api.auth')->group(function () {
       Route::post('/purchase', [MobileSubscriptionController::class, 'purchase'])->middleware('customer.account.completed');
       Route::get('/my-subscriptions', [MobileSubscriptionController::class, 'mySubscriptions']);
-      Route::get('/my-subscriptions/{id}', [MobileSubscriptionController::class, 'mySubscriptionDetails']);
+      Route::get('/my-subscriptions/{id}', [MobileSubscriptionController::class, 'mySubscriptionDetails'])->whereNumber('id');
    });
+
+   Route::get('/{id}', [MobileSubscriptionController::class, 'show'])->whereNumber('id');
 });
 
 Route::prefix('mobile/app-content')->group(function () {

@@ -109,6 +109,7 @@ class PaymentResource extends JsonResource
         return match ($type) {
             Payment::TYPE_WALLET_CHARGE => $this->resolveWalletChargePaymentFor(),
             Payment::TYPE_ORDER_CHECKOUT => $this->resolveOrderCheckoutPaymentFor(),
+            Payment::TYPE_SUBSCRIPTION => $this->resolveSubscriptionPaymentFor(),
             default => $this->resolveOrderPaymentFor(),
         };
     }
@@ -187,6 +188,35 @@ class PaymentResource extends JsonResource
             'invoice_id' => $invoice?->id ?? $this->invoice_id,
             'invoice_number' => $invoice?->invoice_number,
             'order' => $this->formatOrderSummary($order),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolveSubscriptionPaymentFor(): array
+    {
+        $invoice = $this->relationLoaded('invoice') ? $this->invoice : null;
+        $customerSubscription = $invoice && $invoice->relationLoaded('customerSubscription')
+            ? $invoice->customerSubscription
+            : null;
+        $invoiceNumber = $invoice?->invoice_number ?? $this->reference;
+
+        return [
+            'type' => Payment::TYPE_SUBSCRIPTION,
+            'label' => 'Subscription Payment',
+            'description' => $invoiceNumber
+                ? "Payment for subscription invoice {$invoiceNumber}"
+                : 'Subscription payment',
+            'reference' => $this->reference,
+            'order_id' => null,
+            'order_number' => null,
+            'checkout_id' => $this->subscription_checkout_id,
+            'subscription_checkout_id' => $this->subscription_checkout_id,
+            'customer_subscription_id' => $customerSubscription?->id ?? $invoice?->customer_subscription_id,
+            'invoice_id' => $invoice?->id ?? $this->invoice_id,
+            'invoice_number' => $invoiceNumber,
+            'order' => null,
         ];
     }
 

@@ -20,8 +20,13 @@ class InvoiceResource extends JsonResource
         return [
             'id' => $this->id,
             'order_id' => $this->order_id,
+            'customer_subscription_id' => $this->customer_subscription_id,
             'invoice_number' => $this->invoice_number,
-            'total_before_discounts' => (float) $this->order->total_amount,
+            'total_before_discounts' => (float) (
+                $this->order?->total_amount
+                ?? $this->customerSubscription?->total_amount
+                ?? 0
+            ),
             'amount_due' => (float) $this->amount_due,
             'tax_amount' => (float) $this->tax_amount,
             'delivery_fee' => (float) ($this->delivery_fee ?? 0),
@@ -33,6 +38,10 @@ class InvoiceResource extends JsonResource
             'status' => $this->status,
             'paid_at' => \format_datetime_app_tz($this->paid_at),
             'order' => $this->whenLoaded('order', function () {
+                if (!$this->order) {
+                    return null;
+                }
+
                 return [
                     'id' => $this->order->id,
                     'order_number' => $this->order->order_number,
@@ -106,6 +115,30 @@ class InvoiceResource extends JsonResource
                         ];
                     }),
                     'created_at' => $this->order->created_at?->toISOString(),
+                ];
+            }),
+            'customer_subscription' => $this->whenLoaded('customerSubscription', function () {
+                if (!$this->customerSubscription) {
+                    return null;
+                }
+
+                $subscription = $this->customerSubscription;
+                $customer = $subscription->relationLoaded('customer') ? $subscription->customer : null;
+
+                return [
+                    'id' => $subscription->id,
+                    'status' => $subscription->status,
+                    'total_amount' => (float) $subscription->total_amount,
+                    'total_orders' => (int) $subscription->total_orders,
+                    'start_date' => \format_date_app_tz($subscription->start_date),
+                    'end_date' => \format_date_app_tz($subscription->end_date),
+                    'customer' => $customer ? [
+                        'id' => $customer->id,
+                        'name' => $customer->name,
+                        'phone' => $customer->phone,
+                        'email' => $customer->email,
+                        'unread_notifications_count' => $this->getUnreadNotificationsCount($customer->id),
+                    ] : null,
                 ];
             }),
             'payments' => $this->whenLoaded('payments', function () {

@@ -36,6 +36,26 @@ class CustomerSubscriptionResource extends JsonResource
             'completed_orders' => $this->orders()->where('status', 'delivered')->count(),
             'pending_orders' => $this->orders()->where('status', 'pending')->count(),
             'next_delivery' => $this->getNextDelivery(),
+            'invoice' => $this->whenLoaded('invoice', function () {
+                if (!$this->invoice) {
+                    return null;
+                }
+
+                return [
+                    'id' => $this->invoice->id,
+                    'invoice_number' => $this->invoice->invoice_number,
+                    'amount_due' => (float) $this->invoice->amount_due,
+                    'tax_amount' => (float) $this->invoice->tax_amount,
+                    'delivery_fee' => (float) ($this->invoice->delivery_fee ?? 0),
+                    'status' => $this->invoice->status,
+                    'payment_link' => $this->invoice->payment_link,
+                    'paid_at' => $this->invoice->paid_at?->format('Y-m-d H:i:s'),
+                ];
+            }),
+            'payment_link' => $this->when(
+                $this->relationLoaded('invoice') && $this->invoice,
+                fn () => $this->invoice->payment_link
+            ),
             'created_at' => $this->created_at->format('Y-m-d H:i:s'),
         ];
     }

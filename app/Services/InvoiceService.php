@@ -116,6 +116,48 @@ class InvoiceService
     }
 
     /**
+     * Create or get the purchase invoice for a customer subscription.
+     */
+    public function createOrGetSubscriptionInvoice(
+        int $customerSubscriptionId,
+        float $amountDue,
+        float $taxAmount,
+        float $deliveryFee,
+        float $totalDiscount = 0,
+        bool $isPaid = false,
+        ?string $invoiceNumber = null,
+        ?string $paymentLink = null
+    ) {
+        $existingInvoice = $this->invoiceRepository->getByCustomerSubscription($customerSubscriptionId);
+
+        if ($existingInvoice) {
+            return $existingInvoice;
+        }
+
+        $invoiceData = [
+            'order_id' => null,
+            'customer_subscription_id' => $customerSubscriptionId,
+            'invoice_number' => $invoiceNumber ?: ('INV-SUB-' . $customerSubscriptionId),
+            'amount_due' => $amountDue,
+            'tax_amount' => $taxAmount,
+            'delivery_fee' => $deliveryFee,
+            'offer_discount' => 0,
+            'coupons_discount' => 0,
+            'used_points' => 0,
+            'points_discount' => 0,
+            'total_discount' => $totalDiscount,
+            'status' => $isPaid ? 'paid' : 'pending',
+            'payment_link' => $paymentLink,
+        ];
+
+        if ($isPaid) {
+            $invoiceData['paid_at'] = now('Asia/Kuwait');
+        }
+
+        return $this->invoiceRepository->create($invoiceData);
+    }
+
+    /**
      * Update invoice
      *
      * @param int $invoiceId

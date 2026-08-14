@@ -3,10 +3,12 @@
 namespace App\Services;
 
 use App\Jobs\DispatchErpOrderJob;
+use App\Models\CustomerSubscription;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderCheckout;
 use App\Models\Payment;
+use App\Models\SubscriptionCheckout;
 use App\Repositories\Orders\OrderRepositoryInterface;
 use App\Support\PaymentCreatorResolver;
 use Illuminate\Support\Facades\DB;
@@ -289,6 +291,10 @@ class OttuPaymentProcessor
         $referenceNumber = isset($statusResult['reference_number']) ? (string) $statusResult['reference_number'] : null;
         $existingPayment = $this->findOttuPayment($trackId, $referenceNumber);
 
+        if ($existingPayment && $existingPayment->type === Payment::TYPE_SUBSCRIPTION) {
+            return $this->processVerifiedSubscriptionPayment($trackId, $statusResult, $receiptId);
+        }
+
         if ($existingPayment && $existingPayment->type === Payment::TYPE_ORDER_CHECKOUT) {
             return $this->processVerifiedCheckoutPayment($trackId, $statusResult);
         }
@@ -304,6 +310,22 @@ class OttuPaymentProcessor
 
         $order = $orderNumber ? $this->orderRepository->findByOrderNumber($orderNumber) : null;
         if (!$order) {
+            $subscriptionCheckout = $orderNumber
+                ? SubscriptionCheckout::query()->where('checkout_number', $orderNumber)->first()
+                : null;
+
+            if ($subscriptionCheckout) {
+                return $this->processVerifiedSubscriptionPayment($trackId, $statusResult, $receiptId);
+            }
+
+            $subscriptionInvoice = $orderNumber
+                ? Invoice::query()->where('invoice_number', $orderNumber)->whereNotNull('customer_subscription_id')->first()
+                : null;
+
+            if ($subscriptionInvoice) {
+                return $this->processVerifiedSubscriptionPayment($trackId, $statusResult, $receiptId);
+            }
+
             return ['processed' => false, 'reason' => 'order_not_found'];
         }
         $order->load('invoice');
@@ -463,6 +485,119 @@ class OttuPaymentProcessor
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * @return array{processed: bool, idempotent?: bool, customer_subscription?: CustomerSubscription, payment_status?: string, reason?: string}
+     */
+    public function processVerifiedSubscriptionPayment(
+        string $trackId,
+        array $statusResult,
+        ?string $receiptId = null
+    ): array {
+        $referenceNumber = isset($statusResult['reference_number']) ? (string) $statusResult['reference_number'] : null;
+        $payment = $this->findOttuPayment($trackId, $referenceNumber);
+
+        $checkout = null;
+        if ($payment?->subscription_checkout_id) {
+            $checkout = SubscriptionCheckout::query()->find($payment->subscription_checkout_id);
+        }
+
+        if (!$checkout) {
+            $orderNumber = $statusResult['requested_order_id'] ?? null;
+            if ($orderNumber) {
+                $checkout = SubscriptionCheckout::query()->where('checkout_number', $orderNumber)->first();
+            }
+        }
+
+        if (!$checkout && $payment?->invoice_id) {
+            $invoice = Invoice::query()->find($payment->invoice_id);
+            if ($invoice?->customer_subscription_id) {
+                app(SubscriptionPurchaseService::class)->activateFromPaidInvoice($invoice);
+
+                return [
+                    'processed' => true,
+                    'customer_subscription' => CustomerSubscription::query()->find($invoice->customer_subscription_id),
+                    'payment_status' => $payment->status === Payment::STATUS_COMPLETED
+                        ? Payment::STATUS_COMPLETED
+                        : $this->resolvePaymentStatus($statusResult),
+                ];
+            }
+        }
+
+        if (!$checkout) {
+            return ['processed' => false, 'reason' => 'subscription_checkout_not_found'];
+        }
+
+        if (!$payment) {
+            $payment = Payment::firstOrCreate(
+                ['gateway' => 'ottu', 'track_id' => $trackId],
+                array_merge([
+                    'invoice_id' => null,
+                    'subscription_checkout_id' => $checkout->id,
+                    'customer_id' => $checkout->customer_id,
+                    'reference' => $checkout->checkout_number,
+                    'type' => Payment::TYPE_SUBSCRIPTION,
+                    'payment_number' => $this->generatePaymentNumber(),
+                    'payment_gateway_src' => $checkout->payment_gateway_src,
+                    'amount' => $statusResult['amount'] ?? (float) $checkout->amount_due,
+                    'bonus_amount' => 0,
+                    'total_amount' => $statusResult['amount'] ?? (float) $checkout->amount_due,
+                    'method' => 'online',
+                    'payment_link' => $checkout->payment_link,
+                    'status' => Payment::STATUS_PENDING,
+                ], PaymentCreatorResolver::forCustomer((int) $checkout->customer_id))
+            );
+        }
+
+        if ($payment && $payment->status === Payment::STATUS_COMPLETED && $checkout->customer_subscription_id) {
+            $customerSubscription = CustomerSubscription::query()
+                ->with(['subscription.offer', 'orders', 'invoice'])
+                ->find($checkout->customer_subscription_id);
+
+            return [
+                'processed' => true,
+                'idempotent' => true,
+                'customer_subscription' => $customerSubscription,
+                'payment_status' => Payment::STATUS_COMPLETED,
+            ];
+        }
+
+        if (!($statusResult['is_success'] ?? false)) {
+            if ($this->shouldAllowPaymentRetry()) {
+                if ($payment && $payment->status !== Payment::STATUS_COMPLETED) {
+                    $payment->update(['status' => Payment::STATUS_PENDING, 'paid_at' => null]);
+                }
+
+                return [
+                    'processed' => true,
+                    'payment_status' => Payment::STATUS_PENDING,
+                ];
+            }
+
+            if ($payment && $payment->status !== Payment::STATUS_COMPLETED) {
+                $payment->update(['status' => Payment::STATUS_FAILED]);
+            }
+            if ($checkout->isPending()) {
+                $checkout->update(['status' => SubscriptionCheckout::STATUS_FAILED]);
+            }
+
+            return [
+                'processed' => true,
+                'payment_status' => Payment::STATUS_FAILED,
+            ];
+        }
+
+        if ($checkout->status === SubscriptionCheckout::STATUS_FAILED) {
+            $checkout->update(['status' => SubscriptionCheckout::STATUS_PENDING]);
+            $checkout->refresh();
+        }
+
+        if ($receiptId && empty($statusResult['receipt_id'])) {
+            $statusResult['receipt_id'] = $receiptId;
+        }
+
+        return app(SubscriptionPurchaseService::class)->fulfillCheckout($checkout, $payment, $statusResult);
     }
 
     /**

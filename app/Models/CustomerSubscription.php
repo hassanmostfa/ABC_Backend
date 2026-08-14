@@ -55,6 +55,14 @@ class CustomerSubscription extends Model
     }
 
     /**
+     * Get the purchase invoice for this subscription
+     */
+    public function invoice()
+    {
+        return $this->hasOne(Invoice::class);
+    }
+
+    /**
      * Get refund requests for this customer subscription
      */
     public function refundRequests()

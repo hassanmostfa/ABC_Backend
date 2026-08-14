@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Admin\UpdateInvoiceRequest;
 use App\Http\Resources\Admin\InvoiceResource;
 use App\Repositories\Invoices\InvoiceRepositoryInterface;
+use App\Services\SubscriptionPurchaseService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -13,8 +14,10 @@ class InvoiceController extends BaseApiController
 {
     protected $invoiceRepository;
 
-    public function __construct(InvoiceRepositoryInterface $invoiceRepository)
-    {
+    public function __construct(
+        InvoiceRepositoryInterface $invoiceRepository,
+        protected SubscriptionPurchaseService $subscriptionPurchaseService
+    ) {
         $this->invoiceRepository = $invoiceRepository;
     }
 
@@ -95,6 +98,8 @@ class InvoiceController extends BaseApiController
             'order.items.variant',
             'order.invoice',
             'order.customerAddress',
+            'customerSubscription.customer',
+            'customerSubscription.subscription.offer',
             'payments'
         ]);
 
@@ -127,6 +132,10 @@ class InvoiceController extends BaseApiController
 
             if (!$invoice) {
                 return $this->errorResponse('Failed to update invoice', 500);
+            }
+
+            if (isset($updateData['status']) && $updateData['status'] === 'paid') {
+                $this->subscriptionPurchaseService->activateFromPaidInvoice($invoice);
             }
 
             // Reload with relationships

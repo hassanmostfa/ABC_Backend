@@ -49,6 +49,11 @@ interface InvoiceRepositoryInterface
     public function getByOrder(int $orderId): ?Invoice;
 
     /**
+     * Get invoice by customer subscription ID
+     */
+    public function getByCustomerSubscription(int $customerSubscriptionId): ?Invoice;
+
+    /**
      * Get invoices by status
      */
     public function getByStatus(string $status): Collection;

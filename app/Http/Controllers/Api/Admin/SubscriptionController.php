@@ -253,7 +253,7 @@ class SubscriptionController extends BaseApiController
     {
         $request->validate([
             'search' => 'nullable|string|max:255',
-            'status' => 'nullable|in:active,paused,cancelled,completed,pending_cancellation',
+            'status' => 'nullable|in:pending_payment,active,paused,cancelled,completed,pending_cancellation',
             'customer_id' => 'nullable|integer|exists:customers,id',
             'subscription_id' => 'nullable|integer|exists:subscriptions,id',
             'date_from' => 'nullable|date',
@@ -265,6 +265,7 @@ class SubscriptionController extends BaseApiController
             $query = CustomerSubscription::with([
                 'customer',
                 'subscription.offer',
+                'invoice',
             ])
                 ->withCount([
                     'orders as completed_orders_count' => fn ($q) => $q->where('status', 'delivered'),
@@ -353,6 +354,7 @@ class SubscriptionController extends BaseApiController
             $subscription = CustomerSubscription::with([
                 'customer',
                 'subscription.offer',
+                'invoice',
                 'orders' => fn ($q) => $q->orderBy('order_sequence'),
                 'orders.items.product',
                 'orders.items.productVariant',
@@ -402,6 +404,7 @@ class SubscriptionController extends BaseApiController
             $customerSubscription = $result['customer_subscription']->load([
                 'customer',
                 'subscription.offer',
+                'invoice',
                 'orders' => fn ($q) => $q->orderBy('order_sequence'),
                 'orders.items.product',
                 'orders.items.productVariant',

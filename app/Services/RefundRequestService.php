@@ -112,7 +112,7 @@ class RefundRequestService
             return ['success' => false, 'message' => 'Customer subscription not found'];
         }
 
-        if (in_array($customerSubscription->status, ['cancelled', 'completed'], true)) {
+        if (in_array($customerSubscription->status, ['cancelled', 'completed', 'pending_payment'], true)) {
             return ['success' => false, 'message' => 'Cannot request refund for a ' . $customerSubscription->status . ' subscription'];
         }
 

@@ -3,14 +3,17 @@
 namespace App\Http\Controllers\Api\Mobile\subscriptions;
 
 use App\Http\Controllers\Api\BaseApiController;
+use App\Models\Customer;
 use App\Models\Subscription;
 use App\Models\CustomerSubscription;
 use App\Http\Requests\Mobile\SubscriptionPurchaseRequest;
 use App\Http\Resources\Mobile\SubscriptionResource;
 use App\Http\Resources\Mobile\CustomerSubscriptionResource;
+use App\Http\Resources\Mobile\SubscriptionCheckoutResource;
 use App\Services\SubscriptionPurchaseService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 
 class SubscriptionController extends BaseApiController
 {
@@ -28,7 +31,13 @@ class SubscriptionController extends BaseApiController
     public function index(Request $request): JsonResponse
     {
         try {
-            $subscriptions = Subscription::with('offer')
+            $subscriptions = Subscription::with([
+                'offer.conditions.product',
+                'offer.conditions.productVariant',
+                'offer.rewards.product',
+                'offer.rewards.productVariant',
+                'offer.charity',
+            ])
                 ->active()
                 ->orderBy('period')
                 ->get();
@@ -53,11 +62,12 @@ class SubscriptionController extends BaseApiController
                 'offer.conditions.product',
                 'offer.conditions.productVariant',
                 'offer.rewards.product',
-                'offer.rewards.productVariant'
+                'offer.rewards.productVariant',
+                'offer.charity',
             ])->active()->findOrFail($id);
 
             return $this->successResponse(
-                new SubscriptionResource($subscription),
+                (new SubscriptionResource($subscription))->withFullOffer(),
                 'Subscription retrieved successfully'
             );
         } catch (\Exception $e) {
@@ -72,22 +82,22 @@ class SubscriptionController extends BaseApiController
     public function purchase(SubscriptionPurchaseRequest $request): JsonResponse
     {
         try {
-            $customer = $request->user();
+            $customer = $this->resolveAuthenticatedCustomer();
 
-            // Check if customer account is completed
-            if (!$customer->is_account_completed) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Please complete your account information first',
-                ], 422);
+            if (!$customer) {
+                return $this->unauthorizedResponse(
+                    'No authenticated customer found. This endpoint requires a customer token, not an admin token.'
+                );
             }
 
-            $customerSubscription = $this->purchaseService->purchase($customer, $request->validated());
+            $result = $this->purchaseService->purchase($customer, $request->validated());
 
             return response()->json([
                 'success' => true,
-                'message' => 'Subscription purchased successfully',
-                'data' => new CustomerSubscriptionResource($customerSubscription),
+                'message' => 'Complete payment to create the subscription.',
+                'data' => new SubscriptionCheckoutResource($result['checkout']),
+                'payment_link' => $result['payment_link'],
+                'is_checkout' => true,
             ], 201);
         } catch (\Exception $e) {
             return $this->serverErrorResponse('Failed to purchase subscription: ' . $e->getMessage());
@@ -101,11 +111,18 @@ class SubscriptionController extends BaseApiController
     public function mySubscriptions(Request $request): JsonResponse
     {
         try {
-            $customer = $request->user();
+            $customer = $this->resolveAuthenticatedCustomer();
+
+            if (!$customer) {
+                return $this->unauthorizedResponse(
+                    'No authenticated customer found. This endpoint requires a customer token, not an admin token.'
+                );
+            }
 
             $subscriptions = CustomerSubscription::with([
                 'subscription.offer',
-                'orders'
+                'orders',
+                'invoice',
             ])
                 ->where('customer_id', $customer->id)
                 ->orderBy('created_at', 'desc')
@@ -134,12 +151,19 @@ class SubscriptionController extends BaseApiController
     public function mySubscriptionDetails(Request $request, int $id): JsonResponse
     {
         try {
-            $customer = $request->user();
+            $customer = $this->resolveAuthenticatedCustomer();
+
+            if (!$customer) {
+                return $this->unauthorizedResponse(
+                    'No authenticated customer found. This endpoint requires a customer token, not an admin token.'
+                );
+            }
 
             $subscription = CustomerSubscription::with([
                 'subscription.offer',
                 'orders.items.product',
-                'orders.items.productVariant'
+                'orders.items.productVariant',
+                'invoice',
             ])
                 ->where('customer_id', $customer->id)
                 ->findOrFail($id);
@@ -151,5 +175,12 @@ class SubscriptionController extends BaseApiController
         } catch (\Exception $e) {
             return $this->notFoundResponse('Subscription not found');
         }
+    }
+
+    private function resolveAuthenticatedCustomer(): ?Customer
+    {
+        $user = Auth::guard('sanctum')->user();
+
+        return $user instanceof Customer ? $user : null;
     }
 }

@@ -20,7 +20,13 @@ class InvoiceRepository implements InvoiceRepositoryInterface
      */
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
-        $query = $this->model->with(['order', 'order.customer', 'order.charity']);
+        $query = $this->model->with([
+            'order',
+            'order.customer',
+            'order.charity',
+            'customerSubscription.customer',
+            'customerSubscription.subscription.offer',
+        ]);
 
         // Search functionality
         if (isset($filters['search']) && !empty($filters['search'])) {
@@ -33,6 +39,10 @@ class InvoiceRepository implements InvoiceRepositoryInterface
                                       $customerQuery->where('name', 'LIKE', "%{$search}%")
                                                    ->orWhere('phone', 'LIKE', "%{$search}%");
                                   });
+                  })
+                  ->orWhereHas('customerSubscription.customer', function ($customerQuery) use ($search) {
+                      $customerQuery->where('name', 'LIKE', "%{$search}%")
+                          ->orWhere('phone', 'LIKE', "%{$search}%");
                   });
             });
         }
@@ -107,7 +117,13 @@ class InvoiceRepository implements InvoiceRepositoryInterface
      */
     public function findById(int $id): ?Invoice
     {
-        return $this->model->with(['order', 'order.customer', 'order.charity'])->find($id);
+        return $this->model->with([
+            'order',
+            'order.customer',
+            'order.charity',
+            'customerSubscription.customer',
+            'customerSubscription.subscription.offer',
+        ])->find($id);
     }
 
     /**
@@ -164,6 +180,16 @@ class InvoiceRepository implements InvoiceRepositoryInterface
     {
         return $this->model->with(['order', 'order.customer', 'order.charity'])
             ->where('order_id', $orderId)
+            ->first();
+    }
+
+    /**
+     * Get invoice by customer subscription ID
+     */
+    public function getByCustomerSubscription(int $customerSubscriptionId): ?Invoice
+    {
+        return $this->model
+            ->where('customer_subscription_id', $customerSubscriptionId)
             ->first();
     }
 

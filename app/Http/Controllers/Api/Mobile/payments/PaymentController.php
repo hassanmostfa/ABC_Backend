@@ -44,11 +44,17 @@ class PaymentController extends BaseApiController
             $query->whereHas('invoice', function (Builder $invoiceQuery) use ($customer): void {
                 $invoiceQuery->whereHas('order', function (Builder $orderQuery) use ($customer): void {
                     $orderQuery->where('customer_id', $customer->id);
+                })->orWhereHas('customerSubscription', function (Builder $subscriptionQuery) use ($customer): void {
+                    $subscriptionQuery->where('customer_id', $customer->id);
                 });
             })
             ->orWhere(function (Builder $walletQuery) use ($customer): void {
                 $walletQuery->where('customer_id', $customer->id)
                     ->where('type', Payment::TYPE_WALLET_CHARGE);
+            })
+            ->orWhere(function (Builder $subscriptionQuery) use ($customer): void {
+                $subscriptionQuery->where('customer_id', $customer->id)
+                    ->where('type', Payment::TYPE_SUBSCRIPTION);
             });
         })
         ->with([
@@ -58,6 +64,8 @@ class PaymentController extends BaseApiController
             'invoice.order.charity',
             'invoice.order.items',
             'invoice.order.customerAddress',
+            'invoice.customerSubscription',
+            'invoice.customerSubscription.customer',
             'customer',
             'creator',
             'orderCheckout',
@@ -68,6 +76,9 @@ class PaymentController extends BaseApiController
             'orderCheckout.order.items',
             'orderCheckout.order.customerAddress',
             'orderCheckout.order.invoice',
+            'subscriptionCheckout',
+            'subscriptionCheckout.customer',
+            'subscriptionCheckout.customerSubscription',
         ])
         ->orderBy('created_at', 'desc')
         ->get();

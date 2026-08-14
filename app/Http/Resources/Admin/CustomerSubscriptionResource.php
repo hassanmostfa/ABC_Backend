@@ -42,6 +42,26 @@ class CustomerSubscriptionResource extends JsonResource
                     ? $this->orders->where('status', 'cancelled')->count()
                     : $this->orders()->where('status', 'cancelled')->count())),
             'metadata' => $this->metadata,
+            'invoice' => $this->whenLoaded('invoice', function () {
+                if (!$this->invoice) {
+                    return null;
+                }
+
+                return [
+                    'id' => $this->invoice->id,
+                    'invoice_number' => $this->invoice->invoice_number,
+                    'amount_due' => (float) $this->invoice->amount_due,
+                    'tax_amount' => (float) $this->invoice->tax_amount,
+                    'delivery_fee' => (float) ($this->invoice->delivery_fee ?? 0),
+                    'status' => $this->invoice->status,
+                    'payment_link' => $this->invoice->payment_link,
+                    'paid_at' => \format_datetime_app_tz($this->invoice->paid_at),
+                ];
+            }),
+            'payment_link' => $this->when(
+                $this->relationLoaded('invoice') && $this->invoice,
+                fn () => $this->invoice->payment_link
+            ),
             'customer' => $this->whenLoaded('customer', function () {
                 return [
                     'id' => $this->customer->id,
