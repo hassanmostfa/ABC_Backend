@@ -26,6 +26,8 @@ class Customer extends Authenticatable
         'is_completed',
         'points',
         'current_language',
+        'referral_code',
+        'referred_by',
     ];
 
     protected $hidden = [
@@ -119,11 +121,67 @@ class Customer extends Authenticatable
     }
 
     /**
+     * Get the customer who referred this customer
+     */
+    public function referrer()
+    {
+        return $this->belongsTo(Customer::class, 'referred_by');
+    }
+
+    /**
+     * Get customers referred by this customer
+     */
+    public function referrals()
+    {
+        return $this->hasMany(Customer::class, 'referred_by');
+    }
+
+    /**
+     * Generate a unique referral code for the customer
+     */
+    public static function generateUniqueReferralCode(): string
+    {
+        do {
+            $code = strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 8));
+        } while (self::where('referral_code', $code)->exists());
+
+        return $code;
+    }
+
+    /**
+     * Ensure customer has a referral code
+     */
+    public function ensureReferralCode(): string
+    {
+        if (!$this->referral_code) {
+            $this->referral_code = self::generateUniqueReferralCode();
+            $this->save();
+        }
+
+        return $this->referral_code;
+    }
+
+    /**
+     * Get the number of successful referrals
+     */
+    public function getReferralCountAttribute(): int
+    {
+        return $this->referrals()->where('is_completed', true)->count();
+    }
+
+    /**
      * Boot the model
      */
     protected static function boot()
     {
         parent::boot();
+
+        // Automatically generate referral code before customer is created
+        static::creating(function ($customer) {
+            if (!$customer->referral_code) {
+                $customer->referral_code = self::generateUniqueReferralCode();
+            }
+        });
 
         // Automatically create wallet when customer is created
         static::created(function ($customer) {

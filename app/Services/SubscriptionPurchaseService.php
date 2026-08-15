@@ -10,6 +10,8 @@ use App\Models\SubscriptionOrder;
 use App\Models\SubscriptionOrderItem;
 use App\Models\Subscription;
 use App\Models\Customer;
+use App\Support\PaymentCreatorResolver;
+use App\Support\SubscriptionPricing;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -19,20 +21,32 @@ class SubscriptionPurchaseService
     public function __construct(
         protected PointsTransactionService $pointsTransactionService,
         protected InvoiceService $invoiceService,
-        protected OttuService $ottuService
+        protected OttuService $ottuService,
+        protected WalletService $walletService
     ) {
     }
 
     /**
-     * Start a pay-first subscription checkout. No subscription/orders/invoice until payment succeeds.
+     * Purchase a subscription with wallet (immediate) or start an online pay-first checkout.
      *
-     * @return array{success: bool, checkout: SubscriptionCheckout, payment_link: string, is_checkout: true}
+     * @return array{
+     *     success: bool,
+     *     checkout?: SubscriptionCheckout,
+     *     customer_subscription?: CustomerSubscription,
+     *     payment_link: string|null,
+     *     is_checkout: bool
+     * }
      */
     public function purchase(Customer $customer, array $data): array
     {
         $paymentGatewaySrc = $data['src'] ?? null;
-        if (!$paymentGatewaySrc) {
-            throw new \Exception('Payment source (src) is required for online payment.');
+        $isWalletPayment = ($data['payment_method'] ?? null) === 'wallet'
+            || $paymentGatewaySrc === 'wallet';
+
+        if ($isWalletPayment) {
+            $paymentGatewaySrc = 'wallet';
+        } elseif (!$paymentGatewaySrc) {
+            throw new \Exception('Payment source (src) is required for online payment.', 400);
         }
 
         $subscription = Subscription::with([
@@ -52,11 +66,13 @@ class SubscriptionPurchaseService
             $periodMonths
         );
 
-        $subtotal = $this->calculateTotalAmount($subscription->offer, $periodMonths);
+        $periodTotals = SubscriptionPricing::periodTotals($subscription->offer, $periodMonths);
+        $subtotal = $periodTotals['total_after_price'];
         $invoiceAmounts = $this->invoiceService->calculateAmounts($subtotal, 0, 0, 0, 'delivery');
         $amountDue = $invoiceAmounts['amountDue'];
+        $source = ($data['source'] ?? 'app') === 'web' ? 'web' : 'app';
 
-        $checkout = SubscriptionCheckout::create([
+        $checkoutAttributes = [
             'customer_id' => $customer->id,
             'checkout_number' => $this->generateCheckoutNumber(),
             'payload' => [
@@ -69,15 +85,112 @@ class SubscriptionPurchaseService
                 'end_date' => $endDate->format('Y-m-d'),
                 'total_orders' => $periodMonths * $ordersPerMonth,
                 'subtotal' => $subtotal,
+                'total_before_price' => $periodTotals['total_before_price'],
+                'total_after_price' => $periodTotals['total_after_price'],
                 'invoice_amounts' => $invoiceAmounts,
                 'monthly_delivery_template' => $monthlyDeliveryTemplate,
                 'delivery_schedule' => $deliverySchedule,
+                'source' => $source,
             ],
             'payment_gateway_src' => $paymentGatewaySrc,
+            'source' => $source,
             'amount_due' => $amountDue,
             'status' => SubscriptionCheckout::STATUS_PENDING,
-            'expires_at' => now()->addMinutes((int) config('services.ottu.checkout_ttl_minutes', 60)),
-        ]);
+            'expires_at' => $isWalletPayment
+                ? null
+                : now()->addMinutes((int) config('services.ottu.checkout_ttl_minutes', 60)),
+        ];
+
+        if ($isWalletPayment) {
+            return $this->purchaseWithWallet($customer, $checkoutAttributes, $amountDue);
+        }
+
+        return $this->purchaseOnline($checkoutAttributes, $amountDue, $paymentGatewaySrc);
+    }
+
+    /**
+     * Pay immediately from wallet and create the subscription.
+     *
+     * @param  array<string, mixed>  $checkoutAttributes
+     * @return array{success: bool, customer_subscription: CustomerSubscription, payment_link: null, is_checkout: false}
+     */
+    protected function purchaseWithWallet(Customer $customer, array $checkoutAttributes, float $amountDue): array
+    {
+        try {
+            $this->walletService->validateBalance($customer->id, $amountDue);
+        } catch (\Exception $e) {
+            throw new \Exception($e->getMessage(), 400);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $checkout = SubscriptionCheckout::create($checkoutAttributes);
+
+            $this->walletService->deductBalance($customer->id, $amountDue);
+
+            $payment = Payment::create(array_merge([
+                'invoice_id' => null,
+                'subscription_checkout_id' => $checkout->id,
+                'customer_id' => $customer->id,
+                'reference' => $checkout->checkout_number,
+                'type' => Payment::TYPE_SUBSCRIPTION,
+                'payment_number' => $this->generatePaymentNumber(),
+                'gateway' => 'wallet',
+                'track_id' => $checkout->checkout_number,
+                'payment_gateway_src' => 'wallet',
+                'amount' => $amountDue,
+                'bonus_amount' => 0,
+                'total_amount' => $amountDue,
+                'method' => 'wallet',
+                'status' => Payment::STATUS_COMPLETED,
+                'paid_at' => now('Asia/Kuwait'),
+            ], PaymentCreatorResolver::forCustomer($customer->id)));
+
+            $result = $this->fulfillPaidCheckout($checkout, $payment, []);
+            if (empty($result['processed']) || empty($result['customer_subscription'])) {
+                throw new \Exception('Failed to complete wallet subscription purchase.');
+            }
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            $message = $e->getMessage();
+            if (
+                str_contains($message, 'Insufficient wallet balance')
+                || str_contains($message, 'Customer wallet not found')
+                || str_contains($message, 'Customer ID is required for wallet payment')
+            ) {
+                throw new \Exception($message, 400);
+            }
+            throw $e;
+        }
+
+        if (!empty($result['customer_subscription'])) {
+            $this->notifySubscriptionPaymentSuccess(
+                $result['checkout'] ?? $checkout,
+                $result['customer_subscription'],
+                $payment
+            );
+        }
+
+        return [
+            'success' => true,
+            'customer_subscription' => $result['customer_subscription'],
+            'payment_link' => null,
+            'is_checkout' => false,
+        ];
+    }
+
+    /**
+     * Start a pay-first Ottu checkout. No subscription/orders/invoice until payment succeeds.
+     *
+     * @param  array<string, mixed>  $checkoutAttributes
+     * @return array{success: bool, checkout: SubscriptionCheckout, payment_link: string, is_checkout: true}
+     */
+    protected function purchaseOnline(array $checkoutAttributes, float $amountDue, string $paymentGatewaySrc): array
+    {
+        $checkout = SubscriptionCheckout::create($checkoutAttributes);
 
         try {
             $checkout->load('customer');
@@ -122,164 +235,15 @@ class SubscriptionPurchaseService
     /**
      * Create the subscription, orders, and paid invoice after Ottu confirms payment.
      *
-     * @return array{processed: bool, idempotent?: bool, customer_subscription?: CustomerSubscription, payment_status?: string, reason?: string}
+     * @return array{processed: bool, idempotent?: bool, customer_subscription?: CustomerSubscription, checkout?: SubscriptionCheckout, payment_status?: string, reason?: string}
      */
     public function fulfillCheckout(SubscriptionCheckout $checkout, Payment $payment, array $statusResult): array
     {
         DB::beginTransaction();
 
         try {
-            $locked = SubscriptionCheckout::query()->whereKey($checkout->id)->lockForUpdate()->first();
-            if (!$locked) {
-                DB::rollBack();
-
-                return ['processed' => false, 'reason' => 'checkout_not_found'];
-            }
-
-            if ($locked->customer_subscription_id) {
-                $customerSubscription = CustomerSubscription::query()
-                    ->with(['subscription.offer', 'orders', 'invoice'])
-                    ->find($locked->customer_subscription_id);
-                DB::commit();
-
-                return [
-                    'processed' => true,
-                    'idempotent' => true,
-                    'customer_subscription' => $customerSubscription,
-                    'payment_status' => Payment::STATUS_COMPLETED,
-                ];
-            }
-
-            if (!$locked->isPending()) {
-                if ($locked->status === SubscriptionCheckout::STATUS_FAILED) {
-                    $locked->update(['status' => SubscriptionCheckout::STATUS_PENDING]);
-                    $locked->refresh();
-                } else {
-                    DB::rollBack();
-
-                    return ['processed' => false, 'reason' => 'checkout_not_pending'];
-                }
-            }
-
-            $draft = $locked->draft();
-            $subscription = Subscription::with([
-                'offer.conditions.product',
-                'offer.conditions.productVariant',
-                'offer.rewards.product',
-                'offer.rewards.productVariant',
-            ])->findOrFail($draft['subscription_id']);
-
-            $invoiceAmounts = $draft['invoice_amounts'] ?? [];
-            $subtotal = (float) ($draft['subtotal'] ?? 0);
-
-            $customerSubscription = CustomerSubscription::create([
-                'customer_id' => $locked->customer_id,
-                'subscription_id' => $subscription->id,
-                'orders_per_month' => (int) ($draft['orders_per_month'] ?? 1),
-                'start_date' => $draft['start_date'],
-                'end_date' => $draft['end_date'],
-                'status' => 'active',
-                'total_amount' => $subtotal,
-                'total_orders' => (int) ($draft['total_orders'] ?? 0),
-                'metadata' => [
-                    'offer_id' => $draft['offer_id'] ?? $subscription->offer_id,
-                    'period' => $draft['period'] ?? $subscription->period,
-                    'points' => $draft['points'] ?? $subscription->points,
-                    'monthly_delivery_template' => $draft['monthly_delivery_template'] ?? [],
-                    'payment_gateway_src' => $locked->payment_gateway_src,
-                    'checkout_number' => $locked->checkout_number,
-                    'points_awarded' => false,
-                ],
-            ]);
-
-            $this->generateSubscriptionOrders(
-                $customerSubscription,
-                $subscription,
-                $draft['delivery_schedule'] ?? []
-            );
-
-            $invoice = $this->invoiceService->createOrGetSubscriptionInvoice(
-                $customerSubscription->id,
-                (float) ($invoiceAmounts['amountDue'] ?? $locked->amount_due),
-                (float) ($invoiceAmounts['taxAmount'] ?? 0),
-                (float) ($invoiceAmounts['deliveryFee'] ?? 0),
-                (float) ($invoiceAmounts['totalDiscount'] ?? 0),
-                true,
-                'INV-' . $locked->checkout_number,
-                $locked->payment_link
-            );
-
-            $referenceNumber = $statusResult['reference_number'] ?? null;
-            $storedTrackId = (is_string($referenceNumber) && trim($referenceNumber) !== '')
-                ? trim($referenceNumber)
-                : (string) ($payment->track_id ?? '');
-
-            $payment->update([
-                'invoice_id' => $invoice->id,
-                'subscription_checkout_id' => $locked->id,
-                'type' => Payment::TYPE_SUBSCRIPTION,
-                'reference' => $invoice->invoice_number,
-                'status' => Payment::STATUS_COMPLETED,
-                'paid_at' => now('Asia/Kuwait'),
-                'track_id' => $storedTrackId,
-                'tran_id' => $statusResult['tran_id'] ?? $payment->tran_id,
-                'payment_id' => $statusResult['payment_id'] ?? $payment->payment_id,
-                'receipt_id' => $statusResult['receipt_id'] ?? $payment->receipt_id,
-            ]);
-
-            $locked->update([
-                'status' => SubscriptionCheckout::STATUS_PAID,
-                'customer_subscription_id' => $customerSubscription->id,
-            ]);
-
-            $metadata = $customerSubscription->metadata ?? [];
-            if ($subscription->points > 0 && empty($metadata['points_awarded'])) {
-                $customer = Customer::query()->find($customerSubscription->customer_id);
-                if ($customer) {
-                    $this->awardPoints($customer, $subscription->points);
-                    $metadata['points_awarded'] = true;
-                    $customerSubscription->update(['metadata' => $metadata]);
-                }
-            }
-
-            foreach ($customerSubscription->orders()->get() as $order) {
-                if (!$order->sent_to_erp_at) {
-                    $this->sendToErp($order);
-                }
-            }
-
+            $result = $this->fulfillPaidCheckout($checkout, $payment, $statusResult);
             DB::commit();
-
-            $customerSubscription->load(['subscription.offer', 'orders', 'invoice', 'customer']);
-
-            try {
-                sendNotification(
-                    null,
-                    $customerSubscription->customer_id,
-                    'Subscription Payment Successful',
-                    "Payment for subscription {$locked->checkout_number} was completed successfully.",
-                    'payment',
-                    [
-                        'customer_subscription_id' => $customerSubscription->id,
-                        'checkout_id' => $locked->id,
-                        'invoice_id' => $invoice->id,
-                        'payment_id' => $payment->id,
-                    ],
-                    'تم دفع الاشتراك بنجاح',
-                    "تمت عملية الدفع للاشتراك {$locked->checkout_number} بنجاح."
-                );
-            } catch (\Exception $e) {
-                Log::warning('Failed to dispatch subscription payment notification', [
-                    'checkout_id' => $locked->id,
-                    'message' => $e->getMessage(),
-                ]);
-            }
-
-            return [
-                'processed' => true,
-                'customer_subscription' => $customerSubscription,
-                'payment_status' => Payment::STATUS_COMPLETED,
-            ];
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Subscription checkout fulfillment failed', [
@@ -287,6 +251,194 @@ class SubscriptionPurchaseService
                 'message' => $e->getMessage(),
             ]);
             throw $e;
+        }
+
+        if (
+            !empty($result['processed'])
+            && empty($result['idempotent'])
+            && !empty($result['customer_subscription'])
+        ) {
+            $this->notifySubscriptionPaymentSuccess(
+                $result['checkout'] ?? $checkout,
+                $result['customer_subscription'],
+                $payment
+            );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Persist subscription, orders, invoice, and completed payment. Caller must be inside a transaction.
+     *
+     * @return array{processed: bool, idempotent?: bool, customer_subscription?: CustomerSubscription, checkout?: SubscriptionCheckout, payment_status?: string, reason?: string}
+     */
+    protected function fulfillPaidCheckout(SubscriptionCheckout $checkout, Payment $payment, array $statusResult): array
+    {
+        $locked = SubscriptionCheckout::query()->whereKey($checkout->id)->lockForUpdate()->first();
+        if (!$locked) {
+            return ['processed' => false, 'reason' => 'checkout_not_found'];
+        }
+
+        if ($locked->customer_subscription_id) {
+            $customerSubscription = CustomerSubscription::query()
+                ->with(['subscription.offer', 'orders', 'invoice'])
+                ->find($locked->customer_subscription_id);
+
+            return [
+                'processed' => true,
+                'idempotent' => true,
+                'customer_subscription' => $customerSubscription,
+                'checkout' => $locked,
+                'payment_status' => Payment::STATUS_COMPLETED,
+            ];
+        }
+
+        if (!$locked->isPending()) {
+            if ($locked->status === SubscriptionCheckout::STATUS_FAILED) {
+                $locked->update(['status' => SubscriptionCheckout::STATUS_PENDING]);
+                $locked->refresh();
+            } else {
+                return ['processed' => false, 'reason' => 'checkout_not_pending', 'checkout' => $locked];
+            }
+        }
+
+        $draft = $locked->draft();
+        $subscription = Subscription::with([
+            'offer.conditions.product',
+            'offer.conditions.productVariant',
+            'offer.rewards.product',
+            'offer.rewards.productVariant',
+        ])->findOrFail($draft['subscription_id']);
+
+        $invoiceAmounts = $draft['invoice_amounts'] ?? [];
+        $subtotal = (float) ($draft['subtotal'] ?? 0);
+
+        $customerSubscription = CustomerSubscription::create([
+            'customer_id' => $locked->customer_id,
+            'subscription_id' => $subscription->id,
+            'orders_per_month' => (int) ($draft['orders_per_month'] ?? 1),
+            'start_date' => $draft['start_date'],
+            'end_date' => $draft['end_date'],
+            'status' => 'active',
+            'total_amount' => $subtotal,
+            'total_orders' => (int) ($draft['total_orders'] ?? 0),
+            'source' => $locked->source ?: (($draft['source'] ?? 'app') === 'web' ? 'web' : 'app'),
+            'metadata' => [
+                'offer_id' => $draft['offer_id'] ?? $subscription->offer_id,
+                'period' => $draft['period'] ?? $subscription->period,
+                'points' => $draft['points'] ?? $subscription->points,
+                'monthly_delivery_template' => $draft['monthly_delivery_template'] ?? [],
+                'payment_gateway_src' => $locked->payment_gateway_src,
+                'total_before_price' => (float) ($draft['total_before_price'] ?? $subtotal),
+                'total_after_price' => (float) ($draft['total_after_price'] ?? $subtotal),
+                'checkout_number' => $locked->checkout_number,
+                'points_awarded' => false,
+            ],
+        ]);
+
+        $this->generateSubscriptionOrders(
+            $customerSubscription,
+            $subscription,
+            $draft['delivery_schedule'] ?? []
+        );
+
+        $invoice = $this->invoiceService->createOrGetSubscriptionInvoice(
+            $customerSubscription->id,
+            (float) ($invoiceAmounts['amountDue'] ?? $locked->amount_due),
+            (float) ($invoiceAmounts['taxAmount'] ?? 0),
+            (float) ($invoiceAmounts['deliveryFee'] ?? 0),
+            (float) ($invoiceAmounts['totalDiscount'] ?? 0),
+            true,
+            'INV-' . $locked->checkout_number,
+            $locked->payment_link
+        );
+
+        $referenceNumber = $statusResult['reference_number'] ?? null;
+        $storedTrackId = (is_string($referenceNumber) && trim($referenceNumber) !== '')
+            ? trim($referenceNumber)
+            : (string) ($payment->track_id ?? '');
+
+        $payment->update([
+            'invoice_id' => $invoice->id,
+            'subscription_checkout_id' => $locked->id,
+            'type' => Payment::TYPE_SUBSCRIPTION,
+            'reference' => $invoice->invoice_number,
+            'status' => Payment::STATUS_COMPLETED,
+            'paid_at' => now('Asia/Kuwait'),
+            'track_id' => $storedTrackId,
+            'tran_id' => $statusResult['tran_id'] ?? $payment->tran_id,
+            'payment_id' => $statusResult['payment_id'] ?? $payment->payment_id,
+            'receipt_id' => $statusResult['receipt_id'] ?? $payment->receipt_id,
+        ]);
+
+        $locked->update([
+            'status' => SubscriptionCheckout::STATUS_PAID,
+            'customer_subscription_id' => $customerSubscription->id,
+        ]);
+
+        $metadata = $customerSubscription->metadata ?? [];
+        if ($subscription->points > 0 && empty($metadata['points_awarded'])) {
+            $customer = Customer::query()->find($customerSubscription->customer_id);
+            if ($customer) {
+                $this->awardPoints($customer, $subscription->points);
+                $metadata['points_awarded'] = true;
+                $customerSubscription->update(['metadata' => $metadata]);
+            }
+        }
+
+        foreach ($customerSubscription->orders()->get() as $order) {
+            if (!$order->sent_to_erp_at) {
+                $this->sendToErp($order);
+            }
+        }
+
+        $customerSubscription->load([
+            'subscription.offer.conditions.product',
+            'subscription.offer.conditions.productVariant',
+            'subscription.offer.rewards.product',
+            'subscription.offer.rewards.productVariant',
+            'orders' => fn ($q) => $q->orderBy('order_sequence'),
+            'orders.items.product',
+            'orders.items.productVariant',
+            'invoice',
+            'customer',
+        ]);
+
+        return [
+            'processed' => true,
+            'customer_subscription' => $customerSubscription,
+            'checkout' => $locked->fresh(),
+            'payment_status' => Payment::STATUS_COMPLETED,
+        ];
+    }
+
+    protected function notifySubscriptionPaymentSuccess(
+        SubscriptionCheckout $checkout,
+        CustomerSubscription $customerSubscription,
+        Payment $payment
+    ): void {
+        try {
+            sendNotification(
+                null,
+                $customerSubscription->customer_id,
+                'Subscription Payment Successful',
+                "Payment for subscription {$checkout->checkout_number} was completed successfully.",
+                'payment',
+                [
+                    'customer_subscription_id' => $customerSubscription->id,
+                    'checkout_id' => $checkout->id,
+                    'invoice_id' => $customerSubscription->invoice?->id,
+                    'payment_id' => $payment->id,
+                ],
+                'تم دفع الاشتراك بنجاح',
+                "تمت عملية الدفع للاشتراك {$checkout->checkout_number} بنجاح."
+            );
+        } catch (\Exception $e) {
+            Log::warning('Failed to dispatch subscription payment notification', [
+                'checkout_id' => $checkout->id,
+                'message' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -297,6 +449,26 @@ class SubscriptionPurchaseService
         $random = strtoupper(substr(md5(uniqid((string) rand(), true)), 0, 4));
 
         return "{$prefix}-{$timestamp}-{$random}";
+    }
+
+    protected function generatePaymentNumber(): string
+    {
+        $year = date('Y');
+        $pattern = 'PAY-' . $year . '-%';
+
+        $lastPayment = Payment::where('payment_number', 'LIKE', $pattern)
+            ->orderBy('payment_number', 'desc')
+            ->first();
+
+        $sequence = 1;
+        if ($lastPayment) {
+            $parts = explode('-', $lastPayment->payment_number);
+            if (count($parts) === 3 && isset($parts[2])) {
+                $sequence = (int) $parts[2] + 1;
+            }
+        }
+
+        return sprintf('PAY-%s-%06d', $year, $sequence);
     }
 
     /**
@@ -525,30 +697,11 @@ class SubscriptionPurchaseService
     }
 
     /**
-     * Calculate payable subtotal for the subscription period (offer conditions × months).
+     * Calculate payable subtotal for the subscription period (offer after-discount × months).
      */
     protected function calculateTotalAmount($offer, int $periodMonths): float
     {
-        $monthlyAmount = 0;
-
-        foreach ($offer->conditions as $condition) {
-            $price = $condition->productVariant
-                ? $condition->productVariant->price
-                : $condition->product->price;
-            $monthlyAmount += $price * $condition->quantity;
-        }
-
-        if ($offer->reward_type === 'discount') {
-            foreach ($offer->rewards as $reward) {
-                if ($reward->discount_type === 'percentage') {
-                    $monthlyAmount -= ($monthlyAmount * $reward->discount_amount / 100);
-                } else {
-                    $monthlyAmount -= $reward->discount_amount;
-                }
-            }
-        }
-
-        return max(0, $monthlyAmount * $periodMonths);
+        return SubscriptionPricing::periodTotals($offer, $periodMonths)['total_after_price'];
     }
 
     /**

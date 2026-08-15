@@ -18,6 +18,7 @@ class CustomerSubscription extends Model
         'status',
         'total_amount',
         'total_orders',
+        'source',
         'metadata',
     ];
 

@@ -19,6 +19,7 @@ class SubscriptionCheckout extends Model
         'checkout_number',
         'payload',
         'payment_gateway_src',
+        'source',
         'amount_due',
         'status',
         'ottu_session_id',

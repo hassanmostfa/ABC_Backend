@@ -9,7 +9,9 @@ use App\Http\Requests\Mobile\ResendOtpRequest;
 use App\Http\Requests\Mobile\CompleteRegistrationRequest;
 use App\Http\Resources\Web\CustomerResource;
 use App\Jobs\DispatchErpCustomerJob;
+use App\Models\Customer;
 use App\Models\DeviceToken;
+use App\Models\Setting;
 use App\Services\ErpCustomerService;
 use App\Services\OtpService;
 use Illuminate\Http\JsonResponse;
@@ -131,13 +133,55 @@ class AuthController extends BaseApiController
                 return $this->unauthorizedResponse('No authenticated customer found');
             }
 
-            // Update customer profile
-            $customer->update([
+            // Check if already completed (referral code should already exist)
+            $wasAlreadyCompleted = $customer->is_completed;
+
+            // Prepare update data
+            $updateData = [
                 'name' => $request->input('name'),
                 'email' => $request->input('email'),
                 'current_language' => $request->input('current_language'),
                 'is_completed' => true,
-            ]);
+            ];
+
+            // Generate referral code if not exists (for new registrations)
+            if (!$customer->referral_code) {
+                $updateData['referral_code'] = Customer::generateUniqueReferralCode();
+            }
+
+            // Handle referral code usage (only for first-time completion)
+            $referralCode = $request->input('referral_code');
+            if ($referralCode && !$wasAlreadyCompleted && !$customer->referred_by) {
+                $referrer = Customer::where('referral_code', $referralCode)
+                    ->where('id', '!=', $customer->id)
+                    ->first();
+
+                if ($referrer) {
+                    $updateData['referred_by'] = $referrer->id;
+
+                    // Award points to the referrer
+                    $referralPoints = (int) Setting::getValue('referral_points', 10);
+                    $referrer->increment('points', $referralPoints);
+
+                    // Send notification to the referrer
+                    $customerName = $request->input('name');
+                    sendNotification(
+                        customerId: $referrer->id,
+                        type: 'referral_reward',
+                        titleEn: 'Referral Reward',
+                        titleAr: 'مكافأة الإحالة',
+                        messageEn: "Congratulations! {$customerName} used your referral code. You earned {$referralPoints} points!",
+                        messageAr: "تهانينا! استخدم {$customerName} رمز الإحالة الخاص بك. لقد ربحت {$referralPoints} نقطة!",
+                        data: [
+                            'points_earned' => $referralPoints,
+                            'referred_customer_name' => $customerName,
+                        ]
+                    );
+                }
+            }
+
+            // Update customer profile
+            $customer->update($updateData);
 
             // Store or refresh device token for this customer
             DeviceToken::updateOrCreate(

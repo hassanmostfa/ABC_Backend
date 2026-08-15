@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Support\SubscriptionPricing;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use App\Traits\ManagesFileUploads;
@@ -17,6 +18,8 @@ class SubscriptionResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $pricing = SubscriptionPricing::forPlan($this->resource);
+
         return [
             'id' => $this->id,
             'offer_id' => $this->offer_id,
@@ -165,6 +168,9 @@ class SubscriptionResource extends JsonResource
             'period' => $this->period,
             'period_in_months' => (int) $this->period,
             'points' => (int) $this->points,
+            'total_before_price' => $pricing['total_before_price'],
+            'total_after_price' => $pricing['total_after_price'],
+            'payment_method' => $pricing['payment_method'],
             'is_active' => (bool) $this->is_active,
             'created_at' => \format_datetime_app_tz($this->created_at),
             'updated_at' => \format_datetime_app_tz($this->updated_at),

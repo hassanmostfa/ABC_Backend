@@ -632,6 +632,8 @@ Route::middleware('api.auth')->prefix('mobile/profile')->group(function () {
    Route::post('/', [MobileProfileController::class, 'update']);
    Route::patch('/language', [MobileProfileController::class, 'updateCurrentLanguage']);
    Route::put('/change-password', [MobileProfileController::class, 'changePassword']);
+   Route::get('/referral', [MobileProfileController::class, 'referralInfo']);
+   Route::post('/referral/verify', [MobileProfileController::class, 'verifyReferralCode']);
 });
 
 // =====================================================================================================

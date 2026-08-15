@@ -36,6 +36,8 @@ class CustomerResource extends JsonResource
             }),
             'is_active' => (bool) $this->is_active,
             'is_completed' => (bool) $this->is_completed,
+            'referral_code' => $this->referral_code,
+            'referral_count' => $this->referral_count,
             'email_verified_at' => \format_datetime_app_tz($this->email_verified_at),
             'addresses' => $this->whenLoaded('addresses', function () {
                 return CustomerAddressResource::collection($this->addresses);

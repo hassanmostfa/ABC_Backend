@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Support\SubscriptionPricing;
 use App\Traits\CustomerUnreadNotificationsCountTrait;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -124,11 +125,16 @@ class InvoiceResource extends JsonResource
 
                 $subscription = $this->customerSubscription;
                 $customer = $subscription->relationLoaded('customer') ? $subscription->customer : null;
+                $pricing = SubscriptionPricing::forCustomerSubscription($subscription);
 
                 return [
                     'id' => $subscription->id,
                     'status' => $subscription->status,
                     'total_amount' => (float) $subscription->total_amount,
+                    'total_before_price' => $pricing['total_before_price'],
+                    'total_after_price' => $pricing['total_after_price'],
+                    'payment_method' => $pricing['payment_method'],
+                    'source' => $subscription->source ?: 'app',
                     'total_orders' => (int) $subscription->total_orders,
                     'start_date' => \format_date_app_tz($subscription->start_date),
                     'end_date' => \format_date_app_tz($subscription->end_date),

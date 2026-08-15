@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Support\SubscriptionPricing;
 use App\Traits\CustomerUnreadNotificationsCountTrait;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -31,12 +32,24 @@ class RefundRequestResource extends JsonResource
                 'order_number' => $this->order->order_number,
                 'status' => $this->order->status,
             ] : null),
-            'customer_subscription' => $this->whenLoaded('customerSubscription', fn () => $this->customerSubscription ? [
-                'id' => $this->customerSubscription->id,
-                'status' => $this->customerSubscription->status,
-                'total_amount' => (float) $this->customerSubscription->total_amount,
-                'total_orders' => $this->customerSubscription->total_orders,
-            ] : null),
+            'customer_subscription' => $this->whenLoaded('customerSubscription', function () {
+                if (!$this->customerSubscription) {
+                    return null;
+                }
+
+                $pricing = SubscriptionPricing::forCustomerSubscription($this->customerSubscription);
+
+                return [
+                    'id' => $this->customerSubscription->id,
+                    'status' => $this->customerSubscription->status,
+                    'total_amount' => (float) $this->customerSubscription->total_amount,
+                    'total_before_price' => $pricing['total_before_price'],
+                    'total_after_price' => $pricing['total_after_price'],
+                    'payment_method' => $pricing['payment_method'],
+                    'source' => $this->customerSubscription->source ?: 'app',
+                    'total_orders' => $this->customerSubscription->total_orders,
+                ];
+            }),
             'customer' => $this->whenLoaded('customer', fn () => $this->customer ? [
                 'id' => $this->customer->id,
                 'name' => $this->customer->name,

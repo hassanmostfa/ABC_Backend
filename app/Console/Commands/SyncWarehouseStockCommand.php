@@ -79,12 +79,26 @@ class SyncWarehouseStockCommand extends Command
 
         $updated = 0;
         $skipped = 0;
+        $lowStockZeroed = 0;
 
         foreach ($variants as $variant) {
             $newQuantity = $quantityByItemCode[$variant->sku] ?? null;
 
             if ($newQuantity === null) {
                 $skipped++;
+                continue;
+            }
+
+            // If quantity is less than 50, set it to 0
+            if ($newQuantity < 50) {
+                if ((int) $variant->quantity !== 0) {
+                    $oldQty = $variant->quantity;
+                    $variant->update(['quantity' => 0]);
+                    $this->line("  [<50] {$variant->sku}: {$oldQty} -> 0 (low stock: {$newQuantity})");
+                    $lowStockZeroed++;
+                } else {
+                    $skipped++;
+                }
                 continue;
             }
 
@@ -118,10 +132,11 @@ class SyncWarehouseStockCommand extends Command
 
         $this->line('');
         $this->info("[=] Sync Summary:");
-        $this->line("  [+] Updated:    {$updated}");
-        $this->line("  [0] Zeroed:     {$zeroed}");
-        $this->line("  [-] Unchanged:  {$skipped}");
-        $this->line("  [?] Not in DB:  {$notFound}");
+        $this->line("  [+] Updated:      {$updated}");
+        $this->line("  [<50] Low Stock:  {$lowStockZeroed}");
+        $this->line("  [0] Zeroed:       {$zeroed}");
+        $this->line("  [-] Unchanged:    {$skipped}");
+        $this->line("  [?] Not in DB:    {$notFound}");
         $this->info("[*] Warehouse Stock Sync Completed");
         $this->line('');
 
@@ -131,6 +146,7 @@ class SyncWarehouseStockCommand extends Command
             'aggregated_skus' => count($quantityByItemCode),
             'variants_found' => $variants->count(),
             'updated' => $updated,
+            'low_stock_zeroed' => $lowStockZeroed,
             'zeroed' => $zeroed,
             'skipped' => $skipped,
             'not_in_db' => $notFound,

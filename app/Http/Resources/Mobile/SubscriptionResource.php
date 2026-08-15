@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Mobile;
 
+use App\Support\SubscriptionPricing;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -19,6 +20,7 @@ class SubscriptionResource extends JsonResource
     public function toArray(Request $request): array
     {
         $lang = $this->getLanguage($request);
+        $pricing = SubscriptionPricing::forPlan($this->resource);
 
         return [
             'id' => $this->id,
@@ -34,6 +36,9 @@ class SubscriptionResource extends JsonResource
             'period_months' => (int) $this->period,
             'period_label' => $this->getPeriodLabel($lang),
             'points' => (int) $this->points,
+            'total_before_price' => $pricing['total_before_price'],
+            'total_after_price' => $pricing['total_after_price'],
+            'payment_method' => $pricing['payment_method'],
             'is_active' => (bool) $this->is_active,
         ];
     }

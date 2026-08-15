@@ -105,6 +105,11 @@ class SettingSeeder extends Seeder
                 'key' => 'credit_card_customer_code',
                 'value' => '',
             ],
+            // Referral Settings
+            [
+                'key' => 'referral_points',
+                'value' => '10', // Points awarded to referrer when a new customer uses their referral code
+            ],
         ];
 
         foreach ($settings as $setting) {

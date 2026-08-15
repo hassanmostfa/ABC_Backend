@@ -8,6 +8,7 @@ use App\Http\Requests\Mobile\UpdateCurrentLanguageRequest;
 use App\Http\Requests\Mobile\UpdateProfileRequest;
 use App\Http\Resources\Mobile\CustomerResource;
 use App\Models\Customer;
+use App\Models\Setting;
 use App\Repositories\Customers\CustomerRepositoryInterface;
 use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;
@@ -192,5 +193,65 @@ class ProfileController extends BaseApiController
             new CustomerResource($customerModel->fresh()),
             'Current language updated successfully'
         );
+    }
+
+    /**
+     * Get customer referral info (code, stats, etc.)
+     */
+    public function referralInfo(Request $request): JsonResponse
+    {
+        $customer = Auth::guard('sanctum')->user();
+
+        if (!$customer) {
+            return $this->unauthorizedResponse('No authenticated customer found');
+        }
+
+        $customerModel = $this->customerRepository->findById($customer->id);
+        if (!$customerModel) {
+            return $this->notFoundResponse('Customer not found');
+        }
+
+        // Ensure the customer has a referral code
+        $referralCode = $customerModel->ensureReferralCode();
+
+        // Get referral stats
+        $totalReferrals = $customerModel->referrals()->where('is_completed', true)->count();
+        $referralPoints = (int) Setting::getValue('referral_points', 10);
+
+        return $this->successResponse([
+            'referral_code' => $referralCode,
+            'total_referrals' => $totalReferrals,
+            'points_per_referral' => $referralPoints,
+            'total_points_earned' => $totalReferrals * $referralPoints,
+        ], 'Referral info retrieved successfully');
+    }
+
+    /**
+     * Verify if a referral code is valid
+     */
+    public function verifyReferralCode(Request $request): JsonResponse
+    {
+        $request->validate([
+            'referral_code' => 'required|string|size:8',
+        ]);
+
+        $referralCode = strtoupper($request->input('referral_code'));
+        
+        $referrer = Customer::where('referral_code', $referralCode)->first();
+
+        if (!$referrer) {
+            return $this->errorResponse('Invalid referral code.', 404);
+        }
+
+        // Check if the current user is trying to use their own code
+        $customer = Auth::guard('sanctum')->user();
+        if ($customer && $customer->id === $referrer->id) {
+            return $this->errorResponse('You cannot use your own referral code.', 400);
+        }
+
+        return $this->successResponse([
+            'valid' => true,
+            'referrer_name' => $referrer->name,
+        ], 'Referral code is valid');
     }
 }

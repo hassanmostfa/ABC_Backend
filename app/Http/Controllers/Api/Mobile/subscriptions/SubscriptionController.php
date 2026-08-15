@@ -10,6 +10,8 @@ use App\Http\Requests\Mobile\SubscriptionPurchaseRequest;
 use App\Http\Resources\Mobile\SubscriptionResource;
 use App\Http\Resources\Mobile\CustomerSubscriptionResource;
 use App\Http\Resources\Mobile\SubscriptionCheckoutResource;
+use App\Http\Resources\Mobile\SubscriptionOrderResource;
+use App\Models\SubscriptionOrder;
 use App\Services\SubscriptionPurchaseService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -92,6 +94,16 @@ class SubscriptionController extends BaseApiController
 
             $result = $this->purchaseService->purchase($customer, $request->validated());
 
+            if (empty($result['is_checkout'])) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Subscription purchased successfully.',
+                    'data' => (new CustomerSubscriptionResource($result['customer_subscription']))->withOrders(),
+                    'payment_link' => null,
+                    'is_checkout' => false,
+                ], 201);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Complete payment to create the subscription.',
@@ -100,6 +112,11 @@ class SubscriptionController extends BaseApiController
                 'is_checkout' => true,
             ], 201);
         } catch (\Exception $e) {
+            $code = (int) $e->getCode();
+            if ($code >= 400 && $code < 500) {
+                return $this->errorResponse($e->getMessage(), $code);
+            }
+
             return $this->serverErrorResponse('Failed to purchase subscription: ' . $e->getMessage());
         }
     }
@@ -120,7 +137,10 @@ class SubscriptionController extends BaseApiController
             }
 
             $subscriptions = CustomerSubscription::with([
-                'subscription.offer',
+                'subscription.offer.conditions.product',
+                'subscription.offer.conditions.productVariant',
+                'subscription.offer.rewards.product',
+                'subscription.offer.rewards.productVariant',
                 'orders',
                 'invoice',
             ])
@@ -145,11 +165,23 @@ class SubscriptionController extends BaseApiController
     }
 
     /**
-     * Get specific customer subscription details
+     * Get specific customer subscription details with paginated orders.
      * For both Mobile & Web
      */
     public function mySubscriptionDetails(Request $request, int $id): JsonResponse
     {
+        $request->validate(
+            [
+                'status' => 'nullable|in:pending,processing,shipped,delivered,cancelled,completed',
+                'order_status' => 'nullable|in:pending,processing,shipped,delivered,cancelled,completed',
+                'per_page' => 'nullable|integer|min:1|max:100',
+            ],
+            [
+                'status.in' => 'The status filter applies to orders, not the subscription. Allowed: pending, processing, shipped, delivered, cancelled.',
+                'order_status.in' => 'The order status must be one of: pending, processing, shipped, delivered, cancelled.',
+            ]
+        );
+
         try {
             $customer = $this->resolveAuthenticatedCustomer();
 
@@ -159,20 +191,67 @@ class SubscriptionController extends BaseApiController
                 );
             }
 
-            $subscription = CustomerSubscription::with([
-                'subscription.offer',
-                'orders' => fn ($q) => $q->orderBy('order_sequence'),
-                'orders.items.product',
-                'orders.items.productVariant',
-                'invoice',
-            ])
+            $orderStatus = $request->query('order_status') ?: $request->query('status');
+            if (is_string($orderStatus)) {
+                $orderStatus = strtolower(trim($orderStatus));
+            }
+            if ($orderStatus === '') {
+                $orderStatus = null;
+            }
+            if ($orderStatus === 'completed') {
+                $orderStatus = 'delivered';
+            }
+            $perPage = (int) $request->input('per_page', 15);
+
+            $subscription = CustomerSubscription::query()
+                ->withCount([
+                    'orders as completed_orders_count' => fn ($q) => $q->where('status', 'delivered'),
+                    'orders as pending_orders_count' => fn ($q) => $q->where('status', 'pending'),
+                    'orders as processing_orders_count' => fn ($q) => $q->where('status', 'processing'),
+                    'orders as cancelled_orders_count' => fn ($q) => $q->where('status', 'cancelled'),
+                ])
                 ->where('customer_id', $customer->id)
                 ->findOrFail($id);
 
-            return $this->successResponse(
-                (new CustomerSubscriptionResource($subscription))->withOrders(),
-                'Subscription details retrieved successfully'
-            );
+            $ordersQuery = SubscriptionOrder::query()
+                ->with(['items.product', 'items.productVariant'])
+                ->where('customer_subscription_id', $subscription->id)
+                ->orderBy('order_sequence');
+
+            if ($orderStatus) {
+                $ordersQuery->where('subscription_orders.status', $orderStatus);
+            }
+
+            $orders = $ordersQuery->paginate($perPage);
+
+            $response = [
+                'success' => true,
+                'message' => 'Subscription orders retrieved successfully',
+                'data' => SubscriptionOrderResource::collection($orders->items()),
+                'pagination' => [
+                    'current_page' => $orders->currentPage(),
+                    'last_page' => $orders->lastPage(),
+                    'per_page' => $orders->perPage(),
+                    'total' => $orders->total(),
+                    'from' => $orders->firstItem(),
+                    'to' => $orders->lastItem(),
+                ],
+                'statistics' => [
+                    'total_orders' => (int) $subscription->total_orders,
+                    'pending_orders' => (int) $subscription->pending_orders_count,
+                    'processing_orders' => (int) $subscription->processing_orders_count,
+                    'delivered_orders' => (int) $subscription->completed_orders_count,
+                    'cancelled_orders' => (int) $subscription->cancelled_orders_count,
+                ],
+            ];
+
+            if ($orderStatus) {
+                $response['filters'] = ['order_status' => $orderStatus];
+            }
+
+            return response()->json($response);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return $this->notFoundResponse('Subscription not found');
         }

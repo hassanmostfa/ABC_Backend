@@ -20,7 +20,9 @@ class SubscriptionPurchaseRequest extends FormRequest
             'start_date' => 'nullable|date|after_or_equal:today',
             'delivery_schedule' => 'required|array',
             'delivery_schedule.*' => 'required|date|after_or_equal:today',
-            'src' => 'required|string|in:knet,cc',
+            'payment_method' => 'nullable|string|in:wallet',
+            'src' => 'required_unless:payment_method,wallet|nullable|string|in:knet,cc,wallet',
+            'source' => 'nullable|string|in:app,web',
         ];
     }
 
@@ -35,8 +37,31 @@ class SubscriptionPurchaseRequest extends FormRequest
             'delivery_schedule.required' => 'مواعيد التوصيل مطلوبة',
             'delivery_schedule.array' => 'مواعيد التوصيل يجب أن تكون مصفوفة',
             'src.required' => 'مصدر الدفع مطلوب',
-            'src.in' => 'مصدر الدفع يجب أن يكون knet أو cc',
+            'src.required_unless' => 'مصدر الدفع مطلوب للدفع الإلكتروني',
+            'src.in' => 'مصدر الدفع يجب أن يكون knet أو cc أو wallet',
+            'payment_method.in' => 'طريقة الدفع يجب أن تكون wallet',
+            'source.in' => 'المصدر يجب أن يكون app أو web',
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $source = $this->input('source')
+            ?? $this->header('X-Source')
+            ?? $this->header('X-Platform');
+
+        if (!is_string($source) || trim($source) === '') {
+            return;
+        }
+
+        $source = strtolower(trim($source));
+        if ($source === 'website') {
+            $source = 'web';
+        }
+
+        if (in_array($source, ['app', 'web'], true)) {
+            $this->merge(['source' => $source]);
+        }
     }
 
     /**

@@ -27,6 +27,8 @@ class CustomerResource extends JsonResource
             'unread_notifications_count' => $this->getUnreadNotificationsCount($this->id),
             'is_active' => $this->is_active,
             'is_completed' => $this->is_completed,
+            'referral_code' => $this->referral_code,
+            'referral_count' => $this->referral_count,
             'email_verified_at' => \format_datetime_app_tz($this->email_verified_at),
             'created_at' => \format_datetime_app_tz($this->created_at),
             'updated_at' => \format_datetime_app_tz($this->updated_at),

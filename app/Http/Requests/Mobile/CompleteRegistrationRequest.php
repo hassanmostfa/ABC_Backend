@@ -27,6 +27,7 @@ class CompleteRegistrationRequest extends MobileFormRequest
             'email' => ['nullable', 'email', 'max:255', 'unique:customers,email'],
             'current_language' => ['required', 'in:en,ar'],
             'device_token' => ['required', 'string', 'max:1000'],
+            'referral_code' => ['nullable', 'string', 'size:8', 'exists:customers,referral_code'],
         ];
     }
 
@@ -45,6 +46,9 @@ class CompleteRegistrationRequest extends MobileFormRequest
             'device_token.required' => $this->msg('The device token field is required.', 'رمز الجهاز مطلوب.'),
             'device_token.string' => $this->msg('The device token must be a string.', 'يجب أن يكون رمز الجهاز نصاً.'),
             'device_token.max' => $this->msg('The device token may not be greater than 1000 characters.', 'رمز الجهاز لا يجوز أن يتجاوز 1000 حرف.'),
+            'referral_code.string' => $this->msg('The referral code must be a string.', 'يجب أن يكون رمز الإحالة نصاً.'),
+            'referral_code.size' => $this->msg('The referral code must be 8 characters.', 'يجب أن يكون رمز الإحالة 8 أحرف.'),
+            'referral_code.exists' => $this->msg('The referral code is invalid.', 'رمز الإحالة غير صالح.'),
         ];
     }
 }

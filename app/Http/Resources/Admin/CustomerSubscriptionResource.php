@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Support\SubscriptionPricing;
 use App\Traits\CustomerUnreadNotificationsCountTrait;
 use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;
@@ -19,6 +20,8 @@ class CustomerSubscriptionResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $pricing = SubscriptionPricing::forCustomerSubscription($this->resource);
+
         return [
             'id' => $this->id,
             'customer_id' => $this->customer_id,
@@ -28,6 +31,10 @@ class CustomerSubscriptionResource extends JsonResource
             'end_date' => \format_date_app_tz($this->end_date),
             'status' => $this->status,
             'total_amount' => (float) $this->total_amount,
+            'total_before_price' => $pricing['total_before_price'],
+            'total_after_price' => $pricing['total_after_price'],
+            'payment_method' => $pricing['payment_method'],
+            'source' => $this->source ?: 'app',
             'total_orders' => (int) $this->total_orders,
             'completed_orders' => (int) ($this->completed_orders_count
                 ?? ($this->relationLoaded('orders')

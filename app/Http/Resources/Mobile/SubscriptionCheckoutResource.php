@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Mobile;
 
 use App\Models\Subscription;
+use App\Support\SubscriptionPricing;
 use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -16,6 +17,7 @@ class SubscriptionCheckoutResource extends JsonResource
         $lang = $this->getLanguage($request);
         $draft = $this->draft();
         $invoiceAmounts = $draft['invoice_amounts'] ?? [];
+        $pricing = SubscriptionPricing::forCheckout($this->resource);
         $subscription = Subscription::query()
             ->with('offer')
             ->find($draft['subscription_id'] ?? null);
@@ -26,6 +28,10 @@ class SubscriptionCheckoutResource extends JsonResource
             'status' => $this->status,
             'is_checkout' => true,
             'src' => $this->payment_gateway_src,
+            'payment_method' => $pricing['payment_method'],
+            'source' => $this->source ?: ($draft['source'] ?? 'app'),
+            'total_before_price' => $pricing['total_before_price'],
+            'total_after_price' => $pricing['total_after_price'],
             'amount_due' => (float) $this->amount_due,
             'payment_link' => $this->payment_link,
             'expires_at' => $this->expires_at?->toIso8601String(),

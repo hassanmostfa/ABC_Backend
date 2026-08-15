@@ -256,6 +256,7 @@ class SubscriptionController extends BaseApiController
             'status' => 'nullable|in:pending_payment,active,paused,cancelled,completed,pending_cancellation',
             'customer_id' => 'nullable|integer|exists:customers,id',
             'subscription_id' => 'nullable|integer|exists:subscriptions,id',
+            'source' => 'nullable|in:app,web',
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date|after_or_equal:date_from',
             'per_page' => 'nullable|integer|min:1|max:100',
@@ -264,7 +265,10 @@ class SubscriptionController extends BaseApiController
         try {
             $query = CustomerSubscription::with([
                 'customer',
-                'subscription.offer',
+                'subscription.offer.conditions.product',
+                'subscription.offer.conditions.productVariant',
+                'subscription.offer.rewards.product',
+                'subscription.offer.rewards.productVariant',
                 'invoice',
             ])
                 ->withCount([
@@ -284,6 +288,10 @@ class SubscriptionController extends BaseApiController
 
             if ($request->filled('subscription_id')) {
                 $query->where('subscription_id', $request->input('subscription_id'));
+            }
+
+            if ($request->filled('source')) {
+                $query->where('source', $request->input('source'));
             }
 
             if ($request->filled('date_from')) {
@@ -331,6 +339,7 @@ class SubscriptionController extends BaseApiController
                 'status' => $request->input('status'),
                 'customer_id' => $request->input('customer_id'),
                 'subscription_id' => $request->input('subscription_id'),
+                'source' => $request->input('source'),
                 'date_from' => $request->input('date_from'),
                 'date_to' => $request->input('date_to'),
             ], fn ($value) => $value !== null && $value !== '');
@@ -353,7 +362,10 @@ class SubscriptionController extends BaseApiController
         try {
             $subscription = CustomerSubscription::with([
                 'customer',
-                'subscription.offer',
+                'subscription.offer.conditions.product',
+                'subscription.offer.conditions.productVariant',
+                'subscription.offer.rewards.product',
+                'subscription.offer.rewards.productVariant',
                 'invoice',
                 'orders' => fn ($q) => $q->orderBy('order_sequence'),
                 'orders.items.product',
@@ -403,7 +415,10 @@ class SubscriptionController extends BaseApiController
 
             $customerSubscription = $result['customer_subscription']->load([
                 'customer',
-                'subscription.offer',
+                'subscription.offer.conditions.product',
+                'subscription.offer.conditions.productVariant',
+                'subscription.offer.rewards.product',
+                'subscription.offer.rewards.productVariant',
                 'invoice',
                 'orders' => fn ($q) => $q->orderBy('order_sequence'),
                 'orders.items.product',

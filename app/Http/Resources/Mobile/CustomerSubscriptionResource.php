@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Mobile;
 
+use App\Support\SubscriptionPricing;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use App\Traits\ManagesFileUploads;
@@ -12,9 +13,12 @@ class CustomerSubscriptionResource extends JsonResource
 
     protected bool $includeOrders = false;
 
-    public function withOrders(bool $include = true): self
+    protected ?string $orderStatusFilter = null;
+
+    public function withOrders(bool $include = true, ?string $statusFilter = null): self
     {
         $this->includeOrders = $include;
+        $this->orderStatusFilter = $statusFilter;
 
         return $this;
     }
@@ -23,6 +27,7 @@ class CustomerSubscriptionResource extends JsonResource
     {
         $lang = $this->getLanguage($request);
         $orders = $this->relationLoaded('orders') ? $this->orders : null;
+        $pricing = SubscriptionPricing::forCustomerSubscription($this->resource);
 
         return [
             'id' => $this->id,
@@ -42,13 +47,19 @@ class CustomerSubscriptionResource extends JsonResource
             'end_date' => $this->end_date->format('Y-m-d'),
             'status' => $this->status,
             'total_amount' => (float) $this->total_amount,
+            'total_before_price' => $pricing['total_before_price'],
+            'total_after_price' => $pricing['total_after_price'],
+            'payment_method' => $pricing['payment_method'],
+            'source' => $this->source ?: 'app',
             'total_orders' => $this->total_orders,
-            'completed_orders' => $orders
-                ? $orders->where('status', 'delivered')->count()
-                : $this->orders()->where('status', 'delivered')->count(),
-            'pending_orders' => $orders
-                ? $orders->where('status', 'pending')->count()
-                : $this->orders()->where('status', 'pending')->count(),
+            'completed_orders' => (int) ($this->completed_orders_count
+                ?? ($orders
+                    ? $orders->where('status', 'delivered')->count()
+                    : $this->orders()->where('status', 'delivered')->count())),
+            'pending_orders' => (int) ($this->pending_orders_count
+                ?? ($orders
+                    ? $orders->where('status', 'pending')->count()
+                    : $this->orders()->where('status', 'pending')->count())),
             'next_delivery' => $this->getNextDelivery($orders),
             'invoice' => $this->whenLoaded('invoice', function () {
                 if (!$this->invoice) {
@@ -70,49 +81,8 @@ class CustomerSubscriptionResource extends JsonResource
                 $this->relationLoaded('invoice') && $this->invoice,
                 fn () => $this->invoice->payment_link
             ),
-            'orders' => $this->when($this->includeOrders && $orders, function () use ($lang, $orders) {
-                return $orders->map(function ($order) use ($lang) {
-                    return [
-                        'id' => $order->id,
-                        'order_number' => $order->order_number,
-                        'order_sequence' => (int) $order->order_sequence,
-                        'month_number' => (int) $order->month_number,
-                        'order_in_month' => (int) $order->order_in_month,
-                        'scheduled_delivery_date' => $order->scheduled_delivery_date?->format('Y-m-d'),
-                        'status' => $order->status,
-                        'total_amount' => (float) $order->total_amount,
-                        'notes' => $order->notes,
-                        'items' => $order->relationLoaded('items')
-                            ? $order->items->map(function ($item) use ($lang) {
-                                $product = $item->relationLoaded('product') ? $item->product : null;
-                                $variant = $item->relationLoaded('productVariant') ? $item->productVariant : null;
-
-                                return [
-                                    'id' => $item->id,
-                                    'product_id' => $item->product_id,
-                                    'product_variant_id' => $item->product_variant_id,
-                                    'quantity' => (int) $item->quantity,
-                                    'unit_price' => (float) $item->unit_price,
-                                    'total_price' => (float) $item->total_price,
-                                    'type' => $item->type,
-                                    'product' => $product ? [
-                                        'id' => $product->id,
-                                        'name' => $lang === 'ar' ? $product->name_ar : $product->name_en,
-                                        'name_ar' => $product->name_ar,
-                                        'name_en' => $product->name_en,
-                                        'sku' => $product->sku,
-                                    ] : null,
-                                    'product_variant' => $variant ? [
-                                        'id' => $variant->id,
-                                        'size' => $variant->size,
-                                        'sku' => $variant->sku,
-                                        'price' => (float) $variant->price,
-                                    ] : null,
-                                ];
-                            })->values()
-                            : [],
-                    ];
-                })->values();
+            'orders' => $this->when($this->includeOrders, function () use ($orders) {
+                return SubscriptionOrderResource::collection($orders ?? collect())->resolve();
             }),
             'created_at' => $this->created_at->format('Y-m-d H:i:s'),
         ];
@@ -120,7 +90,13 @@ class CustomerSubscriptionResource extends JsonResource
 
     private function getNextDelivery($orders = null): ?array
     {
-        if ($orders) {
+        if ($this->orderStatusFilter || $orders === null) {
+            $nextOrder = $this->orders()
+                ->where('status', 'pending')
+                ->where('scheduled_delivery_date', '>=', now()->toDateString())
+                ->orderBy('scheduled_delivery_date')
+                ->first();
+        } else {
             $nextOrder = $orders
                 ->where('status', 'pending')
                 ->filter(function ($order) {
@@ -128,12 +104,6 @@ class CustomerSubscriptionResource extends JsonResource
                         && $order->scheduled_delivery_date->gte(now()->startOfDay());
                 })
                 ->sortBy('scheduled_delivery_date')
-                ->first();
-        } else {
-            $nextOrder = $this->orders()
-                ->where('status', 'pending')
-                ->where('scheduled_delivery_date', '>=', now())
-                ->orderBy('scheduled_delivery_date')
                 ->first();
         }
 
