@@ -89,12 +89,12 @@ class SyncWarehouseStockCommand extends Command
                 continue;
             }
 
-            // If quantity is less than 50, set it to 0
-            if ($newQuantity < 50) {
+            // If quantity is less than 20, set it to 0
+            if ($newQuantity < 20) {
                 if ((int) $variant->quantity !== 0) {
                     $oldQty = $variant->quantity;
                     $variant->update(['quantity' => 0]);
-                    $this->line("  [<50] {$variant->sku}: {$oldQty} -> 0 (low stock: {$newQuantity})");
+                    $this->line("  [<20] {$variant->sku}: {$oldQty} -> 0 (low stock: {$newQuantity})");
                     $lowStockZeroed++;
                 } else {
                     $skipped++;
@@ -133,7 +133,7 @@ class SyncWarehouseStockCommand extends Command
         $this->line('');
         $this->info("[=] Sync Summary:");
         $this->line("  [+] Updated:      {$updated}");
-        $this->line("  [<50] Low Stock:  {$lowStockZeroed}");
+        $this->line("  [<20] Low Stock:  {$lowStockZeroed}");
         $this->line("  [0] Zeroed:       {$zeroed}");
         $this->line("  [-] Unchanged:    {$skipped}");
         $this->line("  [?] Not in DB:    {$notFound}");
