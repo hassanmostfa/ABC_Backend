@@ -212,6 +212,11 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::patch('/{id}/cancel', 'cancelCustomerSubscription')->middleware('admin.permission:subscriptions,edit');
       });
 
+            // Subscription Orders Management (orders from subscriptions)
+      Route::controller(SubscriptionController::class)->prefix('subscription-orders')->group(function () {
+         Route::get('/', 'subscriptionOrdersIndex')->middleware('admin.permission:subscriptions,view');
+      });
+
             // Charities Management
       Route::controller(CharityController::class)->prefix('charities')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:charities,view');

@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Models\Subscription;
 use App\Models\CustomerSubscription;
+use App\Models\SubscriptionOrder;
 use App\Http\Requests\Admin\SubscriptionRequest;
 use App\Http\Resources\Admin\SubscriptionResource;
 use App\Http\Resources\Admin\CustomerSubscriptionResource;
+use App\Http\Resources\Admin\SubscriptionOrderResource;
 use App\Http\Resources\Admin\RefundRequestResource;
 use App\Services\RefundRequestService;
 use Illuminate\Http\Request;
@@ -440,6 +442,98 @@ class SubscriptionController extends BaseApiController
             ], $result['message']);
         } catch (\Exception $e) {
             return $this->serverErrorResponse('Failed to cancel customer subscription: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * List all subscription orders with filters.
+     */
+    public function subscriptionOrdersIndex(Request $request): JsonResponse
+    {
+        $request->validate([
+            'search' => 'nullable|string|max:255',
+            'status' => 'nullable|in:pending,processing,shipped,delivered,cancelled',
+            'customer_id' => 'nullable|integer|exists:customers,id',
+            'customer_subscription_id' => 'nullable|integer|exists:customer_subscriptions,id',
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date|after_or_equal:date_from',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        try {
+            $query = SubscriptionOrder::with([
+                'customer',
+                'customerSubscription.subscription.offer',
+                'items.product',
+                'items.productVariant',
+            ])->orderBy('created_at', 'desc');
+
+            if ($request->filled('status')) {
+                $query->where('status', $request->input('status'));
+            }
+
+            if ($request->filled('customer_id')) {
+                $query->where('customer_id', $request->input('customer_id'));
+            }
+
+            if ($request->filled('customer_subscription_id')) {
+                $query->where('customer_subscription_id', $request->input('customer_subscription_id'));
+            }
+
+            if ($request->filled('date_from')) {
+                $query->whereDate('scheduled_delivery_date', '>=', $request->input('date_from'));
+            }
+
+            if ($request->filled('date_to')) {
+                $query->whereDate('scheduled_delivery_date', '<=', $request->input('date_to'));
+            }
+
+            if ($request->filled('search')) {
+                $search = $request->input('search');
+                $query->where(function ($q) use ($search) {
+                    $q->where('order_number', 'LIKE', "%{$search}%")
+                        ->orWhereHas('customer', function ($customerQuery) use ($search) {
+                            $customerQuery->where('name', 'LIKE', "%{$search}%")
+                                ->orWhere('phone', 'LIKE', "%{$search}%")
+                                ->orWhere('email', 'LIKE', "%{$search}%")
+                                ->orWhere('customer_code', 'LIKE', "%{$search}%");
+                        });
+                });
+            }
+
+            $perPage = $request->input('per_page', 15);
+            $orders = $query->paginate($perPage);
+
+            $response = [
+                'success' => true,
+                'message' => 'Subscription orders retrieved successfully',
+                'data' => SubscriptionOrderResource::collection($orders->items()),
+                'pagination' => [
+                    'current_page' => $orders->currentPage(),
+                    'last_page' => $orders->lastPage(),
+                    'per_page' => $orders->perPage(),
+                    'total' => $orders->total(),
+                    'from' => $orders->firstItem(),
+                    'to' => $orders->lastItem(),
+                ],
+            ];
+
+            $filters = array_filter([
+                'search' => $request->input('search'),
+                'status' => $request->input('status'),
+                'customer_id' => $request->input('customer_id'),
+                'customer_subscription_id' => $request->input('customer_subscription_id'),
+                'date_from' => $request->input('date_from'),
+                'date_to' => $request->input('date_to'),
+            ], fn ($value) => $value !== null && $value !== '');
+
+            if (!empty($filters)) {
+                $response['filters'] = $filters;
+            }
+
+            return response()->json($response);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse('An error occurred while retrieving subscription orders: ' . $e->getMessage());
         }
     }
 }

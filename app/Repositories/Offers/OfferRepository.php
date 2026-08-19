@@ -39,9 +39,9 @@ class OfferRepository implements OfferRepositoryInterface
             $query->where('is_subscription', false);
         }
 
-        // Filter by subscription offers only (for admin subscription API)
-        if (isset($filters['is_subscription']) && $filters['is_subscription'] === true) {
-            $query->where('is_subscription', true);
+        // Filter by subscription offers (for admin API)
+        if (isset($filters['is_subscription']) && is_bool($filters['is_subscription'])) {
+            $query->where('is_subscription', $filters['is_subscription']);
         }
 
         // Search functionality

@@ -236,6 +236,7 @@ class ErpOrderService
         'cancelled' => 'cancelled',
         'canceled'  => 'cancelled',
         'pending'   => 'pending',
+        'rejected'  => 'rejected',
     ];
 
     /**
@@ -479,7 +480,7 @@ class ErpOrderService
     }
 
     /**
-     * Sync pending/processing orders that were already sent to ERP.
+     * Sync pending/processing/rejected orders that were already sent to ERP.
      * Limited per run so large pending queues are not all hit at once.
      *
      * @return array{
@@ -497,7 +498,7 @@ class ErpOrderService
         $limit = max(1, $limit ?? (int) config('services.erp.status_sync_limit', 50));
 
         $baseQuery = Order::query()
-            ->whereIn('status', ['pending', 'processing'])
+            ->whereIn('status', ['pending', 'processing', 'rejected'])
             ->where('is_sent_to_erp', true);
 
         $eligibleTotal = (clone $baseQuery)->count();

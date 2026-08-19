@@ -10,14 +10,14 @@ class SyncErpOrderStatuses extends Command
 {
     protected $signature = 'orders:sync-erp-status {--limit= : Max orders to sync this run (default from ERP_STATUS_SYNC_LIMIT)}';
 
-    protected $description = 'Sync pending/processing ERP-sent order statuses (limited batch per run)';
+    protected $description = 'Sync pending/processing/rejected ERP-sent order statuses (limited batch per run)';
 
     public function handle(ErpOrderService $erpOrderService): int
     {
         $limit = $this->option('limit');
         $limit = $limit !== null && $limit !== '' ? (int) $limit : null;
 
-        $this->info('Syncing pending/processing ERP-sent order statuses...');
+        $this->info('Syncing pending/processing/rejected ERP-sent order statuses...');
 
         $summary = $erpOrderService->syncPendingAndProcessingOrderStatuses($limit);
 

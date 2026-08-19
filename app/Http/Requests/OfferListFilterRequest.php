@@ -28,6 +28,7 @@ class OfferListFilterRequest extends FormRequest
             'subcategory_id' => 'nullable|integer|min:1',
             'stock_status' => 'nullable|in:in_stock,out_of_stock',
             'search' => 'nullable|string|max:1000',
+            'is_subscription' => 'nullable|boolean',
         ];
     }
 
@@ -42,6 +43,7 @@ class OfferListFilterRequest extends FormRequest
             'subcategory_id' => $this->input('subcategory_id'),
             'stock_status' => $this->input('stock_status'),
             'search' => $this->input('search'),
+            'is_subscription' => $this->input('is_subscription') !== null ? $this->boolean('is_subscription') : null,
         ];
 
         if ($activeOnly) {
@@ -49,8 +51,8 @@ class OfferListFilterRequest extends FormRequest
         }
 
         return array_filter($filters, function ($value, $key) {
-            if ($key === 'active_only') {
-                return $value === true;
+            if ($key === 'active_only' || $key === 'is_subscription') {
+                return $value !== null;
             }
 
             return $value !== null && $value !== '';

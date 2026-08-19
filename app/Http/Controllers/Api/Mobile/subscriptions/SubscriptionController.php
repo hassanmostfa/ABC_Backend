@@ -32,22 +32,76 @@ class SubscriptionController extends BaseApiController
      */
     public function index(Request $request): JsonResponse
     {
+        $request->validate([
+            'category_id' => 'nullable|integer|min:1',
+            'category' => 'nullable|integer|min:1',
+            'subcategory_id' => 'nullable|integer|min:1',
+            'subcategory' => 'nullable|integer|min:1',
+        ]);
+
         try {
-            $subscriptions = Subscription::with([
+            $categoryId = $request->input('category_id') ?? $request->input('category');
+            $subcategoryId = $request->input('subcategory_id') ?? $request->input('subcategory');
+
+            $query = Subscription::with([
                 'offer.conditions.product',
                 'offer.conditions.productVariant',
                 'offer.rewards.product',
                 'offer.rewards.productVariant',
                 'offer.charity',
-            ])
-                ->active()
-                ->orderBy('period')
-                ->get();
+            ])->active();
 
-            return $this->successResponse(
-                SubscriptionResource::collection($subscriptions),
-                'Subscriptions retrieved successfully'
-            );
+            // Filter by category_id (through offer's conditions or rewards products)
+            if ($categoryId !== null && is_numeric($categoryId)) {
+                $categoryId = (int) $categoryId;
+                $query->whereHas('offer', function ($offerQuery) use ($categoryId) {
+                    $offerQuery->where(function ($q) use ($categoryId) {
+                        $q->whereHas('conditions.product', function ($productQuery) use ($categoryId) {
+                            $productQuery->where('category_id', $categoryId);
+                        })
+                        ->orWhereHas('rewards.product', function ($productQuery) use ($categoryId) {
+                            $productQuery->where('category_id', $categoryId);
+                        });
+                    });
+                });
+            }
+
+            // Filter by subcategory_id (through offer's conditions or rewards products)
+            if ($subcategoryId !== null && is_numeric($subcategoryId)) {
+                $subcategoryId = (int) $subcategoryId;
+                $query->whereHas('offer', function ($offerQuery) use ($subcategoryId) {
+                    $offerQuery->where(function ($q) use ($subcategoryId) {
+                        $q->whereHas('conditions.product', function ($productQuery) use ($subcategoryId) {
+                            $productQuery->where('subcategory_id', $subcategoryId);
+                        })
+                        ->orWhereHas('rewards.product', function ($productQuery) use ($subcategoryId) {
+                            $productQuery->where('subcategory_id', $subcategoryId);
+                        });
+                    });
+                });
+            }
+
+            $subscriptions = $query->orderBy('period')->get();
+
+            $response = [
+                'success' => true,
+                'message' => 'Subscriptions retrieved successfully',
+                'data' => SubscriptionResource::collection($subscriptions),
+            ];
+
+            // Add filters to response if any were applied
+            $appliedFilters = [];
+            if ($categoryId !== null) {
+                $appliedFilters['category_id'] = $categoryId;
+            }
+            if ($subcategoryId !== null) {
+                $appliedFilters['subcategory_id'] = $subcategoryId;
+            }
+            if (!empty($appliedFilters)) {
+                $response['filters'] = $appliedFilters;
+            }
+
+            return response()->json($response);
         } catch (\Exception $e) {
             return $this->serverErrorResponse('An error occurred: ' . $e->getMessage());
         }
