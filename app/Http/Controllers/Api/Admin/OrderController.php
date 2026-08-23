@@ -562,8 +562,8 @@ class OrderController extends BaseApiController
     }
 
     /**
-     * Sync pending/processing orders from ERP (same as orders:sync-erp-status).
-     * Only orders already sent to ERP, limited per run (default 50).
+     * Sync ERP-sent regular and subscription orders from ERP.
+     * Same as orders:sync-erp-status. Limited per run (default 50 each type).
      */
     public function syncAllErpStatuses(Request $request): JsonResponse
     {
@@ -582,6 +582,9 @@ class OrderController extends BaseApiController
             'failed' => $summary['failed'],
             'limit' => $summary['limit'],
             'eligible_total' => $summary['eligible_total'],
+            'cancelled_since' => $summary['cancelled_since'] ?? null,
+            'orders_checked' => $summary['orders']['checked'] ?? 0,
+            'subscription_orders_checked' => $summary['subscription_orders']['checked'] ?? 0,
         ]);
 
         return $this->successResponse([
@@ -591,8 +594,11 @@ class OrderController extends BaseApiController
             'failed' => $summary['failed'],
             'limit' => $summary['limit'],
             'eligible_total' => $summary['eligible_total'],
+            'cancelled_since' => $summary['cancelled_since'] ?? null,
+            'orders' => $summary['orders'],
+            'subscription_orders' => $summary['subscription_orders'],
             'results' => $summary['results'],
-        ], 'Pending/processing ERP-sent orders synced from ERP');
+        ], 'ERP-sent orders synced from ERP');
     }
 
     /**

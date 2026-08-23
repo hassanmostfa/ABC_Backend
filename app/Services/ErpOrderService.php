@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Admin;
 use App\Models\Order;
 use App\Models\Setting;
+use App\Models\SubscriptionOrder;
 use GuzzleHttp\TransferStats;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -240,6 +241,20 @@ class ErpOrderService
     ];
 
     /**
+     * ERP → local subscription_orders.status mapping.
+     *
+     * @var array<string, string>
+     */
+    public const SUBSCRIPTION_ERP_STATUS_MAP = [
+        'scheduled' => 'processing',
+        'shipped'   => 'shipped',
+        'delivered' => 'delivered',
+        'cancelled' => 'cancelled',
+        'canceled'  => 'cancelled',
+        'pending'   => 'pending',
+    ];
+
+    /**
      * Fetch order status from ERP: GET /API/Order/GetOrderStatus?OrderNumber=...
      *
      * @return array{
@@ -251,7 +266,7 @@ class ErpOrderService
      *   local_status: string|null
      * }
      */
-    public function getOrderStatus(string $orderNumber): array
+    public function getOrderStatus(string $orderNumber, ?array $statusMap = null): array
     {
         $orderNumber = trim($orderNumber);
         if ($orderNumber === '') {
@@ -269,9 +284,8 @@ class ErpOrderService
             'OrderNumber' => $orderNumber,
         ]);
 
-        $erpStatus = $this->extractErpOrderStatus($result['body'] ?? null);
-        $localStatus = $this->mapErpStatusToLocal($erpStatus);
-
+        $erpStatus = $this->extractErpOrderStatus($result['body'] ?? null, $statusMap);
+        $localStatus = $this->mapErpStatusToLocal($erpStatus, $statusMap);
         // GetOrderStatus returns the delivery status as a string in "status".
         // evaluateErpBusinessResponse treats non-numeric status as success when HTTP is OK.
         if ($result['success'] && $erpStatus === null) {
@@ -292,17 +306,20 @@ class ErpOrderService
     }
 
     /**
-     * Map ERP status string to local orders.status value.
+     * Map ERP status string to a local status value.
+     *
+     * @param  array<string, string>|null  $statusMap
      */
-    public function mapErpStatusToLocal(?string $erpStatus): ?string
+    public function mapErpStatusToLocal(?string $erpStatus, ?array $statusMap = null): ?string
     {
         if ($erpStatus === null || trim($erpStatus) === '') {
             return null;
         }
 
         $key = strtolower(trim($erpStatus));
+        $map = $statusMap ?? self::ERP_STATUS_MAP;
 
-        return self::ERP_STATUS_MAP[$key] ?? null;
+        return $map[$key] ?? null;
     }
 
     /**
@@ -436,6 +453,127 @@ class ErpOrderService
     }
 
     /**
+     * Build subscription order fields to update from ERP GetOrderStatus payload.
+     *
+     * @param  array<string, mixed>  $erpData
+     * @return array<string, mixed>
+     */
+    private function buildSubscriptionOrderUpdateFromErpData(
+        SubscriptionOrder $order,
+        string $localStatus,
+        array $erpData
+    ): array {
+        $updateData = [];
+
+        if ($order->status !== $localStatus) {
+            $updateData['status'] = $localStatus;
+        }
+
+        $schedule = $this->parseErpScheduleDate($erpData['scheduleDate'] ?? $erpData['schedule_date'] ?? null);
+        if ($schedule !== null) {
+            if ((string) ($order->scheduled_delivery_date?->format('Y-m-d') ?? '') !== $schedule['date']) {
+                $updateData['scheduled_delivery_date'] = $schedule['date'];
+            }
+        }
+
+        return $updateData;
+    }
+
+    /**
+     * Sync a single subscription order status from ERP.
+     *
+     * @return array{
+     *   success: bool,
+     *   message: string,
+     *   updated: bool,
+     *   order?: SubscriptionOrder,
+     *   previous_status?: string,
+     *   erp_status?: string|null,
+     *   local_status?: string|null,
+     *   erp_response?: mixed,
+     *   erp_http_status?: int|null
+     * }
+     */
+    public function syncSubscriptionOrderStatusFromErp(SubscriptionOrder $order): array
+    {
+        $result = $this->getOrderStatus($order->order_number, self::SUBSCRIPTION_ERP_STATUS_MAP);
+
+        if (!$result['success']) {
+            return [
+                'success' => false,
+                'message' => $result['error'] ?? 'Failed to fetch order status from ERP',
+                'updated' => false,
+                'erp_status' => $result['erp_status'] ?? null,
+                'local_status' => $result['local_status'] ?? null,
+                'erp_response' => $result['body'] ?? null,
+                'erp_http_status' => $result['status'] ?? null,
+            ];
+        }
+
+        $erpStatus = $result['erp_status'];
+        $localStatus = $result['local_status'];
+
+        if ($localStatus === null) {
+            return [
+                'success' => false,
+                'message' => 'Unsupported ERP status: ' . ($erpStatus ?? 'unknown'),
+                'updated' => false,
+                'order' => $order,
+                'previous_status' => $order->status,
+                'erp_status' => $erpStatus,
+                'local_status' => null,
+                'erp_response' => $result['body'],
+                'erp_http_status' => $result['status'],
+            ];
+        }
+
+        $previousStatus = $order->status;
+        $erpData = $this->extractErpOrderPayloadData($result['body'] ?? null);
+        $updateData = $this->buildSubscriptionOrderUpdateFromErpData($order, $localStatus, $erpData);
+
+        if ($updateData === []) {
+            return [
+                'success' => true,
+                'message' => 'Subscription order already up to date with ERP',
+                'updated' => false,
+                'order' => $order,
+                'previous_status' => $previousStatus,
+                'erp_status' => $erpStatus,
+                'local_status' => $localStatus,
+                'erp_response' => $result['body'],
+                'erp_http_status' => $result['status'],
+            ];
+        }
+
+        $order->update($updateData);
+
+        Log::channel('erp')->info('Subscription order synced from ERP', [
+            'subscription_order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'previous_status' => $previousStatus,
+            'erp_status' => $erpStatus,
+            'local_status' => $localStatus,
+            'updated_fields' => array_keys($updateData),
+        ]);
+
+        $statusChanged = array_key_exists('status', $updateData);
+
+        return [
+            'success' => true,
+            'message' => $statusChanged
+                ? 'Subscription order status updated from ERP'
+                : 'Subscription order delivery details updated from ERP',
+            'updated' => true,
+            'order' => $order->fresh(),
+            'previous_status' => $previousStatus,
+            'erp_status' => $erpStatus,
+            'local_status' => $localStatus,
+            'erp_response' => $result['body'],
+            'erp_http_status' => $result['status'],
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function extractErpOrderPayloadData(mixed $body): array
@@ -480,8 +618,9 @@ class ErpOrderService
     }
 
     /**
-     * Sync pending/processing/rejected orders that were already sent to ERP.
-     * Limited per run so large pending queues are not all hit at once.
+     * Sync ERP-sent regular and subscription orders from ERP.
+     * Regular: pending/processing + cancelled (last month, paid invoice).
+     * Subscription: pending/processing/shipped + cancelled (last month, paid subscription invoice).
      *
      * @return array{
      *   checked: int,
@@ -490,36 +629,152 @@ class ErpOrderService
      *   failed: int,
      *   limit: int,
      *   eligible_total: int,
+     *   cancelled_since: string,
+     *   orders: array<string, mixed>,
+     *   subscription_orders: array<string, mixed>,
      *   results: list<array<string, mixed>>
      * }
      */
     public function syncPendingAndProcessingOrderStatuses(?int $limit = null): array
     {
+        $orders = $this->syncRegularOrderStatusesFromErp($limit);
+        $subscriptionOrders = $this->syncSubscriptionOrderStatusesFromErp($limit);
+
+        return [
+            'checked' => $orders['checked'] + $subscriptionOrders['checked'],
+            'updated' => $orders['updated'] + $subscriptionOrders['updated'],
+            'unchanged' => $orders['unchanged'] + $subscriptionOrders['unchanged'],
+            'failed' => $orders['failed'] + $subscriptionOrders['failed'],
+            'limit' => $orders['limit'],
+            'eligible_total' => $orders['eligible_total'] + $subscriptionOrders['eligible_total'],
+            'cancelled_since' => $orders['cancelled_since'],
+            'orders' => $orders,
+            'subscription_orders' => $subscriptionOrders,
+            'results' => array_merge(
+                array_map(
+                    fn (array $row) => array_merge($row, ['order_type' => 'order']),
+                    $orders['results']
+                ),
+                array_map(
+                    fn (array $row) => array_merge($row, ['order_type' => 'subscription_order']),
+                    $subscriptionOrders['results']
+                ),
+            ),
+        ];
+    }
+
+    /**
+     * @return array{
+     *   checked: int,
+     *   updated: int,
+     *   unchanged: int,
+     *   failed: int,
+     *   limit: int,
+     *   eligible_total: int,
+     *   cancelled_since: string,
+     *   results: list<array<string, mixed>>
+     * }
+     */
+    private function syncRegularOrderStatusesFromErp(?int $limit = null): array
+    {
         $limit = max(1, $limit ?? (int) config('services.erp.status_sync_limit', 50));
+        $cancelledSince = now()->subMonth();
 
         $baseQuery = Order::query()
-            ->whereIn('status', ['pending', 'processing', 'rejected'])
-            ->where('is_sent_to_erp', true);
+            ->where('is_sent_to_erp', true)
+            ->where(function ($query) use ($cancelledSince) {
+                $query->whereIn('status', ['pending', 'processing'])
+                    ->orWhere(function ($query) use ($cancelledSince) {
+                        $query->where('status', 'cancelled')
+                            ->where('created_at', '>=', $cancelledSince)
+                            ->whereHas('invoice', fn ($invoiceQuery) => $invoiceQuery->where('status', 'paid'));
+                    });
+            });
 
-        $eligibleTotal = (clone $baseQuery)->count();
+        return $this->runErpStatusSyncBatch(
+            (clone $baseQuery)->orderBy('id')->limit($limit)->get(),
+            fn (Order $order) => $this->syncOrderStatusFromErp($order),
+            $limit,
+            (clone $baseQuery)->count(),
+            $cancelledSince->toDateString()
+        );
+    }
 
-        $orders = (clone $baseQuery)
-            ->orderBy('id')
-            ->limit($limit)
-            ->get();
+    /**
+     * @return array{
+     *   checked: int,
+     *   updated: int,
+     *   unchanged: int,
+     *   failed: int,
+     *   limit: int,
+     *   eligible_total: int,
+     *   cancelled_since: string,
+     *   results: list<array<string, mixed>>
+     * }
+     */
+    private function syncSubscriptionOrderStatusesFromErp(?int $limit = null): array
+    {
+        $limit = max(1, $limit ?? (int) config('services.erp.status_sync_limit', 50));
+        $cancelledSince = now()->subMonth();
 
+        $baseQuery = SubscriptionOrder::query()
+            ->whereNotNull('sent_to_erp_at')
+            ->where(function ($query) use ($cancelledSince) {
+                $query->whereIn('status', ['pending', 'processing', 'shipped'])
+                    ->orWhere(function ($query) use ($cancelledSince) {
+                        $query->where('status', 'cancelled')
+                            ->where('created_at', '>=', $cancelledSince)
+                            ->whereHas(
+                                'customerSubscription.invoice',
+                                fn ($invoiceQuery) => $invoiceQuery->where('status', 'paid')
+                            );
+                    });
+            });
+
+        return $this->runErpStatusSyncBatch(
+            (clone $baseQuery)->orderBy('id')->limit($limit)->get(),
+            fn (SubscriptionOrder $order) => $this->syncSubscriptionOrderStatusFromErp($order),
+            $limit,
+            (clone $baseQuery)->count(),
+            $cancelledSince->toDateString()
+        );
+    }
+
+    /**
+     * @param  iterable<int, Order|SubscriptionOrder>  $orders
+     * @param  callable(Order|SubscriptionOrder): array<string, mixed>  $syncCallback
+     * @return array{
+     *   checked: int,
+     *   updated: int,
+     *   unchanged: int,
+     *   failed: int,
+     *   limit: int,
+     *   eligible_total: int,
+     *   cancelled_since: string,
+     *   results: list<array<string, mixed>>
+     * }
+     */
+    private function runErpStatusSyncBatch(
+        iterable $orders,
+        callable $syncCallback,
+        int $limit,
+        int $eligibleTotal,
+        string $cancelledSince
+    ): array {
         $summary = [
-            'checked' => $orders->count(),
+            'checked' => 0,
             'updated' => 0,
             'unchanged' => 0,
             'failed' => 0,
             'limit' => $limit,
             'eligible_total' => $eligibleTotal,
+            'cancelled_since' => $cancelledSince,
             'results' => [],
         ];
 
         foreach ($orders as $order) {
-            $result = $this->syncOrderStatusFromErp($order);
+            $summary['checked']++;
+            $result = $syncCallback($order);
 
             $entry = [
                 'order_id' => $order->id,
@@ -552,7 +807,7 @@ class ErpOrderService
     /**
      * Pull ERP order status string from response body.
      */
-    private function extractErpOrderStatus(mixed $body): ?string
+    private function extractErpOrderStatus(mixed $body, ?array $statusMap = null): ?string
     {
         if (!is_array($body)) {
             return null;
@@ -580,7 +835,7 @@ class ErpOrderService
                 continue;
             }
 
-            if ($this->mapErpStatusToLocal($value) !== null) {
+            if ($this->mapErpStatusToLocal($value, $statusMap) !== null) {
                 return $value;
             }
         }

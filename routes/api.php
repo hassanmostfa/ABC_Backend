@@ -204,7 +204,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::patch('/{id}/toggle-active', 'toggleActive')->middleware('admin.permission:subscriptions,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:subscriptions,delete');
       });
-
+  
             // Customer Subscriptions Management (purchased subscriptions)
       Route::controller(SubscriptionController::class)->prefix('customer-subscriptions')->group(function () {
          Route::get('/', 'customerSubscriptionsIndex')->middleware('admin.permission:subscriptions,view');
