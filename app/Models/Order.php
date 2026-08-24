@@ -27,6 +27,7 @@ class Order extends Model
         'payment_gateway_src',
         'is_sent_to_erp',
         'erp_invoice_no',
+        'erp_status_synced_at',
         'created_by_id',
         'created_by_type',
     ];
@@ -37,6 +38,7 @@ class Order extends Model
         'offer_snapshot' => 'array',
         'delivery_date' => 'date',
         'is_sent_to_erp' => 'boolean',
+        'erp_status_synced_at' => 'datetime',
     ];
 
     /**

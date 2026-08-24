@@ -339,81 +339,85 @@ class ErpOrderService
      */
     public function syncOrderStatusFromErp(Order $order): array
     {
-        $result = $this->getOrderStatus($order->order_number);
+        try {
+            $result = $this->getOrderStatus($order->order_number);
 
-        if (!$result['success']) {
-            return [
-                'success' => false,
-                'message' => $result['error'] ?? 'Failed to fetch order status from ERP',
-                'updated' => false,
-                'erp_status' => $result['erp_status'] ?? null,
-                'local_status' => $result['local_status'] ?? null,
-                'erp_response' => $result['body'] ?? null,
-                'erp_http_status' => $result['status'] ?? null,
-            ];
-        }
+            if (!$result['success']) {
+                return [
+                    'success' => false,
+                    'message' => $result['error'] ?? 'Failed to fetch order status from ERP',
+                    'updated' => false,
+                    'erp_status' => $result['erp_status'] ?? null,
+                    'local_status' => $result['local_status'] ?? null,
+                    'erp_response' => $result['body'] ?? null,
+                    'erp_http_status' => $result['status'] ?? null,
+                ];
+            }
 
-        $erpStatus = $result['erp_status'];
-        $localStatus = $result['local_status'];
+            $erpStatus = $result['erp_status'];
+            $localStatus = $result['local_status'];
 
-        if ($localStatus === null) {
-            return [
-                'success' => false,
-                'message' => 'Unsupported ERP status: ' . ($erpStatus ?? 'unknown'),
-                'updated' => false,
-                'order' => $order,
-                'previous_status' => $order->status,
+            if ($localStatus === null) {
+                return [
+                    'success' => false,
+                    'message' => 'Unsupported ERP status: ' . ($erpStatus ?? 'unknown'),
+                    'updated' => false,
+                    'order' => $order,
+                    'previous_status' => $order->status,
+                    'erp_status' => $erpStatus,
+                    'local_status' => null,
+                    'erp_response' => $result['body'],
+                    'erp_http_status' => $result['status'],
+                ];
+            }
+
+            $previousStatus = $order->status;
+            $erpData = $this->extractErpOrderPayloadData($result['body'] ?? null);
+            $updateData = $this->buildOrderUpdateFromErpData($order, $localStatus, $erpData);
+
+            if ($updateData === []) {
+                return [
+                    'success' => true,
+                    'message' => 'Order already up to date with ERP',
+                    'updated' => false,
+                    'order' => $order,
+                    'previous_status' => $previousStatus,
+                    'erp_status' => $erpStatus,
+                    'local_status' => $localStatus,
+                    'erp_response' => $result['body'],
+                    'erp_http_status' => $result['status'],
+                ];
+            }
+
+            $order->update($updateData);
+
+            Log::channel('erp')->info('Order synced from ERP', [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'previous_status' => $previousStatus,
                 'erp_status' => $erpStatus,
-                'local_status' => null,
-                'erp_response' => $result['body'],
-                'erp_http_status' => $result['status'],
-            ];
-        }
+                'local_status' => $localStatus,
+                'updated_fields' => array_keys($updateData),
+            ]);
 
-        $previousStatus = $order->status;
-        $erpData = $this->extractErpOrderPayloadData($result['body'] ?? null);
-        $updateData = $this->buildOrderUpdateFromErpData($order, $localStatus, $erpData);
+            $statusChanged = array_key_exists('status', $updateData);
 
-        if ($updateData === []) {
             return [
                 'success' => true,
-                'message' => 'Order already up to date with ERP',
-                'updated' => false,
-                'order' => $order,
+                'message' => $statusChanged
+                    ? 'Order status updated from ERP'
+                    : 'Order delivery details updated from ERP',
+                'updated' => true,
+                'order' => $order->fresh(),
                 'previous_status' => $previousStatus,
                 'erp_status' => $erpStatus,
                 'local_status' => $localStatus,
                 'erp_response' => $result['body'],
                 'erp_http_status' => $result['status'],
             ];
+        } finally {
+            $this->markErpStatusSynced($order);
         }
-
-        $order->update($updateData);
-
-        Log::channel('erp')->info('Order synced from ERP', [
-            'order_id' => $order->id,
-            'order_number' => $order->order_number,
-            'previous_status' => $previousStatus,
-            'erp_status' => $erpStatus,
-            'local_status' => $localStatus,
-            'updated_fields' => array_keys($updateData),
-        ]);
-
-        $statusChanged = array_key_exists('status', $updateData);
-
-        return [
-            'success' => true,
-            'message' => $statusChanged
-                ? 'Order status updated from ERP'
-                : 'Order delivery details updated from ERP',
-            'updated' => true,
-            'order' => $order->fresh(),
-            'previous_status' => $previousStatus,
-            'erp_status' => $erpStatus,
-            'local_status' => $localStatus,
-            'erp_response' => $result['body'],
-            'erp_http_status' => $result['status'],
-        ];
     }
 
     /**
@@ -425,6 +429,10 @@ class ErpOrderService
     private function buildOrderUpdateFromErpData(Order $order, string $localStatus, array $erpData): array
     {
         $updateData = [];
+
+        if (!$order->is_sent_to_erp) {
+            $updateData['is_sent_to_erp'] = true;
+        }
 
         if ($order->status !== $localStatus) {
             $updateData['status'] = $localStatus;
@@ -496,81 +504,85 @@ class ErpOrderService
      */
     public function syncSubscriptionOrderStatusFromErp(SubscriptionOrder $order): array
     {
-        $result = $this->getOrderStatus($order->order_number, self::SUBSCRIPTION_ERP_STATUS_MAP);
+        try {
+            $result = $this->getOrderStatus($order->order_number, self::SUBSCRIPTION_ERP_STATUS_MAP);
 
-        if (!$result['success']) {
-            return [
-                'success' => false,
-                'message' => $result['error'] ?? 'Failed to fetch order status from ERP',
-                'updated' => false,
-                'erp_status' => $result['erp_status'] ?? null,
-                'local_status' => $result['local_status'] ?? null,
-                'erp_response' => $result['body'] ?? null,
-                'erp_http_status' => $result['status'] ?? null,
-            ];
-        }
+            if (!$result['success']) {
+                return [
+                    'success' => false,
+                    'message' => $result['error'] ?? 'Failed to fetch order status from ERP',
+                    'updated' => false,
+                    'erp_status' => $result['erp_status'] ?? null,
+                    'local_status' => $result['local_status'] ?? null,
+                    'erp_response' => $result['body'] ?? null,
+                    'erp_http_status' => $result['status'] ?? null,
+                ];
+            }
 
-        $erpStatus = $result['erp_status'];
-        $localStatus = $result['local_status'];
+            $erpStatus = $result['erp_status'];
+            $localStatus = $result['local_status'];
 
-        if ($localStatus === null) {
-            return [
-                'success' => false,
-                'message' => 'Unsupported ERP status: ' . ($erpStatus ?? 'unknown'),
-                'updated' => false,
-                'order' => $order,
-                'previous_status' => $order->status,
+            if ($localStatus === null) {
+                return [
+                    'success' => false,
+                    'message' => 'Unsupported ERP status: ' . ($erpStatus ?? 'unknown'),
+                    'updated' => false,
+                    'order' => $order,
+                    'previous_status' => $order->status,
+                    'erp_status' => $erpStatus,
+                    'local_status' => null,
+                    'erp_response' => $result['body'],
+                    'erp_http_status' => $result['status'],
+                ];
+            }
+
+            $previousStatus = $order->status;
+            $erpData = $this->extractErpOrderPayloadData($result['body'] ?? null);
+            $updateData = $this->buildSubscriptionOrderUpdateFromErpData($order, $localStatus, $erpData);
+
+            if ($updateData === []) {
+                return [
+                    'success' => true,
+                    'message' => 'Subscription order already up to date with ERP',
+                    'updated' => false,
+                    'order' => $order,
+                    'previous_status' => $previousStatus,
+                    'erp_status' => $erpStatus,
+                    'local_status' => $localStatus,
+                    'erp_response' => $result['body'],
+                    'erp_http_status' => $result['status'],
+                ];
+            }
+
+            $order->update($updateData);
+
+            Log::channel('erp')->info('Subscription order synced from ERP', [
+                'subscription_order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'previous_status' => $previousStatus,
                 'erp_status' => $erpStatus,
-                'local_status' => null,
-                'erp_response' => $result['body'],
-                'erp_http_status' => $result['status'],
-            ];
-        }
+                'local_status' => $localStatus,
+                'updated_fields' => array_keys($updateData),
+            ]);
 
-        $previousStatus = $order->status;
-        $erpData = $this->extractErpOrderPayloadData($result['body'] ?? null);
-        $updateData = $this->buildSubscriptionOrderUpdateFromErpData($order, $localStatus, $erpData);
+            $statusChanged = array_key_exists('status', $updateData);
 
-        if ($updateData === []) {
             return [
                 'success' => true,
-                'message' => 'Subscription order already up to date with ERP',
-                'updated' => false,
-                'order' => $order,
+                'message' => $statusChanged
+                    ? 'Subscription order status updated from ERP'
+                    : 'Subscription order delivery details updated from ERP',
+                'updated' => true,
+                'order' => $order->fresh(),
                 'previous_status' => $previousStatus,
                 'erp_status' => $erpStatus,
                 'local_status' => $localStatus,
                 'erp_response' => $result['body'],
                 'erp_http_status' => $result['status'],
             ];
+        } finally {
+            $this->markErpStatusSynced($order);
         }
-
-        $order->update($updateData);
-
-        Log::channel('erp')->info('Subscription order synced from ERP', [
-            'subscription_order_id' => $order->id,
-            'order_number' => $order->order_number,
-            'previous_status' => $previousStatus,
-            'erp_status' => $erpStatus,
-            'local_status' => $localStatus,
-            'updated_fields' => array_keys($updateData),
-        ]);
-
-        $statusChanged = array_key_exists('status', $updateData);
-
-        return [
-            'success' => true,
-            'message' => $statusChanged
-                ? 'Subscription order status updated from ERP'
-                : 'Subscription order delivery details updated from ERP',
-            'updated' => true,
-            'order' => $order->fresh(),
-            'previous_status' => $previousStatus,
-            'erp_status' => $erpStatus,
-            'local_status' => $localStatus,
-            'erp_response' => $result['body'],
-            'erp_http_status' => $result['status'],
-        ];
     }
 
     /**
@@ -620,6 +632,7 @@ class ErpOrderService
     /**
      * Sync ERP-sent regular and subscription orders from ERP.
      * Regular: pending/processing + cancelled (last month, paid invoice).
+     * Eligible regular orders: is_sent_to_erp or erp_invoice_no set.
      * Subscription: pending/processing/shipped + cancelled (last month, paid subscription invoice).
      *
      * @return array{
@@ -681,7 +694,10 @@ class ErpOrderService
         $cancelledSince = now()->subMonth();
 
         $baseQuery = Order::query()
-            ->where('is_sent_to_erp', true)
+            ->where(function ($query) {
+                $query->where('is_sent_to_erp', true)
+                    ->orWhereNotNull('erp_invoice_no');
+            })
             ->where(function ($query) use ($cancelledSince) {
                 $query->whereIn('status', ['pending', 'processing'])
                     ->orWhere(function ($query) use ($cancelledSince) {
@@ -692,7 +708,7 @@ class ErpOrderService
             });
 
         return $this->runErpStatusSyncBatch(
-            (clone $baseQuery)->orderBy('id')->limit($limit)->get(),
+            $this->fetchNextErpStatusSyncOrders($baseQuery, $limit),
             fn (Order $order) => $this->syncOrderStatusFromErp($order),
             $limit,
             (clone $baseQuery)->count(),
@@ -732,7 +748,7 @@ class ErpOrderService
             });
 
         return $this->runErpStatusSyncBatch(
-            (clone $baseQuery)->orderBy('id')->limit($limit)->get(),
+            $this->fetchNextErpStatusSyncOrders($baseQuery, $limit),
             fn (SubscriptionOrder $order) => $this->syncSubscriptionOrderStatusFromErp($order),
             $limit,
             (clone $baseQuery)->count(),
@@ -802,6 +818,38 @@ class ErpOrderService
         }
 
         return $summary;
+    }
+
+    /**
+     * Pick the next batch of orders/subscription orders to sync.
+     * Prioritizes never-synced rows, then the least recently synced, so the job
+     * rotates through the full eligible set instead of rechecking the same IDs.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<Order|SubscriptionOrder>  $baseQuery
+     * @return \Illuminate\Support\Collection<int, Order|SubscriptionOrder>
+     */
+    private function fetchNextErpStatusSyncOrders($baseQuery, int $limit)
+    {
+        return (clone $baseQuery)
+            ->orderByRaw('erp_status_synced_at IS NULL DESC')
+            ->orderBy('erp_status_synced_at')
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+    }
+
+    /**
+     * Record that an ERP status sync attempt ran for this order.
+     */
+    private function markErpStatusSynced(Order|SubscriptionOrder $order): void
+    {
+        $now = now();
+
+        if ($order->erp_status_synced_at && $order->erp_status_synced_at->gte($now->copy()->subMinute())) {
+            return;
+        }
+
+        $order->forceFill(['erp_status_synced_at' => $now])->saveQuietly();
     }
 
     /**

@@ -22,6 +22,7 @@ class SubscriptionOrder extends Model
         'notes',
         'erp_data',
         'sent_to_erp_at',
+        'erp_status_synced_at',
     ];
 
     protected $casts = [
@@ -32,6 +33,7 @@ class SubscriptionOrder extends Model
         'order_in_month' => 'integer',
         'erp_data' => 'array',
         'sent_to_erp_at' => 'datetime',
+        'erp_status_synced_at' => 'datetime',
     ];
 
     /**
