@@ -20,7 +20,7 @@ class SubcategoryRepository implements SubcategoryRepositoryInterface
     */
    public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
    {
-      $query = $this->model->with('category');
+      $query = $this->model->with(['category', 'productVariants.product']);
 
       // Search functionality
       if (isset($filters['search']) && !empty($filters['search'])) {
@@ -56,7 +56,7 @@ class SubcategoryRepository implements SubcategoryRepositoryInterface
     */
    public function getAll(): Collection
    {
-      return $this->model->with('category')->get();
+      return $this->model->with(['category', 'productVariants.product'])->get();
    }
 
    /**
@@ -64,7 +64,7 @@ class SubcategoryRepository implements SubcategoryRepositoryInterface
     */
    public function findById(int $id): ?Subcategory
    {
-      return $this->model->with('category')->find($id);
+      return $this->model->with(['category', 'productVariants.product'])->find($id);
    }
 
    /**
@@ -109,7 +109,7 @@ class SubcategoryRepository implements SubcategoryRepositoryInterface
     */
    public function getByCategoryId(int $categoryId): Collection
    {
-      return $this->model->with('category')->where('category_id', $categoryId)->get();
+      return $this->model->with(['category', 'productVariants.product'])->where('category_id', $categoryId)->get();
    }
 
    /**

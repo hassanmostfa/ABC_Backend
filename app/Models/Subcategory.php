@@ -38,4 +38,14 @@ class Subcategory extends Model
     {
         return $this->hasMany(Product::class);
     }
+
+    /**
+     * Get product variants belonging to products in this subcategory.
+     */
+    public function productVariants()
+    {
+        return $this->hasManyThrough(ProductVariant::class, Product::class)
+            ->orderBy('product_variants.sort_order')
+            ->orderBy('product_variants.id');
+    }
 }

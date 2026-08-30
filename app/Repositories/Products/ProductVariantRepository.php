@@ -97,6 +97,10 @@ class ProductVariantRepository implements ProductVariantRepositoryInterface
      */
     public function create(array $data): ProductVariant
     {
+        if (!isset($data['sort_order']) || $data['sort_order'] === null) {
+            $data['sort_order'] = ProductVariant::nextSortOrderForProduct($data['product_id'] ?? null);
+        }
+
         return $this->model->create($data);
     }
 
@@ -156,6 +160,8 @@ class ProductVariantRepository implements ProductVariantRepositoryInterface
     {
         return $this->model->with(['product'])
                           ->where('product_id', $productId)
+                          ->orderBy('sort_order')
+                          ->orderBy('id')
                           ->get();
     }
 

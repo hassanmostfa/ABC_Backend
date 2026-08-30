@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Mobile;
 
+use App\Support\SubscriptionSize;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use App\Traits\ManagesFileUploads;
@@ -97,6 +98,7 @@ class OfferListResource extends JsonResource
             'price_before_discount' => round($priceBeforeDiscount, 3),
             'price_after_discount' => round($priceAfterDiscount, 3),
             'image' => $this->getFileUrl($this->image, 'public', 'no-image.png'),
+            'sizes' => SubscriptionSize::fromOffer($this->resource),
             'type' => $this->type,
             'points' => (int) $this->points,
             'offer_start_date' => \format_date_app_tz($this->offer_start_date),

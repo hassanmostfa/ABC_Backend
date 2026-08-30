@@ -13,6 +13,7 @@ use App\Http\Resources\Mobile\SubscriptionCheckoutResource;
 use App\Http\Resources\Mobile\SubscriptionOrderResource;
 use App\Models\SubscriptionOrder;
 use App\Services\SubscriptionPurchaseService;
+use App\Support\SubscriptionSize;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -37,11 +38,15 @@ class SubscriptionController extends BaseApiController
             'category' => 'nullable|integer|min:1',
             'subcategory_id' => 'nullable|integer|min:1',
             'subcategory' => 'nullable|integer|min:1',
+            'period' => 'nullable|in:3,6,12',
+            'size' => 'nullable|string|max:100',
         ]);
 
         try {
             $categoryId = $request->input('category_id') ?? $request->input('category');
             $subcategoryId = $request->input('subcategory_id') ?? $request->input('subcategory');
+            $period = $request->input('period');
+            $size = $request->input('size');
 
             $query = Subscription::with([
                 'offer.conditions.product',
@@ -50,6 +55,11 @@ class SubscriptionController extends BaseApiController
                 'offer.rewards.productVariant',
                 'offer.charity',
             ])->active();
+
+            // Filter by period
+            if ($period !== null) {
+                $query->where('period', $period);
+            }
 
             // Filter by category_id (through offer's conditions or rewards products)
             if ($categoryId !== null && is_numeric($categoryId)) {
@@ -81,12 +91,43 @@ class SubscriptionController extends BaseApiController
                 });
             }
 
+            $availableSizes = SubscriptionSize::fromSubscriptions((clone $query)->get());
+
+            // Filter by pack size, e.g. "200ml * 12" or "330ml * 24"
+            if ($size !== null && trim($size) !== '') {
+                $size = trim($size);
+                $parsedSize = SubscriptionSize::parse($size);
+
+                $query->whereHas('offer', function ($offerQuery) use ($parsedSize) {
+                    $offerQuery->where(function ($q) use ($parsedSize) {
+                        $q->whereHas('conditions', function ($conditionQuery) use ($parsedSize) {
+                            $conditionQuery->whereHas('productVariant', function ($variantQuery) use ($parsedSize) {
+                                $variantQuery->where('size', $parsedSize['size']);
+                            });
+
+                            if ($parsedSize['quantity'] !== null) {
+                                $conditionQuery->where('quantity', $parsedSize['quantity']);
+                            }
+                        })->orWhereHas('rewards', function ($rewardQuery) use ($parsedSize) {
+                            $rewardQuery->whereHas('productVariant', function ($variantQuery) use ($parsedSize) {
+                                $variantQuery->where('size', $parsedSize['size']);
+                            });
+
+                            if ($parsedSize['quantity'] !== null) {
+                                $rewardQuery->where('quantity', $parsedSize['quantity']);
+                            }
+                        });
+                    });
+                });
+            }
+
             $subscriptions = $query->orderBy('period')->get();
 
             $response = [
                 'success' => true,
                 'message' => 'Subscriptions retrieved successfully',
                 'data' => SubscriptionResource::collection($subscriptions),
+                'available_sizes' => $availableSizes,
             ];
 
             // Add filters to response if any were applied
@@ -96,6 +137,12 @@ class SubscriptionController extends BaseApiController
             }
             if ($subcategoryId !== null) {
                 $appliedFilters['subcategory_id'] = $subcategoryId;
+            }
+            if ($period !== null) {
+                $appliedFilters['period'] = $period;
+            }
+            if ($size !== null && trim($size) !== '') {
+                $appliedFilters['size'] = $size;
             }
             if (!empty($appliedFilters)) {
                 $response['filters'] = $appliedFilters;

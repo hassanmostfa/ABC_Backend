@@ -48,6 +48,7 @@ class ProductRequest extends FormRequest
             'variants.*.price' => 'required|numeric|min:0',
             'variants.*.image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
             'variants.*.is_active' => 'boolean',
+            'variants.*.sort_order' => 'nullable|integer|min:0',
         ];
     }
 

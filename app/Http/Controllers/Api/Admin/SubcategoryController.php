@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Api\BaseApiController;
+use App\Models\ProductVariant;
 use App\Models\Subcategory;
 use App\Repositories\Subcategories\SubcategoryRepositoryInterface;
 use App\Http\Resources\Admin\SubcategoryResource;
 use App\Traits\ManagesFileUploads;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 
 class SubcategoryController extends BaseApiController
 {
@@ -200,5 +202,53 @@ class SubcategoryController extends BaseApiController
         $transformedSubcategories = SubcategoryResource::collection($subcategories);
 
         return $this->successResponse($transformedSubcategories, 'Subcategories retrieved successfully');
+    }
+
+    /**
+     * Reorder product variants that belong to this subcategory.
+     */
+    public function sortProductVariants(Request $request, int $id): JsonResponse
+    {
+        $request->validate([
+            'variant_ids' => 'required|array|min:1',
+            'variant_ids.*' => 'integer|distinct|exists:product_variants,id',
+        ]);
+
+        $subcategory = $this->subcategoryRepository->findById($id);
+
+        if (!$subcategory) {
+            return $this->notFoundResponse('Subcategory not found');
+        }
+
+        $variantIds = array_values($request->input('variant_ids'));
+
+        $validVariantIds = ProductVariant::query()
+            ->whereIn('id', $variantIds)
+            ->whereHas('product', function ($query) use ($id) {
+                $query->where('subcategory_id', $id);
+            })
+            ->pluck('id')
+            ->all();
+
+        if (count($validVariantIds) !== count($variantIds)) {
+            return $this->errorResponse('All variants must belong to products in this subcategory.', 422);
+        }
+
+        DB::transaction(function () use ($variantIds) {
+            foreach ($variantIds as $index => $variantId) {
+                ProductVariant::query()
+                    ->whereKey($variantId)
+                    ->update(['sort_order' => $index + 1]);
+            }
+        });
+
+        $subcategory = $this->subcategoryRepository->findById($id);
+
+        logAdminActivity('sorted product variants', 'Subcategory', $id);
+
+        return $this->successResponse(
+            new SubcategoryResource($subcategory),
+            'Product variants sorted successfully'
+        );
     }
 }

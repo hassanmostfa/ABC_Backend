@@ -56,7 +56,9 @@ class Product extends Model
      */
     public function variants()
     {
-        return $this->hasMany(ProductVariant::class)->orderBy('sku', 'asc');
+        return $this->hasMany(ProductVariant::class)
+            ->orderBy('sort_order')
+            ->orderBy('id');
     }
 
     /**
@@ -64,7 +66,10 @@ class Product extends Model
      */
     public function activeVariants()
     {
-        return $this->hasMany(ProductVariant::class)->where('is_active', true)->orderBy('sku', 'asc');
+        return $this->hasMany(ProductVariant::class)
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id');
     }
 
     /**

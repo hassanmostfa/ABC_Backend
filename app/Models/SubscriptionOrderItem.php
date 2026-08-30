@@ -16,6 +16,8 @@ class SubscriptionOrderItem extends Model
         'quantity',
         'unit_price',
         'total_price',
+        'discount',
+        'tax',
         'type',
     ];
 
@@ -23,6 +25,8 @@ class SubscriptionOrderItem extends Model
         'quantity' => 'integer',
         'unit_price' => 'decimal:3',
         'total_price' => 'decimal:3',
+        'discount' => 'decimal:3',
+        'tax' => 'decimal:3',
     ];
 
     /**

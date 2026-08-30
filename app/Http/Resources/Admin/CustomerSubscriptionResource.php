@@ -90,6 +90,10 @@ class CustomerSubscriptionResource extends JsonResource
                     'period' => $subscription->period,
                     'period_in_months' => (int) $subscription->period,
                     'points' => (int) $subscription->points,
+                    'discount_type' => $subscription->discount_type,
+                    'discount_value' => $subscription->discount_value ? (float) $subscription->discount_value : null,
+                    'discount_free_months' => $subscription->discount_free_months ? (int) $subscription->discount_free_months : null,
+                    'has_discount' => $subscription->hasDiscount(),
                     'is_active' => (bool) $subscription->is_active,
                     'offer' => $offer ? [
                         'id' => $offer->id,

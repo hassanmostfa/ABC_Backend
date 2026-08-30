@@ -25,6 +25,7 @@ class ProductVariant extends Model
         'price',
         'image',
         'is_active',
+        'sort_order',
     ];
 
     /**
@@ -36,6 +37,7 @@ class ProductVariant extends Model
         'price' => 'decimal:3',
         'quantity' => 'integer',
         'is_active' => 'boolean',
+        'sort_order' => 'integer',
     ];
 
     /**
@@ -52,5 +54,27 @@ class ProductVariant extends Model
     public function getTotalPriceAttribute()
     {
         return $this->price;
+    }
+
+    /**
+     * Next sort_order for a variant in the same subcategory (or product).
+     */
+    public static function nextSortOrderForProduct(?int $productId): int
+    {
+        $query = static::query();
+
+        if ($productId) {
+            $subcategoryId = Product::query()->whereKey($productId)->value('subcategory_id');
+
+            if ($subcategoryId) {
+                $query->whereHas('product', function ($productQuery) use ($subcategoryId) {
+                    $productQuery->where('subcategory_id', $subcategoryId);
+                });
+            } else {
+                $query->where('product_id', $productId);
+            }
+        }
+
+        return ((int) $query->max('sort_order')) + 1;
     }
 }

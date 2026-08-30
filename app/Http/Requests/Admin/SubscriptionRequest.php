@@ -61,6 +61,47 @@ class SubscriptionRequest extends FormRequest
             ],
             'points' => 'nullable|integer|min:0',
             'is_active' => 'boolean',
+            'discount_type' => [
+                'nullable',
+                Rule::in(Subscription::DISCOUNT_TYPES)
+            ],
+            'discount_value' => [
+                'nullable',
+                'numeric',
+                'min:0',
+                function ($attribute, $value, $fail) {
+                    $discountType = $this->input('discount_type');
+                    
+                    if ($discountType === 'percentage' && $value > 100) {
+                        $fail('The discount percentage cannot exceed 100%.');
+                    }
+                    
+                    if ($discountType === 'percentage' || $discountType === 'fixed') {
+                        if (!$value || $value <= 0) {
+                            $fail('The discount value is required when discount type is percentage or fixed.');
+                        }
+                    }
+                }
+            ],
+            'discount_free_months' => [
+                'nullable',
+                'integer',
+                'min:1',
+                function ($attribute, $value, $fail) {
+                    $discountType = $this->input('discount_type');
+                    $period = (int) $this->input('period');
+                    
+                    if ($discountType === 'free_months') {
+                        if (!$value || $value <= 0) {
+                            $fail('The number of free months is required when discount type is free months.');
+                        }
+                        
+                        if ($value >= $period) {
+                            $fail('The number of free months must be less than the subscription period.');
+                        }
+                    }
+                }
+            ],
         ];
 
         return $rules;
@@ -74,6 +115,19 @@ class SubscriptionRequest extends FormRequest
         // Set default value for points if not provided
         if (!$this->has('points') || $this->input('points') === null) {
             $this->merge(['points' => 0]);
+        }
+
+        // Set default discount type if not provided
+        if (!$this->has('discount_type') || $this->input('discount_type') === null) {
+            $this->merge(['discount_type' => 'none']);
+        }
+
+        // Clear discount_value and discount_free_months if discount_type is 'none'
+        if ($this->input('discount_type') === 'none') {
+            $this->merge([
+                'discount_value' => null,
+                'discount_free_months' => null,
+            ]);
         }
     }
 
@@ -94,6 +148,11 @@ class SubscriptionRequest extends FormRequest
             'points.integer' => 'النقاط يجب أن تكون رقم صحيح.',
             'points.min' => 'النقاط يجب أن تكون على الأقل 0.',
             'is_active.boolean' => 'حالة التفعيل يجب أن تكون صحيحة أو خاطئة.',
+            'discount_type.in' => 'نوع الخصم يجب أن يكون: بدون خصم، نسبة مئوية، مبلغ ثابت، أو أشهر مجانية.',
+            'discount_value.numeric' => 'قيمة الخصم يجب أن تكون رقم.',
+            'discount_value.min' => 'قيمة الخصم يجب أن تكون على الأقل 0.',
+            'discount_free_months.integer' => 'عدد الأشهر المجانية يجب أن يكون رقم صحيح.',
+            'discount_free_months.min' => 'عدد الأشهر المجانية يجب أن يكون على الأقل 1.',
         ];
     }
 
@@ -109,6 +168,9 @@ class SubscriptionRequest extends FormRequest
             'period' => 'فترة الاشتراك',
             'points' => 'النقاط',
             'is_active' => 'حالة التفعيل',
+            'discount_type' => 'نوع الخصم',
+            'discount_value' => 'قيمة الخصم',
+            'discount_free_months' => 'عدد الأشهر المجانية',
         ];
     }
 }

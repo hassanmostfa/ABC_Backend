@@ -166,6 +166,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::get('/', 'index')->middleware('admin.permission:subcategories,view');
          Route::post('/', 'store')->middleware('admin.permission:subcategories,add');
          Route::get('/category/{categoryId}', 'getByCategory')->middleware('admin.permission:subcategories,view');
+         Route::put('/{id}/product-variants/sort', 'sortProductVariants')->middleware('admin.permission:subcategories,edit');
          Route::get('/{id}', 'show')->middleware('admin.permission:subcategories,view');
          Route::post('/{id}', 'update')->middleware('admin.permission:subcategories,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:subcategories,delete');

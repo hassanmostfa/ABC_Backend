@@ -50,6 +50,7 @@ class MobileProductResource extends JsonResource
                         'price' => (float) $variant->price,
                         'image' => $variant->image ? $this->getFileUrl($variant->image, 'public', 'no-image.png') : null,
                         'is_active' => (bool) $variant->is_active,
+                        'sort_order' => (int) $variant->sort_order,
                         'created_at' => \format_datetime_app_tz($variant->created_at),
                         'updated_at' => \format_datetime_app_tz($variant->updated_at),
                     ];

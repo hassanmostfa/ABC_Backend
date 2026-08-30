@@ -66,8 +66,19 @@ class SubscriptionPurchaseService
             $periodMonths
         );
 
-        $periodTotals = SubscriptionPricing::periodTotals($subscription->offer, $periodMonths);
+        // Calculate subtotal based on discount type
+        $effectivePeriod = $subscription->getEffectivePeriodForPricing();
+        $periodTotals = SubscriptionPricing::periodTotals($subscription->offer, $effectivePeriod);
+        $subtotalBeforeDiscount = SubscriptionPricing::periodTotals($subscription->offer, $periodMonths)['total_after_price'];
         $subtotal = $periodTotals['total_after_price'];
+        
+        // Apply percentage or fixed discount
+        $subscriptionDiscount = 0;
+        if ($subscription->discount_type === 'percentage' || $subscription->discount_type === 'fixed') {
+            $subscriptionDiscount = $subscription->calculateDiscountAmount($subtotal);
+            $subtotal -= $subscriptionDiscount;
+        }
+        
         $invoiceAmounts = $this->invoiceService->calculateAmounts($subtotal, 0, 0, 0, 'delivery');
         $amountDue = $invoiceAmounts['amountDue'];
         $source = ($data['source'] ?? 'app') === 'web' ? 'web' : 'app';
@@ -85,6 +96,11 @@ class SubscriptionPurchaseService
                 'end_date' => $endDate->format('Y-m-d'),
                 'total_orders' => $periodMonths * $ordersPerMonth,
                 'subtotal' => $subtotal,
+                'subtotal_before_discount' => $subtotalBeforeDiscount,
+                'subscription_discount' => $subscriptionDiscount,
+                'discount_type' => $subscription->discount_type,
+                'discount_value' => $subscription->discount_value,
+                'discount_free_months' => $subscription->discount_free_months,
                 'total_before_price' => $periodTotals['total_before_price'],
                 'total_after_price' => $periodTotals['total_after_price'],
                 'invoice_amounts' => $invoiceAmounts,
@@ -334,6 +350,10 @@ class SubscriptionPurchaseService
                 'total_after_price' => (float) ($draft['total_after_price'] ?? $subtotal),
                 'checkout_number' => $locked->checkout_number,
                 'points_awarded' => false,
+                'subscription_discount' => (float) ($draft['subscription_discount'] ?? 0),
+                'discount_type' => $draft['discount_type'] ?? null,
+                'discount_value' => $draft['discount_value'] ?? null,
+                'discount_free_months' => $draft['discount_free_months'] ?? null,
             ],
         ]);
 
@@ -566,11 +586,30 @@ class SubscriptionPurchaseService
         $ordersPerMonth = $customerSubscription->orders_per_month;
         $periodMonths = (int) $subscription->period;
         $offer = $subscription->offer;
+        $metadata = $customerSubscription->metadata ?? [];
+        
+        // Get subscription discount from metadata
+        $subscriptionDiscount = (float) ($metadata['subscription_discount'] ?? 0);
+        
+        // Calculate total value of all items across all months to distribute discount
+        $allMonthsItems = [];
+        $totalItemsValue = 0;
+        
+        for ($month = 1; $month <= $periodMonths; $month++) {
+            $monthItems = $this->distributeItemsForMonth($offer, $ordersPerMonth);
+            $allMonthsItems[$month] = $monthItems;
+            
+            foreach ($monthItems as $orderItems) {
+                foreach ($orderItems as $item) {
+                    $totalItemsValue += $item['quantity'] * $item['unit_price'];
+                }
+            }
+        }
 
         $orderSequence = 1;
 
         for ($month = 1; $month <= $periodMonths; $month++) {
-            $monthItems = $this->distributeItemsForMonth($offer, $ordersPerMonth);
+            $monthItems = $allMonthsItems[$month];
 
             for ($orderInMonth = 1; $orderInMonth <= $ordersPerMonth; $orderInMonth++) {
                 $deliveryDate = $deliverySchedule[$orderSequence - 1] ?? null;
@@ -579,7 +618,14 @@ class SubscriptionPurchaseService
                     throw new \Exception("Delivery date missing for order {$orderSequence}");
                 }
 
-                $orderTotal = $this->calculateOrderTotal($monthItems[$orderInMonth - 1]);
+                // Calculate item discounts proportionally
+                $itemsWithDiscounts = $this->applyProportionalDiscounts(
+                    $monthItems[$orderInMonth - 1],
+                    $subscriptionDiscount,
+                    $totalItemsValue
+                );
+                
+                $orderTotal = $this->calculateOrderTotalWithDiscounts($itemsWithDiscounts);
 
                 $subscriptionOrder = SubscriptionOrder::create([
                     'order_number' => SubscriptionOrder::generateOrderNumber(),
@@ -593,7 +639,7 @@ class SubscriptionPurchaseService
                     'total_amount' => $orderTotal,
                 ]);
 
-                $this->createOrderItems($subscriptionOrder, $monthItems[$orderInMonth - 1]);
+                $this->createOrderItems($subscriptionOrder, $itemsWithDiscounts);
 
                 $orderSequence++;
             }
@@ -667,6 +713,45 @@ class SubscriptionPurchaseService
     }
 
     /**
+     * Apply proportional discounts to items
+     */
+    protected function applyProportionalDiscounts(array $items, float $totalDiscount, float $totalItemsValue): array
+    {
+        if ($totalDiscount <= 0 || $totalItemsValue <= 0) {
+            // No discount to apply
+            foreach ($items as &$item) {
+                $item['discount'] = 0;
+                $item['tax'] = 0;
+            }
+            return $items;
+        }
+
+        foreach ($items as &$item) {
+            $itemTotal = $item['quantity'] * $item['unit_price'];
+            $itemProportion = $totalItemsValue > 0 ? ($itemTotal / $totalItemsValue) : 0;
+            $itemDiscount = round($totalDiscount * $itemProportion, 3);
+            
+            $item['discount'] = $itemDiscount;
+            $item['tax'] = 0; // No tax for subscription orders by default
+        }
+
+        return $items;
+    }
+
+    /**
+     * Calculate order total with discounts
+     */
+    protected function calculateOrderTotalWithDiscounts(array $items): float
+    {
+        $total = 0;
+        foreach ($items as $item) {
+            $itemTotal = ($item['quantity'] * $item['unit_price']) - ($item['discount'] ?? 0);
+            $total += max(0, $itemTotal);
+        }
+        return $total;
+    }
+
+    /**
      * Create order items
      */
     protected function createOrderItems(SubscriptionOrder $order, array $items): void
@@ -679,6 +764,8 @@ class SubscriptionPurchaseService
                 'quantity' => $item['quantity'],
                 'unit_price' => $item['unit_price'],
                 'total_price' => $item['quantity'] * $item['unit_price'],
+                'discount' => $item['discount'] ?? 0,
+                'tax' => $item['tax'] ?? 0,
                 'type' => $item['type'],
             ]);
         }
@@ -705,17 +792,61 @@ class SubscriptionPurchaseService
     }
 
     /**
-     * Send order to ERP
+     * Send subscription order to ERP
      */
     protected function sendToErp(SubscriptionOrder $order): void
     {
-        $order->update([
-            'sent_to_erp_at' => now(),
-            'erp_data' => [
-                'status' => 'sent',
-                'sent_at' => now()->toIso8601String(),
-            ]
-        ]);
+        try {
+            $erpService = app(ErpOrderService::class);
+            $order->loadMissing(['items.productVariant', 'customer', 'customerSubscription.subscription.offer.charity']);
+            
+            $result = $erpService->sendSubscriptionOrder($order);
+            
+            if ($result['success']) {
+                $order->update([
+                    'sent_to_erp_at' => now(),
+                    'erp_data' => [
+                        'status' => 'sent',
+                        'sent_at' => now()->toIso8601String(),
+                        'response' => $result['body'] ?? null,
+                    ]
+                ]);
+                
+                Log::info('Subscription order sent to ERP successfully', [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                ]);
+            } else {
+                Log::warning('Failed to send subscription order to ERP', [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'error' => $result['error'] ?? 'Unknown error',
+                    'status' => $result['status'] ?? null,
+                ]);
+                
+                $order->update([
+                    'erp_data' => [
+                        'status' => 'failed',
+                        'error' => $result['error'] ?? 'Unknown error',
+                        'attempted_at' => now()->toIso8601String(),
+                    ]
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Exception while sending subscription order to ERP', [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'exception' => $e->getMessage(),
+            ]);
+            
+            $order->update([
+                'erp_data' => [
+                    'status' => 'error',
+                    'error' => $e->getMessage(),
+                    'attempted_at' => now()->toIso8601String(),
+                ]
+            ]);
+        }
     }
 
     /**

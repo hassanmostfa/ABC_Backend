@@ -35,6 +35,26 @@ class SubcategoryResource extends JsonResource
             'name_en' => $this->name_en,
             'image_url' => $this->getFileUrl($this->image_path, 'public', 'no-image.png'),
             'is_active' => (bool) $this->is_active,
+            'product_variants' => $this->whenLoaded('productVariants', function () {
+                return $this->productVariants->map(function ($variant) {
+                    $product = $variant->relationLoaded('product') ? $variant->product : null;
+
+                    return [
+                        'id' => $variant->id,
+                        'product_id' => $variant->product_id,
+                        'product_name_ar' => $product?->name_ar,
+                        'product_name_en' => $product?->name_en,
+                        'size' => $variant->size,
+                        'sku' => $variant->sku,
+                        'short_item' => $variant->short_item,
+                        'quantity' => (int) $variant->quantity,
+                        'price' => (float) $variant->price,
+                        'image' => $this->getFileUrl($variant->image, 'public', 'no-image.png'),
+                        'is_active' => (bool) $variant->is_active,
+                        'sort_order' => (int) $variant->sort_order,
+                    ];
+                })->values();
+            }),
             'created_at' => \format_date_app_tz($this->created_at),
             'updated_at' => \format_date_app_tz($this->updated_at),
         ];

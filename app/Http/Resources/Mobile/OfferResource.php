@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Mobile;
 
+use App\Support\SubscriptionSize;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use App\Traits\ManagesFileUploads;
@@ -97,6 +98,7 @@ class OfferResource extends JsonResource
             'in_stock' => $this->isOfferInStock(),
             'price_before_discount' => round($priceBeforeDiscount, 3),
             'price_after_discount' => round($priceAfterDiscount, 3),
+            'sizes' => SubscriptionSize::fromOffer($this->resource),
             'conditions' => $this->conditions->map(function ($condition) use ($lang) {
                 $product = $condition->product;
                 $variant = $condition->productVariant;
@@ -110,6 +112,7 @@ class OfferResource extends JsonResource
                     'product_sku' => $product->sku,
                     'variant_id' => $variant ? $variant->id : null,
                     'variant_size' => $variant ? $variant->size : null,
+                    'size' => SubscriptionSize::label($variant?->size, $condition->quantity),
                     'variant_short_item' => $variant ? $variant->short_item : null,
                     'variant_sku' => $variant ? $variant->sku : null,
                     'price' => $originalPrice,
@@ -134,6 +137,7 @@ class OfferResource extends JsonResource
                     'product_sku' => $product ? $product->sku : null,
                     'variant_id' => $variant ? $variant->id : null,
                     'variant_size' => $variant ? $variant->size : null,
+                    'size' => SubscriptionSize::label($variant?->size, $reward->quantity),
                     'variant_short_item' => $variant ? $variant->short_item : null,
                     'variant_sku' => $variant ? $variant->sku : null,
                     'price' => $originalPrice,

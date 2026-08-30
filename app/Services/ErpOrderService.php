@@ -89,6 +89,38 @@ class ErpOrderService
     }
 
     /**
+     * Send a subscription order to the ERP via POST /API/Order/SendOrder.
+     *
+     * @param  SubscriptionOrder  $order  Must have items.productVariant and customerSubscription loaded.
+     * @return array  ['success' => bool, 'status' => int|null, 'body' => mixed, 'error' => string|null]
+     */
+    public function sendSubscriptionOrder(SubscriptionOrder $order): array
+    {
+        if (!$order->relationLoaded('items')) {
+            $order->load('items.productVariant');
+        } elseif ($order->items->isNotEmpty() && !$order->items->first()->relationLoaded('productVariant')) {
+            $order->load('items.productVariant');
+        }
+
+        if (!$order->relationLoaded('customer')) {
+            $order->load('customer');
+        }
+
+        if (!$order->relationLoaded('customerSubscription')) {
+            $order->load('customerSubscription.subscription.offer.charity');
+        }
+
+        $payload  = $this->normalizeOrderPayloadPrices($this->buildSubscriptionOrderPayload($order));
+        $endpoint = $this->buildEndpoint('/API/Order/SendOrder');
+
+        return $this->request($endpoint, $this->buildSendOrderRequestOptions($payload, [
+            'action'       => 'SendSubscriptionOrder',
+            'order_number' => $order->order_number,
+            'items_count'  => is_array($payload['allItems'] ?? null) ? count($payload['allItems']) : 0,
+        ]));
+    }
+
+    /**
      * Send a raw order payload directly to ERP SendOrder endpoint.
      *
      * @param  array<string, mixed>  $payload
@@ -1403,6 +1435,37 @@ class ErpOrderService
     }
 
     /**
+     * Build the ERP payload from a subscription order.
+     */
+    private function buildSubscriptionOrderPayload(SubscriptionOrder $order): array
+    {
+        $orderDate    = $order->created_at ? $order->created_at->toDateString() : now()->toDateString();
+        $deliveryDate = $order->scheduled_delivery_date 
+            ? $order->scheduled_delivery_date->toDateString() 
+            : $orderDate;
+
+        $customerSubscription = $order->customerSubscription;
+        $totalAmount = (float) $order->total_amount;
+        $deliveryFee = 0.00; // Subscription orders typically don't have delivery fees
+
+        return [
+            'OrderNumber'   => $order->order_number,
+            'OrderDate'     => $orderDate,
+            'DeliveryDate'  => $deliveryDate,
+            'DeliveryValue' => $this->formatErpPrice($deliveryFee),
+            'CustomerCode'  => $this->resolveSubscriptionCustomerCode($order),
+            'EmployeeCode'  => '1000', // Subscription orders use app employee code
+            'LPO'           => $this->resolveSubscriptionLpo($order),
+            'Notes'         => $this->resolveSubscriptionNotes($order),
+            'NetTotal'      => $this->formatErpPrice($totalAmount),
+            'GrossTotal'    => $this->formatErpPrice($totalAmount),
+            'TotalTax'      => $this->formatErpPrice(0),
+            'TotalDiscount' => $this->formatErpPrice(0),
+            'allItems'      => $this->buildSubscriptionItems($order),
+        ];
+    }
+
+    /**
      * ERP LPO: payment track_id when the invoice is paid (e.g. gateway track ID).
      */
     private function resolveLpo(Order $order): string
@@ -1660,6 +1723,118 @@ class ErpOrderService
                 'taxAmount'      => $this->formatErpPrice($row['taxAmount']),
             ];
         })->values()->toArray();
+    }
+
+    /**
+     * Build the allItems array from subscription order items (one row per itemCode + uom).
+     */
+    private function buildSubscriptionItems(SubscriptionOrder $order): array
+    {
+        $grouped = [];
+
+        foreach ($order->items as $item) {
+            $variant = $item->productVariant ?? $item->relationLoaded('productVariant') ? $item->productVariant : null;
+            $itemCode = $variant?->sku ?? '';
+            $uom = $variant?->short_item ?? '';
+            $key = $itemCode . '|' . $uom;
+            $quantity = (int) $item->quantity;
+            $netLineTotal = max(0, (float) $item->total_price - (float) $item->discount);
+            $taxAmount = (float) $item->tax;
+
+            if (!isset($grouped[$key])) {
+                $grouped[$key] = [
+                    'itemCode' => $itemCode,
+                    'uom' => $uom,
+                    'quantity' => 0,
+                    'netLineTotal' => 0.0,
+                    'taxAmount' => 0.0,
+                ];
+            }
+
+            $grouped[$key]['quantity'] += $quantity;
+            $grouped[$key]['netLineTotal'] += $netLineTotal;
+            $grouped[$key]['taxAmount'] += $taxAmount;
+        }
+
+        return collect($grouped)->map(function (array $row) {
+            $quantity = (int) $row['quantity'];
+            $netLineTotal = $this->formatErpPrice($row['netLineTotal']);
+            $unitPriceAfterDiscount = $quantity > 0
+                ? $this->formatErpPrice($netLineTotal / $quantity)
+                : 0.0;
+
+            return [
+                'itemCode'       => $row['itemCode'],
+                'uom'            => $row['uom'],
+                'price'          => $unitPriceAfterDiscount,
+                'quantity'       => $quantity,
+                'isFOC'          => false,
+                'discountAmount' => $this->formatErpPrice(0),
+                'taxAmount'      => $this->formatErpPrice($row['taxAmount']),
+            ];
+        })->values()->toArray();
+    }
+
+    /**
+     * Resolve customer code for subscription order
+     */
+    private function resolveSubscriptionCustomerCode(SubscriptionOrder $order): string
+    {
+        $order->loadMissing('customer');
+
+        if ($order->customer) {
+            $customerCode = $order->customer->resolveErpCustomerCode();
+            if ($customerCode !== '') {
+                return $customerCode;
+            }
+        }
+
+        return $this->getSettingValue('cash_customer_code', 'CASH');
+    }
+
+    /**
+     * Resolve LPO for subscription order (typically empty for subscriptions)
+     */
+    private function resolveSubscriptionLpo(SubscriptionOrder $order): string
+    {
+        return '';
+    }
+
+    /**
+     * Resolve notes for subscription order
+     */
+    private function resolveSubscriptionNotes(SubscriptionOrder $order): string
+    {
+        $lines = [];
+        $order->loadMissing('customerSubscription.subscription.offer.charity');
+        
+        $lines[] = 'Subscription Order';
+        $lines[] = 'Order Sequence: ' . $order->order_sequence;
+        $lines[] = 'Month: ' . $order->month_number . ', Order: ' . $order->order_in_month;
+
+        if ($order->customerSubscription) {
+            $subscription = $order->customerSubscription->subscription;
+            if ($subscription && $subscription->offer) {
+                $offer = $subscription->offer;
+                $offerTitle = trim($offer->title_en ?? '');
+                if ($offerTitle !== '') {
+                    $lines[] = 'Offer: ' . $offerTitle;
+                }
+
+                if ($offer->charity_id && $offer->charity) {
+                    $charityName = trim($offer->charity->name_en ?? '');
+                    if ($charityName !== '') {
+                        $lines[] = 'Charity: ' . $charityName;
+                    }
+                }
+            }
+        }
+
+        if ($order->notes) {
+            $lines[] = 'Notes: ' . trim($order->notes);
+        }
+
+        return implode("\n", $lines);
     }
 
     /**
