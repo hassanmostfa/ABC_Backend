@@ -18,9 +18,9 @@ use App\Models\OrderCheckout;
 use App\Models\Payment;
 use App\Models\PaymentGatewayEvent;
 use App\Models\Wallet;
-use App\Services\OttuPaymentProcessor;
-use App\Services\OttuService;
-use App\Services\WalletChargeService;
+use App\Services\Payment\OttuPaymentProcessor;
+use App\Services\Payment\OttuService;
+use App\Services\Wallet\WalletChargeService;
 use App\Support\PaymentCreatorResolver;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -239,7 +239,7 @@ class PaymentController extends BaseApiController
                     DispatchErpOrderJob::dispatchAfterResponse($invoiceAfter->order->id);
                 }
                 if ($invoiceAfter->customer_subscription_id) {
-                    app(\App\Services\SubscriptionPurchaseService::class)->activateFromPaidInvoice($invoiceAfter);
+                    app(\App\Services\Subscription\SubscriptionPurchaseService::class)->activateFromPaidInvoice($invoiceAfter);
                 }
             }
 
@@ -384,7 +384,7 @@ class PaymentController extends BaseApiController
                             DispatchErpOrderJob::dispatchAfterResponse($invoiceAfter->order->id);
                         }
                         if ($invoiceAfter->customer_subscription_id) {
-                            app(\App\Services\SubscriptionPurchaseService::class)->activateFromPaidInvoice($invoiceAfter);
+                            app(\App\Services\Subscription\SubscriptionPurchaseService::class)->activateFromPaidInvoice($invoiceAfter);
                         }
                     }
                 }

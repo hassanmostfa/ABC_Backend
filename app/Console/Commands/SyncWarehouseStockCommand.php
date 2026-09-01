@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\ProductVariant;
-use App\Services\WarehouseStockService;
+use App\Services\ERP\WarehouseStockService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 

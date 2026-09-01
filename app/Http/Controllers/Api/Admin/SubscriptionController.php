@@ -11,7 +11,7 @@ use App\Http\Resources\Admin\SubscriptionResource;
 use App\Http\Resources\Admin\CustomerSubscriptionResource;
 use App\Http\Resources\Admin\SubscriptionOrderResource;
 use App\Http\Resources\Admin\RefundRequestResource;
-use App\Services\RefundRequestService;
+use App\Services\Payment\RefundRequestService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 

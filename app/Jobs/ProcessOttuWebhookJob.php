@@ -3,8 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\PaymentGatewayEvent;
-use App\Services\OttuPaymentProcessor;
-use App\Services\OttuService;
+use App\Services\Payment\OttuPaymentProcessor;
+use App\Services\Payment\OttuService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\SerializesModels;

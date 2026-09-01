@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Api\StoreOctopusOrderRequest;
 use App\Http\Resources\Admin\OrderResource;
-use App\Services\OctopusOrderService;
+use App\Services\Orders\OctopusOrderService;
 use Illuminate\Http\JsonResponse;
 
 class OctopusOrderController extends BaseApiController

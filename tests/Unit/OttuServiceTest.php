@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\OttuService;
+use App\Services\Payment\OttuService;
 use Tests\TestCase;
 
 class OttuServiceTest extends TestCase

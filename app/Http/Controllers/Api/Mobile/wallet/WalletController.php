@@ -6,7 +6,7 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Mobile\ChargeWalletRequest;
 use App\Http\Resources\Mobile\WalletChargeResource;
 use App\Models\Setting;
-use App\Services\WalletChargeService;
+use App\Services\Wallet\WalletChargeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 

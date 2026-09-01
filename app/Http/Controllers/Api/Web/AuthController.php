@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Web\LoginRequest;
 use App\Http\Requests\Web\RegisterRequest;
 use App\Http\Resources\Web\CustomerResource;
-use App\Services\AuthService;
+use App\Services\Auth\AuthService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;

@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\Mobile\coupons;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Mobile\ApplyCouponRequest;
 use App\Models\Coupon;
-use App\Services\CouponService;
+use App\Services\Orders\CouponService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;

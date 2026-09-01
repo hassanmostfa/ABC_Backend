@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Order;
-use App\Services\ErpOrderService;
+use App\Services\ERP\ErpOrderService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\SerializesModels;

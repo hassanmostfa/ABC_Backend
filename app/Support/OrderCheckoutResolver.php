@@ -4,8 +4,8 @@ namespace App\Support;
 
 use App\Models\Order;
 use App\Models\OrderCheckout;
-use App\Services\OrderCheckoutService;
-use App\Services\OrderDraft;
+use App\Services\Orders\OrderCheckoutService;
+use App\Services\Orders\OrderDraft;
 
 class OrderCheckoutResolver
 {

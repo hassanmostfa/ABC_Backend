@@ -8,7 +8,7 @@ use App\Http\Resources\Mobile\CustomerResource;
 use App\Http\Resources\Mobile\PointsTransactionResource;
 use App\Models\Setting;
 use App\Repositories\Customers\CustomerRepositoryInterface;
-use App\Services\PointsTransactionService;
+use App\Services\Points\PointsTransactionService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;

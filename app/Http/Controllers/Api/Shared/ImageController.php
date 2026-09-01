@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Shared;
 
 use App\Http\Controllers\Api\BaseApiController;
-use App\Services\FileService;
+use App\Services\Media\FileService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 

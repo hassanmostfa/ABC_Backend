@@ -12,8 +12,8 @@ use App\Jobs\DispatchErpCustomerJob;
 use App\Models\Customer;
 use App\Models\DeviceToken;
 use App\Models\Setting;
-use App\Services\ErpCustomerService;
-use App\Services\OtpService;
+use App\Services\ERP\ErpCustomerService;
+use App\Services\Auth\OtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -199,7 +199,7 @@ class AuthController extends BaseApiController
                 ->where('customer_id', $customer->id)
                 ->exists();
             if (!$hasWelcomeCoupon) {
-                app(\App\Services\CouponService::class)->createWelcomeCouponForCustomer($customer);
+                app(\App\Services\Orders\CouponService::class)->createWelcomeCouponForCustomer($customer);
             }
 
             // Load relationships

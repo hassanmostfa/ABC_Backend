@@ -2,8 +2,8 @@
 
 namespace App\Jobs;
 
-use App\Services\OttuService;
-use App\Services\WalletChargeService;
+use App\Services\Payment\OttuService;
+use App\Services\Wallet\WalletChargeService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\SerializesModels;

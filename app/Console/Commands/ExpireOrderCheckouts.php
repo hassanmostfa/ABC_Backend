@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\OrderCheckoutService;
+use App\Services\Orders\OrderCheckoutService;
 use Illuminate\Console\Command;
 
 class ExpireOrderCheckouts extends Command

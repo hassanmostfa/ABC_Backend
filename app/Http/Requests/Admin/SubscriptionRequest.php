@@ -44,12 +44,6 @@ class SubscriptionRequest extends FormRequest
                 'required',
                 'integer',
                 'exists:offers,id',
-                function ($attribute, $value, $fail) {
-                    $offer = \App\Models\Offer::find($value);
-                    if ($offer && !$offer->is_subscription) {
-                        $fail('The selected offer must be a subscription offer.');
-                    }
-                }
             ],
             'period' => [
                 'required',

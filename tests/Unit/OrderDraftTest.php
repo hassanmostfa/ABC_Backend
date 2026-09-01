@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\OrderDraft;
+use App\Services\Orders\OrderDraft;
 use Tests\TestCase;
 
 class OrderDraftTest extends TestCase

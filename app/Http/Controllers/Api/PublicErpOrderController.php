@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Services\ErpOrderService;
+use App\Services\ERP\ErpOrderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

@@ -24,7 +24,7 @@ class BulkUpdateOrderStatusRequest extends FormRequest
         return [
             'order_ids' => 'required|array|min:1',
             'order_ids.*' => 'required|integer|distinct',
-            'status' => 'required|string|in:pending,processing,completed,cancelled,refund',
+            'status' => 'required|string|in:pending,processing,completed,cancelled,refund,rejected',
             'reason' => 'required_if:status,cancelled,refund|nullable|string|max:1000',
         ];
     }

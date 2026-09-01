@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Resources\Admin\RefundRequestResource;
 use App\Models\RefundRequest;
-use App\Services\RefundRequestService;
+use App\Services\Payment\RefundRequestService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 

@@ -4,7 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Order;
 use App\Models\OrderCheckout;
-use App\Services\SmsBoxService;
+use App\Services\Notification\SmsBoxService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;

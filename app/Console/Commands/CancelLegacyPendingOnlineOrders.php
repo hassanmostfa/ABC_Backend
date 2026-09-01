@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Order;
-use App\Services\OrderCancellationService;
+use App\Services\Orders\OrderCancellationService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 

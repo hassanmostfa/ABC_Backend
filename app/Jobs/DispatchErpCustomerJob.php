@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Customer;
-use App\Services\ErpCustomerService;
+use App\Services\ERP\ErpCustomerService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\SerializesModels;

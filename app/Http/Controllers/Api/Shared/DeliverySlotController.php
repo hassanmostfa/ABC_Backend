@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\Shared;
 
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Resources\Shared\DeliverySlotResource;
-use App\Services\DeliverySlotService;
+use App\Services\Delivery\DeliverySlotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;

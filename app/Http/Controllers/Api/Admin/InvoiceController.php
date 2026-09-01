@@ -6,7 +6,7 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Admin\UpdateInvoiceRequest;
 use App\Http\Resources\Admin\InvoiceResource;
 use App\Repositories\Invoices\InvoiceRepositoryInterface;
-use App\Services\SubscriptionPurchaseService;
+use App\Services\Subscription\SubscriptionPurchaseService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 

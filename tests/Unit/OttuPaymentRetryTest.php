@@ -3,8 +3,8 @@
 namespace Tests\Unit;
 
 use App\Repositories\Orders\OrderRepositoryInterface;
-use App\Services\OttuPaymentProcessor;
-use App\Services\OttuService;
+use App\Services\Payment\OttuPaymentProcessor;
+use App\Services\Payment\OttuService;
 use App\Models\Payment;
 use Tests\TestCase;
 

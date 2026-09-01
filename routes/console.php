@@ -1,7 +1,7 @@
 <?php
 
 use App\Models\DeviceToken;
-use App\Services\FirebaseService;
+use App\Services\Notification\FirebaseService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;

@@ -1,0 +1,699 @@
+<?php
+
+namespace App\Services\Orders;
+
+use App\Repositories\Orders\OrderItemRepositoryInterface;
+use App\Models\Offer;
+use App\Models\OrderItem;
+use App\Models\ProductVariant;
+use App\Models\Setting;
+use App\Traits\ChecksOfferActive;
+use App\Services\Points\PointsTransactionService;
+use Illuminate\Support\Facades\DB;
+
+class OfferService
+{
+    use ChecksOfferActive;
+
+    protected $orderItemRepository;
+    protected $walletTransactionService;
+
+    public function __construct(
+        OrderItemRepositoryInterface $orderItemRepository,
+        ?PointsTransactionService $pointsTransactionService = null
+    ) {
+        $this->orderItemRepository = $orderItemRepository;
+        $this->pointsTransactionService = $pointsTransactionService ?? app(PointsTransactionService::class);
+    }
+
+    /**
+     * Validate offer for order
+     *
+     * @param int|null $offerId
+     * @param int|null $customerId
+     * @return Offer|null
+     * @throws \Exception
+     */
+    public function validateOffer(?int $offerId, ?int $customerId = null): ?Offer
+    {
+        if (!$offerId) {
+            return null;
+        }
+
+        $offer = $this->getActiveOffer($offerId);
+        
+        // Check if offer type is charity and customer_id is provided
+        if ($offer->type === 'charity' && $customerId) {
+            DB::rollBack();
+            throw new \Exception('This offer is for charities only.');
+        }
+
+        $this->validateOfferConditionVariants($offer);
+
+        return $offer;
+    }
+
+    /**
+     * Ensure every active offer condition (and product reward) variant exists and is active.
+     *
+     * @throws \Exception
+     */
+    public function validateOfferConditionVariants(Offer $offer): void
+    {
+        $offer->loadMissing(['activeConditions.productVariant.product', 'activeRewards.productVariant.product']);
+
+        foreach ($offer->activeConditions as $condition) {
+            if (!$condition->product_variant_id) {
+                continue;
+            }
+            $variant = ProductVariant::with('product')->find($condition->product_variant_id);
+            if (!$variant) {
+                DB::rollBack();
+                throw new \Exception('Offer condition product variant not found.');
+            }
+            if (!$variant->is_active) {
+                DB::rollBack();
+                $this->throwInactiveVariantException($offer, $variant, 'condition');
+            }
+        }
+
+        if ($offer->reward_type !== 'products') {
+            return;
+        }
+
+        foreach ($offer->activeRewards as $reward) {
+            if (!$reward->product_variant_id) {
+                continue;
+            }
+            $variant = ProductVariant::with('product')->find($reward->product_variant_id);
+            if (!$variant) {
+                DB::rollBack();
+                throw new \Exception('Offer reward product variant not found.');
+            }
+            if (!$variant->is_active) {
+                DB::rollBack();
+                $this->throwInactiveVariantException($offer, $variant, 'reward');
+            }
+        }
+    }
+
+    /**
+     * Process offer rewards and return updated order items data and discounts
+     *
+     * @param Offer $offer
+     * @param array $orderItemsData
+     * @param float $totalAmount
+     * @return array
+     * @throws \Exception
+     */
+    public function processOfferRewards(Offer $offer, array &$orderItemsData, float $totalAmount): array
+    {
+        $offerDiscount = 0.00;
+        $this->normalizeOrderItemRows($orderItemsData);
+
+        if ($offer->reward_type === 'products') {
+            // Add condition products to order items (if not already present)
+            $activeConditions = $offer->activeConditions()->with(['product', 'productVariant'])->get();
+            foreach ($activeConditions as $condition) {
+                if ($condition->product_variant_id) {
+                    $variant = $this->resolveActiveOfferVariant(
+                        (int) $condition->product_variant_id,
+                        $offer,
+                        'condition'
+                    );
+
+                    // Find existing item index (if exists)
+                    $existingItemIndex = collect($orderItemsData)->search(function ($item) use ($variant) {
+                        return isset($item['variant_id']) && $item['variant_id'] == $variant->id;
+                    });
+
+                    $conditionQuantity = $condition->quantity;
+
+                    // Check if variant has sufficient quantity
+                    $availableQuantity = $variant->quantity ?? 0;
+                    if ($availableQuantity < $conditionQuantity) {
+                        DB::rollBack();
+                        $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
+                        $sizeInfo = $variant->size ? ' - ' . $variant->size : '';
+                        throw new \Exception(
+                            "Insufficient quantity for offer condition product {$productName}{$sizeInfo}. Available: {$availableQuantity}, Required: {$conditionQuantity}"
+                        );
+                    }
+
+                    $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
+                    if ($variant->size) {
+                        $productName .= ' - ' . $variant->size;
+                    }
+
+                    $conditionUnitPrice = $variant->price;
+                    $conditionTotalPrice = $conditionUnitPrice * $conditionQuantity;
+
+                    if ($existingItemIndex !== false) {
+                        // Item exists - update quantity and price
+                        $existingItem = $orderItemsData[$existingItemIndex];
+                        $oldTotalPrice = $existingItem['total_price'];
+                        $existingItem['quantity'] += $conditionQuantity;
+                        $existingItem['total_price'] = $existingItem['unit_price'] * $existingItem['quantity'];
+                        $existingItem['is_offer'] = true;
+                        if (($existingItem['offer_line_kind'] ?? null) !== 'reward') {
+                            $existingItem['offer_line_kind'] = 'condition';
+                        }
+                        $orderItemsData[$existingItemIndex] = $existingItem;
+
+                        // Update total amount (remove old, add new)
+                        $totalAmount = $totalAmount - $oldTotalPrice + $existingItem['total_price'];
+                    } else {
+                        // Add new condition product item
+                        $orderItemsData[] = [
+                            'variant_id' => $variant->id,
+                            'product_id' => $variant->product_id,
+                            'name' => $productName,
+                            'sku' => $variant->sku,
+                            'quantity' => $conditionQuantity,
+                            'unit_price' => $conditionUnitPrice,
+                            'total_price' => $conditionTotalPrice,
+                            'is_offer' => true,
+                            'offer_line_kind' => 'condition',
+                            'discount' => 0,
+                            'tax' => 0,
+                        ];
+
+                        // Add to total amount
+                        $totalAmount += $conditionTotalPrice;
+                    }
+                }
+            }
+            
+            // Add reward products to order items (merge into existing line when same variant)
+            $rewardProductsTotal = 0.00;
+            $activeRewards = $offer->activeRewards()->with(['product', 'productVariant'])->get();
+            foreach ($activeRewards as $reward) {
+                if ($reward->product_variant_id) {
+                    $variant = $this->resolveActiveOfferVariant(
+                        (int) $reward->product_variant_id,
+                        $offer,
+                        'reward'
+                    );
+
+                    $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
+                    if ($variant->size) {
+                        $productName .= ' - ' . $variant->size;
+                    }
+
+                    $rewardQuantity = $reward->quantity;
+                    $existingItemIndex = $this->findItemIndexByVariantId($orderItemsData, $variant->id);
+                    $requiredQuantity = $existingItemIndex !== false
+                        ? (int) $orderItemsData[$existingItemIndex]['quantity'] + $rewardQuantity
+                        : $rewardQuantity;
+
+                    $availableQuantity = $variant->quantity ?? 0;
+                    if ($availableQuantity < $requiredQuantity) {
+                        DB::rollBack();
+                        $sizeInfo = $variant->size ? ' - ' . $variant->size : '';
+                        throw new \Exception(
+                            "Insufficient quantity for offer reward product {$productName}{$sizeInfo}. Available: {$availableQuantity}, Required: {$requiredQuantity}"
+                        );
+                    }
+
+                    $rewardUnitPrice = $variant->price;
+                    $rewardTotalPrice = $rewardUnitPrice * $rewardQuantity;
+                    $rewardProductsTotal += $rewardTotalPrice;
+
+                    if ($existingItemIndex !== false) {
+                        $existingItem = $orderItemsData[$existingItemIndex];
+                        $oldTotalPrice = (float) $existingItem['total_price'];
+                        $existingItem['quantity'] += $rewardQuantity;
+                        $existingItem['total_price'] = round($existingItem['unit_price'] * $existingItem['quantity'], 2);
+                        $existingItem['is_offer'] = true;
+                        $existingItem['offer_line_kind'] = 'reward';
+                        $existingItem['discount'] = round(($existingItem['discount'] ?? 0) + $rewardTotalPrice, 3);
+                        $orderItemsData[$existingItemIndex] = $existingItem;
+                        $totalAmount = $totalAmount - $oldTotalPrice + $existingItem['total_price'];
+                    } else {
+                        $orderItemsData[] = [
+                            'variant_id' => $variant->id,
+                            'product_id' => $variant->product_id,
+                            'name' => $productName,
+                            'sku' => $variant->sku,
+                            'quantity' => $rewardQuantity,
+                            'unit_price' => $rewardUnitPrice,
+                            'total_price' => $rewardTotalPrice,
+                            'is_offer' => true,
+                            'offer_line_kind' => 'reward',
+                            'discount' => $rewardTotalPrice,
+                            'tax' => 0,
+                        ];
+                        $totalAmount += $rewardTotalPrice;
+                    }
+                }
+            }
+            
+            // Add reward products total price to offer discount
+            $offerDiscount = $rewardProductsTotal;
+        } elseif ($offer->reward_type === 'discount') {
+            // Add condition products to order items (if not already present)
+            // Discount offers also need their conditions fulfilled
+            $totalBeforeConditions = $totalAmount;
+            $conditionDeltas = [];
+            $activeConditions = $offer->activeConditions()->with(['product', 'productVariant'])->get();
+            foreach ($activeConditions as $condition) {
+                if ($condition->product_variant_id) {
+                    $variant = $this->resolveActiveOfferVariant(
+                        (int) $condition->product_variant_id,
+                        $offer,
+                        'condition'
+                    );
+
+                    // Find existing item index (if exists)
+                    $existingItemIndex = collect($orderItemsData)->search(function ($item) use ($variant) {
+                        return isset($item['variant_id']) && $item['variant_id'] == $variant->id;
+                    });
+
+                    $conditionQuantity = $condition->quantity;
+
+                    // Check if variant has sufficient quantity
+                    $availableQuantity = $variant->quantity ?? 0;
+                    if ($availableQuantity < $conditionQuantity) {
+                        DB::rollBack();
+                        $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
+                        $sizeInfo = $variant->size ? ' - ' . $variant->size : '';
+                        throw new \Exception(
+                            "Insufficient quantity for offer condition product {$productName}{$sizeInfo}. Available: {$availableQuantity}, Required: {$conditionQuantity}"
+                        );
+                    }
+
+                    $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
+                    if ($variant->size) {
+                        $productName .= ' - ' . $variant->size;
+                    }
+
+                    $conditionUnitPrice = $variant->price;
+                    $conditionTotalPrice = $conditionUnitPrice * $conditionQuantity;
+                    $deltaAmount = $conditionTotalPrice;
+
+                    if ($existingItemIndex !== false) {
+                        // Item exists - update quantity and price
+                        $existingItem = $orderItemsData[$existingItemIndex];
+                        $oldTotalPrice = $existingItem['total_price'];
+                        $existingItem['quantity'] += $conditionQuantity;
+                        $existingItem['total_price'] = $existingItem['unit_price'] * $existingItem['quantity'];
+                        $existingItem['is_offer'] = true;
+                        if (($existingItem['offer_line_kind'] ?? null) !== 'reward') {
+                            $existingItem['offer_line_kind'] = 'condition';
+                        }
+                        $orderItemsData[$existingItemIndex] = $existingItem;
+
+                        // Update total amount (remove old, add new)
+                        $totalAmount = $totalAmount - $oldTotalPrice + $existingItem['total_price'];
+                        $conditionDeltas[] = ['index' => (int) $existingItemIndex, 'amount' => $deltaAmount];
+                    } else {
+                        // Add new condition product item
+                        $orderItemsData[] = [
+                            'variant_id' => $variant->id,
+                            'product_id' => $variant->product_id,
+                            'name' => $productName,
+                            'sku' => $variant->sku,
+                            'quantity' => $conditionQuantity,
+                            'unit_price' => $conditionUnitPrice,
+                            'total_price' => $conditionTotalPrice,
+                            'is_offer' => true,
+                            'offer_line_kind' => 'condition',
+                            'discount' => 0,
+                            'tax' => 0,
+                        ];
+
+                        // Add to total amount
+                        $totalAmount += $conditionTotalPrice;
+                        $conditionDeltas[] = ['index' => count($orderItemsData) - 1, 'amount' => $deltaAmount];
+                    }
+                }
+            }
+
+            $hasVariantConditions = $activeConditions->contains(
+                fn ($condition) => !empty($condition->product_variant_id)
+            );
+            if ($hasVariantConditions && empty($conditionDeltas)) {
+                DB::rollBack();
+                throw new \Exception('Offer conditions could not be applied.');
+            }
+
+            if (empty($conditionDeltas)) {
+                return [
+                    'orderItemsData' => $orderItemsData,
+                    'totalAmount' => $totalAmount,
+                    'offerDiscount' => 0.00,
+                ];
+            }
+            
+            // Calculate discount from rewards applied only to THIS offer's condition total
+            // (processOfferRewards is called once per offer quantity, so we must not use full totalAmount)
+            $conditionTotalThisOffer = $totalAmount - $totalBeforeConditions;
+            $activeRewards = $offer->activeRewards()->get();
+            foreach ($activeRewards as $reward) {
+                if ($reward->discount_amount && $reward->discount_type) {
+                    if ($reward->discount_type === 'percentage') {
+                        $discount = ($conditionTotalThisOffer * $reward->discount_amount) / 100;
+                    } else {
+                        $discount = $reward->discount_amount;
+                    }
+                    $offerDiscount += $discount;
+                }
+            }
+            // Cap this offer's discount to this offer's condition total (safety)
+            $cap = $conditionTotalThisOffer > 0 ? $conditionTotalThisOffer : $totalAmount;
+            $offerDiscount = min($offerDiscount, $cap);
+
+            $this->allocateDiscountTypeToConditionLines(
+                $orderItemsData,
+                $conditionDeltas,
+                $conditionTotalThisOffer,
+                $activeRewards,
+                $offerDiscount
+            );
+        }
+
+        return [
+            'orderItemsData' => $orderItemsData,
+            'totalAmount' => $totalAmount,
+            'offerDiscount' => $offerDiscount
+        ];
+    }
+
+    /**
+     * Create offer reward items for update order
+     *
+     * @param int $orderId
+     * @param Offer $offer
+     * @return float Additional total amount from reward products
+     * @throws \Exception
+     */
+    public function createOfferRewardItems(int $orderId, Offer $offer): float
+    {
+        if ($offer->reward_type !== 'products') {
+            return 0.00;
+        }
+
+        $additionalTotal = 0.00;
+        $activeRewards = $offer->activeRewards()->with(['product', 'productVariant'])->get();
+        
+        foreach ($activeRewards as $reward) {
+            if ($reward->product_variant_id) {
+                $variant = $this->resolveActiveOfferVariant(
+                    (int) $reward->product_variant_id,
+                    $offer,
+                    'reward'
+                );
+
+                $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
+                if ($variant->size) {
+                    $productName .= ' - ' . $variant->size;
+                }
+
+                $rewardQuantity = $reward->quantity;
+                $availableQuantity = $variant->quantity ?? 0;
+
+                if ($availableQuantity < $rewardQuantity) {
+                    DB::rollBack();
+                    $sizeInfo = $variant->size ? ' - ' . $variant->size : '';
+                    throw new \Exception(
+                        "Insufficient quantity for offer reward product {$productName}{$sizeInfo}. Available: {$availableQuantity}, Required: {$rewardQuantity}"
+                    );
+                }
+
+                $rewardUnitPrice = $variant->price;
+                $rewardTotalPrice = $rewardUnitPrice * $rewardQuantity;
+                $taxRate = (float) Setting::getValue('tax', 0.15);
+                $lineDiscount = $rewardTotalPrice;
+                $lineTax = OrderItem::computeLineTax($rewardTotalPrice, $lineDiscount, $taxRate);
+
+                $rewardItemData = [
+                    'order_id' => $orderId,
+                    'variant_id' => $variant->id,
+                    'product_id' => $variant->product_id,
+                    'name' => $productName,
+                    'sku' => $variant->sku,
+                    'quantity' => $rewardQuantity,
+                    'unit_price' => $rewardUnitPrice,
+                    'total_price' => $rewardTotalPrice,
+                    'is_offer' => true,
+                    'offer_line_kind' => 'reward',
+                    'discount' => $lineDiscount,
+                    'tax' => $lineTax,
+                ];
+
+                $this->orderItemRepository->create($rewardItemData);
+                $additionalTotal += $rewardTotalPrice;
+
+                // Update variant quantity
+                $variant = ProductVariant::find($reward->product_variant_id);
+                if ($variant) {
+                    $newQuantity = max(0, ($variant->quantity ?? 0) - $rewardQuantity);
+                    $variant->update(['quantity' => $newQuantity]);
+                }
+            }
+        }
+
+        return $additionalTotal;
+    }
+
+    /**
+     * Calculate offer discount for an order
+     *
+     * @param Offer|null $offer
+     * @param float $totalAmount
+     * @return float
+     */
+    public function calculateOfferDiscount(?Offer $offer, float $totalAmount): float
+    {
+        if (!$offer) {
+            return 0.00;
+        }
+
+        if ($offer->reward_type === 'products') {
+            // Calculate reward products total for discount
+            $rewardProductsTotal = 0.00;
+            $activeRewards = $offer->activeRewards()->with(['product', 'productVariant'])->get();
+            foreach ($activeRewards as $reward) {
+                if ($reward->product_variant_id) {
+                    $variant = ProductVariant::with('product')->find($reward->product_variant_id);
+                    if ($variant && $variant->is_active) {
+                        $rewardQuantity = $reward->quantity;
+                        $rewardUnitPrice = $variant->price;
+                        $rewardTotalPrice = $rewardUnitPrice * $rewardQuantity;
+                        $rewardProductsTotal += $rewardTotalPrice;
+                    }
+                }
+            }
+            return $rewardProductsTotal;
+        } elseif ($offer->reward_type === 'discount') {
+            // Calculate discount from rewards
+            $offerDiscount = 0.00;
+            $activeRewards = $offer->activeRewards()->get();
+            foreach ($activeRewards as $reward) {
+                if ($reward->discount_amount && $reward->discount_type) {
+                    if ($reward->discount_type === 'percentage') {
+                        $discount = ($totalAmount * $reward->discount_amount) / 100;
+                    } else {
+                        $discount = $reward->discount_amount;
+                    }
+                    $offerDiscount += $discount;
+                }
+            }
+            return min($offerDiscount, $totalAmount);
+        }
+
+        return 0.00;
+    }
+
+    /**
+     * Add offer points to customer when order is completed
+     *
+     * @param \App\Models\Order $order
+     * @param \App\Repositories\Customers\CustomerRepositoryInterface $customerRepository
+     * @return void
+     */
+    public function addOfferPointsToCustomer($order, $customerRepository): void
+    {
+        if (!$order->customer_id) {
+            return;
+        }
+
+        // Load offers if not already loaded
+        if (!$order->relationLoaded('offers')) {
+            $order->load('offers');
+        }
+
+        if ($order->offers->isEmpty()) {
+            return;
+        }
+
+        // Calculate total points from all offers (multiply by quantity)
+        $totalPoints = 0;
+        foreach ($order->offers as $offer) {
+            if ($offer->points && $offer->points > 0) {
+                $quantity = isset($offer->pivot->quantity) ? (int) $offer->pivot->quantity : 1;
+                $totalPoints += $offer->points * $quantity;
+            }
+        }
+
+        if ($totalPoints <= 0) {
+            return;
+        }
+
+        $customer = $customerRepository->findById($order->customer_id);
+        if ($customer) {
+            $currentPoints = $customer->points ?? 0;
+            $customerRepository->update($customer->id, [
+                'points' => $currentPoints + $totalPoints
+            ]);
+
+            // Record points earned in points transaction history
+            $this->pointsTransactionService->recordPointsEarned(
+                $order->customer_id,
+                $totalPoints,
+                $order->id,
+                "Earned {$totalPoints} points from order #{$order->id}"
+            );
+        }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $orderItemsData
+     */
+    private function findItemIndexByVariantId(array $orderItemsData, int $variantId): int|false
+    {
+        return collect($orderItemsData)->search(
+            fn ($item) => isset($item['variant_id']) && (int) $item['variant_id'] === $variantId
+        );
+    }
+
+    private function normalizeOrderItemRows(array &$orderItemsData): void
+    {
+        foreach ($orderItemsData as &$item) {
+            $item['discount'] = isset($item['discount']) ? (float) $item['discount'] : 0.0;
+            $item['tax'] = isset($item['tax']) ? (float) $item['tax'] : 0.0;
+            if (!array_key_exists('offer_line_kind', $item)) {
+                $item['offer_line_kind'] = null;
+            }
+        }
+        unset($item);
+    }
+
+    /**
+     * Allocate discount-type offer across condition lines: fixed rewards proportional to line share of
+     * condition subtotal; percentage rewards as percent of each line amount. Scales to capped total.
+     *
+     * @param  array<int, array{index:int, amount:float}>  $conditionDeltas
+     */
+    private function allocateDiscountTypeToConditionLines(
+        array &$orderItemsData,
+        array $conditionDeltas,
+        float $conditionSubtotal,
+        $activeRewards,
+        float $cappedOfferDiscount
+    ): void {
+        if ($cappedOfferDiscount <= 0 || $conditionSubtotal <= 0 || empty($conditionDeltas)) {
+            return;
+        }
+
+        $merged = [];
+        foreach ($conditionDeltas as $d) {
+            $idx = $d['index'];
+            if (!isset($merged[$idx])) {
+                $merged[$idx] = 0.0;
+            }
+            $merged[$idx] += (float) $d['amount'];
+        }
+
+        $normalizedDeltas = [];
+        foreach ($merged as $idx => $amt) {
+            if ($amt > 0) {
+                $normalizedDeltas[] = ['index' => (int) $idx, 'amount' => $amt];
+            }
+        }
+        if (empty($normalizedDeltas)) {
+            return;
+        }
+
+        $byIndex = [];
+        foreach ($normalizedDeltas as $d) {
+            $byIndex[$d['index']] = 0.0;
+        }
+
+        foreach ($activeRewards as $reward) {
+            if (!$reward->discount_amount || !$reward->discount_type) {
+                continue;
+            }
+            if ($reward->discount_type === 'percentage') {
+                $p = (float) $reward->discount_amount;
+                foreach ($normalizedDeltas as $d) {
+                    $byIndex[$d['index']] += round($d['amount'] * $p / 100, 3);
+                }
+            } else {
+                $fixed = (float) $reward->discount_amount;
+                foreach ($normalizedDeltas as $d) {
+                    $byIndex[$d['index']] += round($fixed * ($d['amount'] / $conditionSubtotal), 3);
+                }
+            }
+        }
+
+        $rawSum = array_sum($byIndex);
+        if ($rawSum <= 0) {
+            return;
+        }
+
+        $target = min($cappedOfferDiscount, $conditionSubtotal);
+        $factor = $target / $rawSum;
+        foreach ($byIndex as $idx => $v) {
+            $byIndex[$idx] = round($v * $factor, 3);
+        }
+
+        $sumAfter = array_sum($byIndex);
+        $diff = round($target - $sumAfter, 3);
+        if (abs($diff) >= 0.0005) {
+            $fixIdx = $normalizedDeltas[0]['index'];
+            $maxAmt = -1.0;
+            foreach ($normalizedDeltas as $d) {
+                if ($d['amount'] > $maxAmt) {
+                    $maxAmt = $d['amount'];
+                    $fixIdx = $d['index'];
+                }
+            }
+            $byIndex[$fixIdx] = round(($byIndex[$fixIdx] ?? 0) + $diff, 3);
+        }
+
+        foreach ($byIndex as $idx => $disc) {
+            $orderItemsData[$idx]['discount'] = round(($orderItemsData[$idx]['discount'] ?? 0) + $disc, 3);
+        }
+    }
+
+    private function resolveActiveOfferVariant(int $variantId, Offer $offer, string $role = 'condition'): ProductVariant
+    {
+        $variant = ProductVariant::with('product')->find($variantId);
+        if (!$variant) {
+            DB::rollBack();
+            throw new \Exception("Offer {$role} product variant not found.");
+        }
+        if (!$variant->is_active) {
+            DB::rollBack();
+            $this->throwInactiveVariantException($offer, $variant, $role);
+        }
+
+        return $variant;
+    }
+
+    private function throwInactiveVariantException(Offer $offer, ProductVariant $variant, string $role = 'condition'): void
+    {
+        $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
+        if ($variant->size) {
+            $productName .= ' - ' . $variant->size;
+        }
+        $sku = $variant->sku ?? '';
+        $offerTitle = $offer->title_en ?? $offer->title_ar ?? "Offer #{$offer->id}";
+        $skuPart = $sku !== '' ? " (SKU: {$sku})" : '';
+
+        throw new \Exception(
+            "Cannot apply offer \"{$offerTitle}\": the {$role} product variant {$productName}{$skuPart} is not active."
+        );
+    }
+}

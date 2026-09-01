@@ -19,7 +19,7 @@ class SubscriptionPurchaseRequest extends FormRequest
             'orders_per_month' => 'required|integer|min:1|max:4',
             'start_date' => 'nullable|date|after_or_equal:today',
             'delivery_schedule' => 'required|array',
-            'delivery_schedule.*' => 'required|date|after_or_equal:today',
+            'delivery_schedule.*' => 'required|date',
             'payment_method' => 'nullable|string|in:wallet',
             'src' => 'required_unless:payment_method,wallet|nullable|string|in:knet,cc,wallet',
             'source' => 'nullable|string|in:app,web',
@@ -89,17 +89,6 @@ class SubscriptionPurchaseRequest extends FormRequest
                 );
 
                 return;
-            }
-
-            $months = collect($providedDates)
-                ->map(fn ($date) => Carbon::parse($date)->format('Y-m'))
-                ->unique();
-
-            if ($months->count() > 1) {
-                $validator->errors()->add(
-                    'delivery_schedule',
-                    'يجب أن تكون جميع مواعيد التوصيل في نفس الشهر (قالب شهري واحد).'
-                );
             }
 
             $sorted = collect($providedDates)

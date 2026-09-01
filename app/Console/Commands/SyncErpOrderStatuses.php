@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\ErpOrderService;
+use App\Services\ERP\ErpOrderService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 

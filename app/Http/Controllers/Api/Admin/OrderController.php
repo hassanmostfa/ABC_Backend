@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Exceptions\PendingOnlineInvoiceException;
 use App\Http\Controllers\Api\BaseApiController;
-use App\Http\Controllers\Concerns\HandlesOrderCheckouts;
+use App\Http\Controllers\Concerns\HandlesOrderCheckouts;    
 use App\Http\Requests\Admin\BulkUpdateOrderStatusRequest;
 use App\Http\Requests\Admin\CancelOrderRequest;
 use App\Http\Requests\Admin\RecreateCashOrderRequest;
@@ -17,10 +17,10 @@ use App\Models\Admin;
 use App\Models\Order;
 use App\Models\OrderCheckout;
 use App\Repositories\Orders\OrderRepositoryInterface;
-use App\Services\OrderCancellationService;
-use App\Services\OrderService;
-use App\Services\ErpOrderService;
-use App\Services\RefundRequestService;
+use App\Services\Orders\OrderCancellationService;
+use App\Services\Orders\OrderService;
+use App\Services\ERP\ErpOrderService;
+use App\Services\Payment\RefundRequestService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -57,7 +57,7 @@ class OrderController extends BaseApiController
         // Validate filter parameters
         $request->validate([
             'search' => 'nullable|string|max:1000',
-            'status' => 'nullable|in:pending,processing,completed,cancelled,refund',
+            'status' => 'nullable|in:pending,processing,completed,cancelled,refund,rejected',
             'payment_method' => 'nullable|in:cash,wallet,online_link',
             'delivery_type' => 'nullable|in:pickup,delivery',
             'date_from' => 'nullable|date',

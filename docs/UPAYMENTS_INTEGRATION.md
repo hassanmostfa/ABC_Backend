@@ -27,7 +27,7 @@ This document describes how the **Upayments** payment gateway is integrated into
   - **Order payments:** Create a payment link for an order (invoice); customer pays via the link; webhook/success callback updates payment and invoice status.  
   - **Wallet charges:** Create a top-up payment link; customer pays; webhook/success callback credits the wallet.  
 - **Implementation:**  
-  - `App\Services\UpaymentsService` — calls Upayments Charge API and Get Payment Status API.  
+  - `App\Services\Payment\UpaymentsService` — calls Upayments Charge API and Get Payment Status API.  
   - `App\Http\Controllers\Api\Admin\PaymentController` — handles success/cancel/notification callbacks (order and wallet).  
   - Payment and invoice updates are driven by **verified** status from the Get Payment Status API (or, when disabled, from redirect params only).
 
@@ -251,4 +251,4 @@ Logs (when `UPAYMENTS_LOGGING_ENABLED=true`) go to the configured log channel; c
 - [Make charge (addcharge)](https://developers.upayments.com/reference/addcharge)  
 - [Create Invoice](https://developers.upayments.com/reference/create-invoice)  
 - [Get Payment Status](https://developers.upayments.com/reference/checkpaymentstatus) (or equivalent in your contract)  
-- Application code: `App\Services\UpaymentsService`, `App\Http\Controllers\Api\Admin\PaymentController`, `App\Services\WalletChargeService`, `App\Services\OrderService` (order + invoice creation), `config/services.php` (upayments section)
+- Application code: `App\Services\Payment\UpaymentsService`, `App\Http\Controllers\Api\Admin\PaymentController`, `App\Services\Wallet\WalletChargeService`, `App\Services\Orders\OrderService` (order + invoice creation), `config/services.php` (upayments section)

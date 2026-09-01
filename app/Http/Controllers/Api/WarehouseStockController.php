@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Services\WarehouseStockService;
+use App\Services\ERP\WarehouseStockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

@@ -50,7 +50,7 @@ class UpdateOrderRequest extends FormRequest
                 'max:255',
                 Rule::unique('orders', 'order_number')->ignore($orderId)
             ],
-            'status' => 'sometimes|required|in:pending,processing,completed,cancelled,refund',
+            'status' => 'sometimes|required|in:pending,processing,completed,cancelled,refund,rejected',
             'reason' => 'required_if:status,cancelled,refund|nullable|string|max:1000',
             'offer_ids' => 'sometimes|nullable|array', // Backward compatibility: simple array of IDs
             'offer_ids.*' => 'required_with:offer_ids|integer|exists:offers,id',

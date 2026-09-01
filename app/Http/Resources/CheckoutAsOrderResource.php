@@ -4,7 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\CustomerAddress;
 use App\Models\OrderCheckout;
-use App\Services\OrderDraft;
+use App\Services\Orders\OrderDraft;
 use App\Support\OrderCheckoutResolver;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;

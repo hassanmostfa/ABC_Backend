@@ -9,7 +9,7 @@ use App\Models\CustomerAddress;
 use App\Models\Order;
 use App\Models\OrderCheckout;
 use App\Models\Payment;
-use App\Services\OrderDraft;
+use App\Services\Orders\OrderDraft;
 use App\Support\OrderCheckoutResolver;
 use App\Traits\CustomerUnreadNotificationsCountTrait;
 use Illuminate\Http\Request;

@@ -12,7 +12,7 @@ use App\Http\Resources\Mobile\CustomerSubscriptionResource;
 use App\Http\Resources\Mobile\SubscriptionCheckoutResource;
 use App\Http\Resources\Mobile\SubscriptionOrderResource;
 use App\Models\SubscriptionOrder;
-use App\Services\SubscriptionPurchaseService;
+use App\Services\Subscription\SubscriptionPurchaseService;
 use App\Support\SubscriptionSize;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;

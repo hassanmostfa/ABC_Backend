@@ -12,8 +12,8 @@ use App\Http\Resources\Admin\RefundRequestResource;
 use App\Models\Order;
 use App\Models\Setting;
 use App\Repositories\Orders\OrderRepositoryInterface;
-use App\Services\OrderCancellationService;
-use App\Services\OrderService;
+use App\Services\Orders\OrderCancellationService;
+use App\Services\Orders\OrderService;
 use App\Jobs\SendOrderCreatedNotificationsJob;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -136,7 +136,7 @@ class OrderController extends BaseApiController
         // Validate filter parameters
         $request->validate([
             'search' => 'nullable|string|max:1000',
-            'status' => 'nullable|in:pending,processing,completed,cancelled,refund',
+            'status' => 'nullable|in:pending,processing,completed,cancelled,refund,rejected',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 

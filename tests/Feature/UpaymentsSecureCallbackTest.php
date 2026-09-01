@@ -6,7 +6,7 @@ use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Payment;
-use App\Services\UpaymentsService;
+use App\Services\Payment\UpaymentsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
