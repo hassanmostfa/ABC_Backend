@@ -21,7 +21,6 @@ class SyncErpOrderStatuses extends Command
 
         $summary = $erpOrderService->syncPendingAndProcessingOrderStatuses($limit);
 
-        $this->line("Cancelled since: {$summary['cancelled_since']}");
         $this->line("Limit this run (per type): {$summary['limit']}");
         $this->line('--- Regular orders ---');
         $this->line("Eligible: {$summary['orders']['eligible_total']}");
@@ -48,7 +47,6 @@ class SyncErpOrderStatuses extends Command
             'failed' => $summary['failed'],
             'limit' => $summary['limit'],
             'eligible_total' => $summary['eligible_total'],
-            'cancelled_since' => $summary['cancelled_since'] ?? null,
             'orders' => $summary['orders'],
             'subscription_orders' => $summary['subscription_orders'],
         ]);

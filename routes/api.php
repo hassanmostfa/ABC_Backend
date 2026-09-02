@@ -573,6 +573,7 @@ Route::prefix('mobile/app-content')->group(function () {
       Route::get('/social-media-links', [MobileAppContentController::class, 'getSocialMediaLinks']);
       Route::get('/faqs', [MobileAppContentController::class, 'getFaqs']);
       Route::get('/order-settings', [MobileAppContentController::class, 'getOrderSettings']);
+      Route::get('/update-settings', [MobileAppContentController::class, 'getUpdateSettings']);
    });
 
 Route::prefix('mobile/products')->group(function () {

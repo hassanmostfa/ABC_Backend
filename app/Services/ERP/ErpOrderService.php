@@ -663,9 +663,9 @@ class ErpOrderService
 
     /**
      * Sync ERP-sent regular and subscription orders from ERP.
-     * Regular: pending/processing + cancelled (last month, paid invoice).
+     * Regular: pending/processing only.
      * Eligible regular orders: is_sent_to_erp or erp_invoice_no set.
-     * Subscription: pending/processing/shipped + cancelled (last month, paid subscription invoice).
+     * Subscription: pending/processing/shipped only.
      *
      * @return array{
      *   checked: int,
@@ -674,7 +674,6 @@ class ErpOrderService
      *   failed: int,
      *   limit: int,
      *   eligible_total: int,
-     *   cancelled_since: string,
      *   orders: array<string, mixed>,
      *   subscription_orders: array<string, mixed>,
      *   results: list<array<string, mixed>>
@@ -692,7 +691,6 @@ class ErpOrderService
             'failed' => $orders['failed'] + $subscriptionOrders['failed'],
             'limit' => $orders['limit'],
             'eligible_total' => $orders['eligible_total'] + $subscriptionOrders['eligible_total'],
-            'cancelled_since' => $orders['cancelled_since'],
             'orders' => $orders,
             'subscription_orders' => $subscriptionOrders,
             'results' => array_merge(
@@ -716,35 +714,25 @@ class ErpOrderService
      *   failed: int,
      *   limit: int,
      *   eligible_total: int,
-     *   cancelled_since: string,
      *   results: list<array<string, mixed>>
      * }
      */
     private function syncRegularOrderStatusesFromErp(?int $limit = null): array
     {
         $limit = max(1, $limit ?? (int) config('services.erp.status_sync_limit', 50));
-        $cancelledSince = now()->subMonth();
 
         $baseQuery = Order::query()
             ->where(function ($query) {
                 $query->where('is_sent_to_erp', true)
                     ->orWhereNotNull('erp_invoice_no');
             })
-            ->where(function ($query) use ($cancelledSince) {
-                $query->whereIn('status', ['pending', 'processing'])
-                    ->orWhere(function ($query) use ($cancelledSince) {
-                        $query->where('status', 'cancelled')
-                            ->where('created_at', '>=', $cancelledSince)
-                            ->whereHas('invoice', fn ($invoiceQuery) => $invoiceQuery->where('status', 'paid'));
-                    });
-            });
+            ->whereIn('status', ['pending', 'processing']);
 
         return $this->runErpStatusSyncBatch(
             $this->fetchNextErpStatusSyncOrders($baseQuery, $limit),
             fn (Order $order) => $this->syncOrderStatusFromErp($order),
             $limit,
-            (clone $baseQuery)->count(),
-            $cancelledSince->toDateString()
+            (clone $baseQuery)->count()
         );
     }
 
@@ -756,35 +744,22 @@ class ErpOrderService
      *   failed: int,
      *   limit: int,
      *   eligible_total: int,
-     *   cancelled_since: string,
      *   results: list<array<string, mixed>>
      * }
      */
     private function syncSubscriptionOrderStatusesFromErp(?int $limit = null): array
     {
         $limit = max(1, $limit ?? (int) config('services.erp.status_sync_limit', 50));
-        $cancelledSince = now()->subMonth();
 
         $baseQuery = SubscriptionOrder::query()
             ->whereNotNull('sent_to_erp_at')
-            ->where(function ($query) use ($cancelledSince) {
-                $query->whereIn('status', ['pending', 'processing', 'shipped'])
-                    ->orWhere(function ($query) use ($cancelledSince) {
-                        $query->where('status', 'cancelled')
-                            ->where('created_at', '>=', $cancelledSince)
-                            ->whereHas(
-                                'customerSubscription.invoice',
-                                fn ($invoiceQuery) => $invoiceQuery->where('status', 'paid')
-                            );
-                    });
-            });
+            ->whereIn('status', ['pending', 'processing', 'shipped']);
 
         return $this->runErpStatusSyncBatch(
             $this->fetchNextErpStatusSyncOrders($baseQuery, $limit),
             fn (SubscriptionOrder $order) => $this->syncSubscriptionOrderStatusFromErp($order),
             $limit,
-            (clone $baseQuery)->count(),
-            $cancelledSince->toDateString()
+            (clone $baseQuery)->count()
         );
     }
 
@@ -798,7 +773,6 @@ class ErpOrderService
      *   failed: int,
      *   limit: int,
      *   eligible_total: int,
-     *   cancelled_since: string,
      *   results: list<array<string, mixed>>
      * }
      */
@@ -806,8 +780,7 @@ class ErpOrderService
         iterable $orders,
         callable $syncCallback,
         int $limit,
-        int $eligibleTotal,
-        string $cancelledSince
+        int $eligibleTotal
     ): array {
         $summary = [
             'checked' => 0,
@@ -816,7 +789,6 @@ class ErpOrderService
             'failed' => 0,
             'limit' => $limit,
             'eligible_total' => $eligibleTotal,
-            'cancelled_since' => $cancelledSince,
             'results' => [],
         ];
 

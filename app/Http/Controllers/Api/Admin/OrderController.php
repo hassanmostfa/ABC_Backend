@@ -582,7 +582,6 @@ class OrderController extends BaseApiController
             'failed' => $summary['failed'],
             'limit' => $summary['limit'],
             'eligible_total' => $summary['eligible_total'],
-            'cancelled_since' => $summary['cancelled_since'] ?? null,
             'orders_checked' => $summary['orders']['checked'] ?? 0,
             'subscription_orders_checked' => $summary['subscription_orders']['checked'] ?? 0,
         ]);
@@ -594,7 +593,6 @@ class OrderController extends BaseApiController
             'failed' => $summary['failed'],
             'limit' => $summary['limit'],
             'eligible_total' => $summary['eligible_total'],
-            'cancelled_since' => $summary['cancelled_since'] ?? null,
             'orders' => $summary['orders'],
             'subscription_orders' => $summary['subscription_orders'],
             'results' => $summary['results'],

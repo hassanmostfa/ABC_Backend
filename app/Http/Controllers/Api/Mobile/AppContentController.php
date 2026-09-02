@@ -103,6 +103,22 @@ class AppContentController extends BaseApiController
     }
 
     /**
+     * Public app update flags (no auth).
+     */
+    public function getUpdateSettings(): JsonResponse
+    {
+        return $this->successResponse(
+            [
+                'android_show_update_dialog' => (string) Setting::getValue('android_show_update_dialog', '0'),
+                'android_force_update' => (string) Setting::getValue('android_force_update', '0'),
+                'ios_show_update_dialog' => (string) Setting::getValue('ios_show_update_dialog', '0'),
+                'ios_force_update' => (string) Setting::getValue('ios_force_update', '0'),
+            ],
+            'Update settings retrieved successfully'
+        );
+    }
+
+    /**
      * Get order-related settings: tax, delivery_price, minimum_home_order, app ordering status.
      */
     public function getOrderSettings(Request $request): JsonResponse

@@ -110,6 +110,23 @@ class SettingSeeder extends Seeder
                 'key' => 'referral_points',
                 'value' => '10', // Points awarded to referrer when a new customer uses their referral code
             ],
+            // App update dialogs (1 = yes, 0 = no)
+            [
+                'key' => 'android_show_update_dialog',
+                'value' => '0',
+            ],
+            [
+                'key' => 'android_force_update',
+                'value' => '0',
+            ],
+            [
+                'key' => 'ios_show_update_dialog',
+                'value' => '0',
+            ],
+            [
+                'key' => 'ios_force_update',
+                'value' => '0',
+            ],
         ];
 
         foreach ($settings as $setting) {
