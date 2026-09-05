@@ -51,6 +51,8 @@ class ProductResource extends JsonResource
                     'size' => $variant->size,
                     'sku' => $variant->sku,
                     'short_item' => $variant->short_item,
+                    'product_packaging_id' => $variant->product_packaging_id,
+                    'product_packaging' => $variant->packagingSummary(),
                     'quantity' => $variant->quantity,
                     'price' => (float) $variant->price,
                     'image' => $this->getFileUrl($variant->image, 'public', 'no-image.png'),

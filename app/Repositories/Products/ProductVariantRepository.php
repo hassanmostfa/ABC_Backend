@@ -20,7 +20,7 @@ class ProductVariantRepository implements ProductVariantRepositoryInterface
      */
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
-        $query = $this->model->with(['product']);
+        $query = $this->model->with(['product', 'productPackaging']);
 
         // Search functionality
         if (isset($filters['search']) && !empty($filters['search'])) {
@@ -73,7 +73,7 @@ class ProductVariantRepository implements ProductVariantRepositoryInterface
      */
     public function getAll(): Collection
     {
-        return $this->model->with(['product'])->get();
+        return $this->model->with(['product', 'productPackaging'])->get();
     }
 
     /**
@@ -81,7 +81,7 @@ class ProductVariantRepository implements ProductVariantRepositoryInterface
      */
     public function findById(int $id): ?ProductVariant
     {
-        return $this->model->with(['product'])->find($id);
+        return $this->model->with(['product', 'productPackaging'])->find($id);
     }
 
     /**
@@ -89,7 +89,7 @@ class ProductVariantRepository implements ProductVariantRepositoryInterface
      */
     public function findBySku(string $sku): ?ProductVariant
     {
-        return $this->model->with(['product'])->where('sku', $sku)->first();
+        return $this->model->with(['product', 'productPackaging'])->where('sku', $sku)->first();
     }
 
     /**
@@ -116,7 +116,7 @@ class ProductVariantRepository implements ProductVariantRepositoryInterface
         }
 
         $variant->update($data);
-        return $variant->load(['product']);
+        return $variant->load(['product', 'productPackaging']);
     }
 
     /**
@@ -138,7 +138,7 @@ class ProductVariantRepository implements ProductVariantRepositoryInterface
      */
     public function getActive(): Collection
     {
-        return $this->model->with(['product'])
+        return $this->model->with(['product', 'productPackaging'])
                           ->where('is_active', true)
                           ->get();
     }
@@ -148,7 +148,7 @@ class ProductVariantRepository implements ProductVariantRepositoryInterface
      */
     public function getInactive(): Collection
     {
-        return $this->model->with(['product'])
+        return $this->model->with(['product', 'productPackaging'])
                           ->where('is_active', false)
                           ->get();
     }
@@ -158,7 +158,7 @@ class ProductVariantRepository implements ProductVariantRepositoryInterface
      */
     public function getByProduct(int $productId): Collection
     {
-        return $this->model->with(['product'])
+        return $this->model->with(['product', 'productPackaging'])
                           ->where('product_id', $productId)
                           ->orderBy('sort_order')
                           ->orderBy('id')
@@ -170,7 +170,7 @@ class ProductVariantRepository implements ProductVariantRepositoryInterface
      */
     public function getByVariantType(string $variantType): Collection
     {
-        return $this->model->with(['product'])
+        return $this->model->with(['product', 'productPackaging'])
                           ->where('variant_type', $variantType)
                           ->get();
     }
@@ -180,7 +180,7 @@ class ProductVariantRepository implements ProductVariantRepositoryInterface
      */
     public function getByProductAndType(int $productId, string $variantType): Collection
     {
-        return $this->model->with(['product'])
+        return $this->model->with(['product', 'productPackaging'])
                           ->where('product_id', $productId)
                           ->where('variant_type', $variantType)
                           ->get();

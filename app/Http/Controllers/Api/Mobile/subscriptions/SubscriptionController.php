@@ -38,6 +38,9 @@ class SubscriptionController extends BaseApiController
             'category' => 'nullable|integer|min:1',
             'subcategory_id' => 'nullable|integer|min:1',
             'subcategory' => 'nullable|integer|min:1',
+            'product_packaging_id' => 'nullable|integer|min:1',
+            'packaging_id' => 'nullable|integer|min:1',
+            'packaging' => 'nullable|integer|min:1',
             'period' => 'nullable|in:3,6,12',
             'size' => 'nullable|string|max:100',
         ]);
@@ -45,6 +48,7 @@ class SubscriptionController extends BaseApiController
         try {
             $categoryId = $request->input('category_id') ?? $request->input('category');
             $subcategoryId = $request->input('subcategory_id') ?? $request->input('subcategory');
+            $packagingId = $request->input('product_packaging_id') ?? $request->input('packaging_id') ?? $request->input('packaging');
             $period = $request->input('period');
             $size = $request->input('size');
 
@@ -88,6 +92,14 @@ class SubscriptionController extends BaseApiController
                             $productQuery->where('subcategory_id', $subcategoryId);
                         });
                     });
+                });
+            }
+
+            // Filter by product_packaging_id (through offer condition variants)
+            if ($packagingId !== null && is_numeric($packagingId)) {
+                $packagingId = (int) $packagingId;
+                $query->whereHas('offer.conditions.productVariant', function ($variantQuery) use ($packagingId) {
+                    $variantQuery->where('product_packaging_id', $packagingId);
                 });
             }
 
@@ -137,6 +149,9 @@ class SubscriptionController extends BaseApiController
             }
             if ($subcategoryId !== null) {
                 $appliedFilters['subcategory_id'] = $subcategoryId;
+            }
+            if ($packagingId !== null) {
+                $appliedFilters['product_packaging_id'] = $packagingId;
             }
             if ($period !== null) {
                 $appliedFilters['period'] = $period;
@@ -273,13 +288,13 @@ class SubscriptionController extends BaseApiController
     {
         $request->validate(
             [
-                'status' => 'nullable|in:pending,processing,shipped,delivered,cancelled,completed',
-                'order_status' => 'nullable|in:pending,processing,shipped,delivered,cancelled,completed',
+                'status' => 'nullable|in:pending,processing,shipped,delivered,cancelled,completed,rejected',
+                'order_status' => 'nullable|in:pending,processing,shipped,delivered,cancelled,completed,rejected',
                 'per_page' => 'nullable|integer|min:1|max:100',
             ],
             [
-                'status.in' => 'The status filter applies to orders, not the subscription. Allowed: pending, processing, shipped, delivered, cancelled.',
-                'order_status.in' => 'The order status must be one of: pending, processing, shipped, delivered, cancelled.',
+                'status.in' => 'The status filter applies to orders, not the subscription. Allowed: pending, processing, shipped, delivered, cancelled, rejected.',
+                'order_status.in' => 'The order status must be one of: pending, processing, shipped, delivered, cancelled, rejected.',
             ]
         );
 

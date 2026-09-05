@@ -61,29 +61,27 @@ class OfferRepository implements OfferRepositoryInterface
             $query->where('type', $type);
         }
 
-        // Filter by category_id (through conditions or rewards products)
+        // Filter by category_id (through condition products only)
         if (isset($filters['category_id']) && is_numeric($filters['category_id'])) {
             $categoryId = (int) $filters['category_id'];
-            $query->where(function ($q) use ($categoryId) {
-                $q->whereHas('conditions.product', function ($productQuery) use ($categoryId) {
-                    $productQuery->where('category_id', $categoryId);
-                })
-                ->orWhereHas('rewards.product', function ($productQuery) use ($categoryId) {
-                    $productQuery->where('category_id', $categoryId);
-                });
+            $query->whereHas('conditions.product', function ($productQuery) use ($categoryId) {
+                $productQuery->where('category_id', $categoryId);
             });
         }
 
-        // Filter by subcategory_id (through conditions or rewards products)
+        // Filter by subcategory_id (through condition products only)
         if (isset($filters['subcategory_id']) && is_numeric($filters['subcategory_id'])) {
             $subcategoryId = (int) $filters['subcategory_id'];
-            $query->where(function ($q) use ($subcategoryId) {
-                $q->whereHas('conditions.product', function ($productQuery) use ($subcategoryId) {
-                    $productQuery->where('subcategory_id', $subcategoryId);
-                })
-                ->orWhereHas('rewards.product', function ($productQuery) use ($subcategoryId) {
-                    $productQuery->where('subcategory_id', $subcategoryId);
-                });
+            $query->whereHas('conditions.product', function ($productQuery) use ($subcategoryId) {
+                $productQuery->where('subcategory_id', $subcategoryId);
+            });
+        }
+
+        // Filter by product_packaging_id (through condition variants only)
+        if (isset($filters['product_packaging_id']) && is_numeric($filters['product_packaging_id'])) {
+            $packagingId = (int) $filters['product_packaging_id'];
+            $query->whereHas('conditions.productVariant', function ($variantQuery) use ($packagingId) {
+                $variantQuery->where('product_packaging_id', $packagingId);
             });
         }
 
@@ -193,7 +191,9 @@ class OfferRepository implements OfferRepositoryInterface
             $query->where('is_subscription', false);
         }
 
-        return $query->orderBy('created_at', 'desc')->get();
+        return $query->get()
+            ->sortBy(fn (Offer $offer) => $offer->priceAfterDiscount())
+            ->values();
     }
 
     private function applyStockStatusFilter($query, string $stockStatus): void

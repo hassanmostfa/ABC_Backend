@@ -20,6 +20,7 @@ class ProductVariant extends Model
         'product_id',
         'size',
         'short_item',
+        'product_packaging_id',
         'sku',
         'quantity',
         'price',
@@ -46,6 +47,31 @@ class ProductVariant extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    /**
+     * Get the packaging for this variant
+     */
+    public function productPackaging()
+    {
+        return $this->belongsTo(ProductPackaging::class);
+    }
+
+    /**
+     * @return array{id: int, name: string}|null
+     */
+    public function packagingSummary(): ?array
+    {
+        $packaging = $this->productPackaging;
+
+        if (!$packaging) {
+            return null;
+        }
+
+        return [
+            'id' => $packaging->id,
+            'name' => $packaging->name,
+        ];
     }
 
     /**

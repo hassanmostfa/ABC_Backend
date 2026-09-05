@@ -57,7 +57,7 @@ class ProductController extends BaseApiController
         
         // Load relationships for all products
         $products->getCollection()->load(['variants' => function ($query) {
-            $query->where('is_active', true)->orderBy('sort_order')->orderBy('id');
+            $query->where('is_active', true)->orderBy('sort_order')->orderBy('id')->with('productPackaging');
         }, 'category', 'subcategory']);
 
         // Transform data using ProductResource
@@ -119,7 +119,7 @@ class ProductController extends BaseApiController
         
         // Load relationships for all products
         $products->getCollection()->load(['variants' => function ($query) {
-            $query->where('is_active', true)->orderBy('sort_order')->orderBy('id');
+            $query->where('is_active', true)->orderBy('sort_order')->orderBy('id')->with('productPackaging');
         }, 'category', 'subcategory']);
 
         // Flatten variants into separate products
@@ -175,7 +175,7 @@ class ProductController extends BaseApiController
 
         // Load relationships
         $product->load(['variants' => function ($query) {
-            $query->where('is_active', true)->orderBy('sort_order')->orderBy('id');
+            $query->where('is_active', true)->orderBy('sort_order')->orderBy('id')->with('productPackaging');
         }, 'category', 'subcategory']);
 
         // Transform data using WebProductDetailsResource
@@ -203,7 +203,7 @@ class ProductController extends BaseApiController
         $activeProducts = $products->filter(function ($product) {
             return $product->is_active;
         })->load(['variants' => function ($query) {
-            $query->where('is_active', true)->orderBy('sort_order')->orderBy('id');
+            $query->where('is_active', true)->orderBy('sort_order')->orderBy('id')->with('productPackaging');
         }, 'category', 'subcategory']);
 
         $total = $activeProducts->count();
@@ -252,8 +252,12 @@ class ProductController extends BaseApiController
         $activeProducts = $products->filter(function ($product) {
             return $product->is_active;
         })->load(['variants' => function ($query) {
-            $query->where('is_active', true)->orderBy('sort_order')->orderBy('id');
+            $query->where('is_active', true)->orderBy('sort_order')->orderBy('id')->with('productPackaging');
         }, 'category', 'subcategory']);
+
+        $activeProducts = $activeProducts
+            ->sortBy(fn ($product) => (int) ($product->variants->min('sort_order') ?? PHP_INT_MAX))
+            ->values();
 
         $total = $activeProducts->count();
         $offset = ($currentPage - 1) * $perPage;
@@ -301,7 +305,7 @@ class ProductController extends BaseApiController
         $products = Product::whereIn('id', $topProducts)
             ->where('is_active', true)
             ->with(['variants' => function ($query) {
-                $query->where('is_active', true)->orderBy('sort_order')->orderBy('id');
+                $query->where('is_active', true)->orderBy('sort_order')->orderBy('id')->with('productPackaging');
             }, 'category', 'subcategory'])
             ->orderBy('sku', 'asc')
             ->get();
@@ -339,6 +343,7 @@ class ProductController extends BaseApiController
                     'variant_sku' => $variant->sku,
                     'size' => $variant->size,
                     'short_item' => $variant->short_item,
+                    'product_packaging' => $variant->packagingSummary(),
                     'quantity' => $variant->quantity,
                     'price' => $variant->price,
                     'image' => $variant->image,

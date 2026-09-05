@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\Admin\CustomerController;
 use App\Http\Controllers\Api\Admin\CategoryController;
 use App\Http\Controllers\Api\Admin\SubcategoryController;
 use App\Http\Controllers\Api\Admin\ProductController;
+use App\Http\Controllers\Api\Admin\ProductPackagingController;
 use App\Http\Controllers\Api\Admin\OfferController;
 use App\Http\Controllers\Api\Admin\SubscriptionController;
 use App\Http\Controllers\Api\Admin\CharityController;
@@ -170,6 +171,16 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::get('/{id}', 'show')->middleware('admin.permission:subcategories,view');
          Route::post('/{id}', 'update')->middleware('admin.permission:subcategories,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:subcategories,delete');
+      });
+
+            // Product Packagings Management
+      Route::controller(ProductPackagingController::class)->prefix('product-packagings')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:product_packagings,view');
+         Route::post('/', 'store')->middleware('admin.permission:product_packagings,add');
+         Route::get('/active', 'active')->middleware('admin.permission:product_packagings,view');
+         Route::get('/{id}', 'show')->middleware('admin.permission:product_packagings,view');
+         Route::match(['put', 'post', 'patch'], '/{id}', 'update')->middleware('admin.permission:product_packagings,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:product_packagings,delete');
       });
 
             // Products Management
@@ -466,6 +477,9 @@ Route::controller(WebCategoryController::class)->group(function () {
    Route::get('/subcategories', 'getAllSubcategories');
    Route::get('categories/{categoryId}/subcategories', 'getSubcategoriesByCategory');
 });
+
+// Public Product Packagings (no auth, no pagination)
+Route::get('/product-packagings', [ProductPackagingController::class, 'all']);
 
 // Web Social Media Links Routes (Public)
 Route::controller(WebSocialMediaLinkController::class)->prefix('social-media-links')->group(function () {

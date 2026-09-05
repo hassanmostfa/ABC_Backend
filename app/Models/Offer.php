@@ -150,6 +150,61 @@ class Offer extends Model
     }
 
     /**
+     * Payable offer price (same as price_after_discount in offer list APIs).
+     */
+    public function priceAfterDiscount(): float
+    {
+        $conditionTotal = $this->lineItemsTotal($this->conditions);
+
+        if ($this->reward_type === 'products') {
+            return round($conditionTotal, 3);
+        }
+
+        if ($this->reward_type === 'discount') {
+            $priceBeforeDiscount = $conditionTotal;
+            $totalDiscount = 0.0;
+
+            foreach ($this->rewards as $reward) {
+                if ($reward->discount_amount && $reward->discount_type) {
+                    if ($reward->discount_type === 'percentage') {
+                        $totalDiscount += ($priceBeforeDiscount * (float) $reward->discount_amount) / 100;
+                    } else {
+                        $totalDiscount += (float) $reward->discount_amount;
+                    }
+                }
+            }
+
+            $totalDiscount = min($totalDiscount, $priceBeforeDiscount);
+
+            return round(max(0.0, $priceBeforeDiscount - $totalDiscount), 3);
+        }
+
+        return round($conditionTotal, 3);
+    }
+
+    private function lineItemsTotal($items): float
+    {
+        $total = 0.0;
+
+        foreach ($items as $item) {
+            $variant = $item->productVariant;
+            $product = $item->product;
+
+            if ($variant) {
+                $unitPrice = (float) $variant->price;
+            } elseif ($product) {
+                $unitPrice = (float) ($product->price ?? 0);
+            } else {
+                $unitPrice = 0.0;
+            }
+
+            $total += $unitPrice * (int) $item->quantity;
+        }
+
+        return $total;
+    }
+
+    /**
      * Delete the offer's image file
      */
     public function deleteImage(): bool

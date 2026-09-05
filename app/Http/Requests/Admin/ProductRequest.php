@@ -44,12 +44,34 @@ class ProductRequest extends FormRequest
             'variants.*.size' => 'nullable|string|max:100',
             'variants.*.sku' => 'required|string|max:255',
             'variants.*.short_item' => 'nullable|string|max:255',
+            'variants.*.product_packaging_id' => 'nullable|integer|exists:product_packagings,id',
             'variants.*.quantity' => 'required|integer|min:0',
             'variants.*.price' => 'required|numeric|min:0',
             'variants.*.image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
             'variants.*.is_active' => 'boolean',
             'variants.*.sort_order' => 'nullable|integer|min:0',
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $variants = $this->input('variants');
+
+        if (!is_array($variants)) {
+            return;
+        }
+
+        foreach ($variants as $index => $variant) {
+            if (!is_array($variant)) {
+                continue;
+            }
+
+            if (array_key_exists('product_packaging_id', $variant) && $variant['product_packaging_id'] === '') {
+                $variants[$index]['product_packaging_id'] = null;
+            }
+        }
+
+        $this->merge(['variants' => $variants]);
     }
 
     /**
@@ -84,6 +106,7 @@ class ProductRequest extends FormRequest
             'variants.*.sku.required' => 'The variant SKU is required.',
             'variants.*.sku.max' => 'The variant SKU may not be greater than 255 characters.',
             'variants.*.short_item.max' => 'The variant short item may not be greater than 255 characters.',
+            'variants.*.product_packaging_id.exists' => 'The selected product packaging does not exist.',
             'variants.*.quantity.required' => 'The variant quantity is required.',
             'variants.*.quantity.integer' => 'The variant quantity must be an integer.',
             'variants.*.quantity.min' => 'The variant quantity must be at least 0.',
@@ -122,6 +145,7 @@ class ProductRequest extends FormRequest
             'variants.*.size' => 'variant size',
             'variants.*.sku' => 'variant SKU',
             'variants.*.short_item' => 'variant short item',
+            'variants.*.product_packaging_id' => 'variant product packaging',
             'variants.*.quantity' => 'variant quantity',
             'variants.*.price' => 'variant price',
             'variants.*.image' => 'variant image',

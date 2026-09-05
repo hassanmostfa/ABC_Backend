@@ -45,6 +45,7 @@ class MobileProductResource extends JsonResource
                         'size' => $variant->size,
                         'sku' => $variant->sku,
                         'short_item' => $variant->short_item,
+                        'product_packaging' => $variant->packagingSummary(),
                         'quantity' => (int) $variant->quantity,
                         'in_stock' => ((int) $variant->quantity > 0 && (bool) $variant->is_active),
                         'price' => (float) $variant->price,

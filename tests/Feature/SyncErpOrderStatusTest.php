@@ -128,6 +128,32 @@ class SyncErpOrderStatusTest extends TestCase
         $this->assertNull($cancelled->fresh()->erp_status_synced_at);
     }
 
+    public function test_batch_sync_includes_rejected_orders(): void
+    {
+        $rejected = $this->createSentOrder(['status' => 'rejected']);
+        $pending = $this->createSentOrder(['status' => 'pending']);
+
+        Http::fake([
+            'https://erp.test/API/Order/GetOrderStatus*' => Http::response([
+                'data' => [
+                    'status' => 'Delivered',
+                    'invoiceNo' => 'I200',
+                    'scheduleDate' => '2026-08-24T12:34:00',
+                ],
+                'message' => 'Success',
+                'status' => 0,
+            ], 200),
+        ]);
+
+        $summary = app(ErpOrderService::class)->syncPendingAndProcessingOrderStatuses(10);
+
+        $this->assertSame(2, $summary['orders']['checked']);
+        $this->assertSame(2, $summary['orders']['eligible_total']);
+        $this->assertSame('completed', $rejected->fresh()->status);
+        $this->assertSame('completed', $pending->fresh()->status);
+        $this->assertNotNull($rejected->fresh()->erp_status_synced_at);
+    }
+
     protected function createSentOrder(array $overrides = []): Order
     {
         [$customer, $address, $variant] = $this->seedOrderPrerequisites();

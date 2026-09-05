@@ -20,7 +20,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
-        $query = $this->model->with(['category', 'subcategory', 'variants']);
+        $query = $this->model->with(['category', 'subcategory', 'variants.productPackaging']);
 
         // Search functionality
         if (isset($filters['search']) && !empty($filters['search'])) {
@@ -76,7 +76,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getAll(): Collection
     {
-        return $this->model->with(['category', 'subcategory', 'variants'])->orderBy('sku', 'asc')->get();
+        return $this->model->with(['category', 'subcategory', 'variants.productPackaging'])->orderBy('sku', 'asc')->get();
     }
 
     /**
@@ -84,7 +84,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function findById(int $id): ?Product
     {
-        return $this->model->with(['category', 'subcategory', 'variants'])->find($id);
+        return $this->model->with(['category', 'subcategory', 'variants.productPackaging'])->find($id);
     }
 
     /**
@@ -92,7 +92,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function findBySku(string $sku): ?Product
     {
-        return $this->model->with(['category', 'subcategory', 'variants'])->where('sku', $sku)->first();
+        return $this->model->with(['category', 'subcategory', 'variants.productPackaging'])->where('sku', $sku)->first();
     }
 
     /**
@@ -115,7 +115,7 @@ class ProductRepository implements ProductRepositoryInterface
         }
 
         $product->update($data);
-        return $product->load(['category', 'subcategory', 'variants']);
+        return $product->load(['category', 'subcategory', 'variants.productPackaging']);
     }
 
     /**
@@ -137,7 +137,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getActive(): Collection
     {
-        return $this->model->with(['category', 'subcategory', 'variants'])
+        return $this->model->with(['category', 'subcategory', 'variants.productPackaging'])
                           ->where('is_active', true)
                           ->orderBy('sku', 'asc')
                           ->get();
@@ -148,7 +148,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getInactive(): Collection
     {
-        return $this->model->with(['category', 'subcategory', 'variants'])
+        return $this->model->with(['category', 'subcategory', 'variants.productPackaging'])
                           ->where('is_active', false)
                           ->orderBy('sku', 'asc')
                           ->get();
@@ -159,7 +159,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getByCategory(int $categoryId): Collection
     {
-        return $this->model->with(['category', 'subcategory', 'variants'])
+        return $this->model->with(['category', 'subcategory', 'variants.productPackaging'])
                           ->where('category_id', $categoryId)
                           ->orderBy('sku', 'asc')
                           ->get();
@@ -170,7 +170,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getBySubcategory(int $subcategoryId): Collection
     {
-        return $this->model->with(['category', 'subcategory', 'variants'])
+        return $this->model->with(['category', 'subcategory', 'variants.productPackaging'])
                           ->where('subcategory_id', $subcategoryId)
                           ->orderBy('sku', 'asc')
                           ->get();
@@ -181,7 +181,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getWithVariants(): Collection
     {
-        return $this->model->with(['category', 'subcategory', 'variants'])
+        return $this->model->with(['category', 'subcategory', 'variants.productPackaging'])
                           ->where('has_variants', true)
                           ->orderBy('sku', 'asc')
                           ->get();
@@ -192,7 +192,7 @@ class ProductRepository implements ProductRepositoryInterface
      */
     public function getWithoutVariants(): Collection
     {
-        return $this->model->with(['category', 'subcategory', 'variants'])
+        return $this->model->with(['category', 'subcategory', 'variants.productPackaging'])
                           ->where('has_variants', false)
                           ->orderBy('sku', 'asc')
                           ->get();

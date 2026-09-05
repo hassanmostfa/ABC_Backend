@@ -70,7 +70,8 @@ class PermissionSeeder extends Seeder
                     ['name' => 'Offers', 'slug' => 'offers', 'sort_order' => 0],
                     ['name' => 'Subscriptions', 'slug' => 'subscriptions', 'sort_order' => 1],
                     ['name' => 'Products', 'slug' => 'products', 'sort_order' => 2],
-                    ['name' => 'Coupons', 'slug' => 'coupons', 'sort_order' => 3],
+                    ['name' => 'Product Packagings', 'slug' => 'product_packagings', 'sort_order' => 3],
+                    ['name' => 'Coupons', 'slug' => 'coupons', 'sort_order' => 4],
                 ],
             ],
             [

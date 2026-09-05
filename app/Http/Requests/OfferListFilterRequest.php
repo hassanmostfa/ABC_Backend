@@ -16,6 +16,9 @@ class OfferListFilterRequest extends FormRequest
         $this->merge([
             'category_id' => $this->normalizeOptionalId($this->input('category_id') ?? $this->input('category')),
             'subcategory_id' => $this->normalizeOptionalId($this->input('subcategory_id') ?? $this->input('subcategory')),
+            'product_packaging_id' => $this->normalizeOptionalId(
+                $this->input('product_packaging_id') ?? $this->input('packaging_id') ?? $this->input('packaging')
+            ),
         ]);
     }
 
@@ -26,6 +29,7 @@ class OfferListFilterRequest extends FormRequest
             'type' => 'nullable|in:normal,charity',
             'category_id' => 'nullable|integer|min:1',
             'subcategory_id' => 'nullable|integer|min:1',
+            'product_packaging_id' => 'nullable|integer|min:1',
             'stock_status' => 'nullable|in:in_stock,out_of_stock',
             'search' => 'nullable|string|max:1000',
             'is_subscription' => 'nullable|boolean',
@@ -41,6 +45,7 @@ class OfferListFilterRequest extends FormRequest
             'type' => $this->input('type'),
             'category_id' => $this->input('category_id'),
             'subcategory_id' => $this->input('subcategory_id'),
+            'product_packaging_id' => $this->input('product_packaging_id'),
             'stock_status' => $this->input('stock_status'),
             'search' => $this->input('search'),
             'is_subscription' => $this->input('is_subscription') !== null ? $this->boolean('is_subscription') : null,

@@ -14,6 +14,8 @@ use App\Repositories\Products\ProductRepositoryInterface;
 use App\Repositories\Products\ProductRepository;
 use App\Repositories\Products\ProductVariantRepositoryInterface;
 use App\Repositories\Products\ProductVariantRepository;
+use App\Repositories\ProductPackagings\ProductPackagingRepositoryInterface;
+use App\Repositories\ProductPackagings\ProductPackagingRepository;
 use App\Repositories\Offers\OfferRepositoryInterface;
 use App\Repositories\Offers\OfferRepository;
 use App\Repositories\Charities\CharityRepositoryInterface;
@@ -71,6 +73,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SubcategoryRepositoryInterface::class, SubcategoryRepository::class);
         $this->app->bind(ProductRepositoryInterface::class, ProductRepository::class);
         $this->app->bind(ProductVariantRepositoryInterface::class, ProductVariantRepository::class);
+        $this->app->bind(ProductPackagingRepositoryInterface::class, ProductPackagingRepository::class);
         $this->app->bind(OfferRepositoryInterface::class, OfferRepository::class);
         $this->app->bind(CharityRepositoryInterface::class, CharityRepository::class);
         $this->app->bind(CountryRepositoryInterface::class, CountryRepository::class);

@@ -40,7 +40,7 @@ class ProductController extends BaseApiController
         $products = $this->productRepository->getAllPaginated($filters, $perPage);
 
         $products->getCollection()->load([
-            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sort_order')->orderBy('id'),
+            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sort_order')->orderBy('id')->with('productPackaging'),
             'category',
             'subcategory',
         ]);
@@ -80,7 +80,7 @@ class ProductController extends BaseApiController
         $products = $this->productRepository->getAllPaginated($filters, $perPage);
 
         $products->getCollection()->load([
-            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sort_order')->orderBy('id'),
+            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sort_order')->orderBy('id')->with('productPackaging'),
             'category',
             'subcategory',
         ]);
@@ -114,7 +114,7 @@ class ProductController extends BaseApiController
         $products = Product::whereIn('id', $topProductIds)
             ->where('is_active', true)
             ->with([
-                'variants' => fn($q) => $q->where('is_active', true)->orderBy('sort_order')->orderBy('id'),
+                'variants' => fn($q) => $q->where('is_active', true)->orderBy('sort_order')->orderBy('id')->with('productPackaging'),
                 'category',
                 'subcategory',
             ])
@@ -138,7 +138,7 @@ class ProductController extends BaseApiController
         }
 
         $product->load([
-            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sort_order')->orderBy('id'),
+            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sort_order')->orderBy('id')->with('productPackaging'),
             'category',
             'subcategory',
         ]);
@@ -155,7 +155,7 @@ class ProductController extends BaseApiController
 
         $activeProducts = $products->filter(fn($p) => $p->is_active);
         $activeProducts->load([
-            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sort_order')->orderBy('id'),
+            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sort_order')->orderBy('id')->with('productPackaging'),
             'category',
             'subcategory',
         ]);
@@ -172,13 +172,17 @@ class ProductController extends BaseApiController
 
         $activeProducts = $products->filter(fn($p) => $p->is_active);
         $activeProducts->load([
-            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sort_order')->orderBy('id'),
+            'variants' => fn($q) => $q->where('is_active', true)->orderBy('sort_order')->orderBy('id')->with('productPackaging'),
             'category',
             'subcategory',
         ]);
 
+        $sorted = $activeProducts
+            ->sortBy(fn ($product) => (int) ($product->variants->min('sort_order') ?? PHP_INT_MAX))
+            ->values();
+
         return $this->successResponse(
-            MobileProductResource::collection($activeProducts->values()),
+            MobileProductResource::collection($sorted),
             'Products retrieved successfully'
         );
     }

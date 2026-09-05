@@ -27,7 +27,19 @@ class SubscriptionController extends BaseApiController
     public function index(Request $request): JsonResponse
     {
         try {
+            $request->validate([
+                'offer_id' => 'nullable|integer|min:1',
+                'period' => 'nullable|in:3,6,12',
+                'is_active' => 'nullable|boolean',
+                'search' => 'nullable|string|max:255',
+                'product_packaging_id' => 'nullable|integer|min:1',
+                'packaging_id' => 'nullable|integer|min:1',
+                'packaging' => 'nullable|integer|min:1',
+                'per_page' => 'nullable|integer|min:1|max:100',
+            ]);
+
             $perPage = $request->input('per_page', 15);
+            $packagingId = $request->input('product_packaging_id') ?? $request->input('packaging_id') ?? $request->input('packaging');
             
             $query = Subscription::with([
                 'offer.conditions.product',
@@ -61,6 +73,14 @@ class SubscriptionController extends BaseApiController
                 });
             }
 
+            // Filter by product_packaging_id (through offer condition variants)
+            if ($packagingId !== null && is_numeric($packagingId)) {
+                $packagingId = (int) $packagingId;
+                $query->whereHas('offer.conditions.productVariant', function ($variantQuery) use ($packagingId) {
+                    $variantQuery->where('product_packaging_id', $packagingId);
+                });
+            }
+
             $query->orderBy('created_at', 'desc');
             
             $subscriptions = $query->paginate($perPage);
@@ -80,6 +100,18 @@ class SubscriptionController extends BaseApiController
                     'to' => $subscriptions->lastItem(),
                 ]
             ];
+
+            $filters = array_filter([
+                'offer_id' => $request->input('offer_id'),
+                'period' => $request->input('period'),
+                'is_active' => $request->has('is_active') ? $request->boolean('is_active') : null,
+                'search' => $request->input('search'),
+                'product_packaging_id' => $packagingId,
+            ], fn ($value) => $value !== null && $value !== '');
+
+            if (!empty($filters)) {
+                $response['filters'] = $filters;
+            }
 
             return response()->json($response);
         } catch (\Exception $e) {
@@ -452,7 +484,7 @@ class SubscriptionController extends BaseApiController
     {
         $request->validate([
             'search' => 'nullable|string|max:255',
-            'status' => 'nullable|in:pending,processing,shipped,delivered,cancelled',
+            'status' => 'nullable|in:pending,processing,shipped,delivered,cancelled,rejected',
             'customer_id' => 'nullable|integer|exists:customers,id',
             'customer_subscription_id' => 'nullable|integer|exists:customer_subscriptions,id',
             'date_from' => 'nullable|date',

@@ -284,6 +284,7 @@ class ErpOrderService
         'cancelled' => 'cancelled',
         'canceled'  => 'cancelled',
         'pending'   => 'pending',
+        'rejected'  => 'rejected',
     ];
 
     /**
@@ -519,21 +520,6 @@ class ErpOrderService
         return $updateData;
     }
 
-    /**
-     * Sync a single subscription order status from ERP.
-     *
-     * @return array{
-     *   success: bool,
-     *   message: string,
-     *   updated: bool,
-     *   order?: SubscriptionOrder,
-     *   previous_status?: string,
-     *   erp_status?: string|null,
-     *   local_status?: string|null,
-     *   erp_response?: mixed,
-     *   erp_http_status?: int|null
-     * }
-     */
     public function syncSubscriptionOrderStatusFromErp(SubscriptionOrder $order): array
     {
         try {
@@ -663,9 +649,9 @@ class ErpOrderService
 
     /**
      * Sync ERP-sent regular and subscription orders from ERP.
-     * Regular: pending/processing only.
+     * Regular: pending/processing/rejected only.
      * Eligible regular orders: is_sent_to_erp or erp_invoice_no set.
-     * Subscription: pending/processing/shipped only.
+     * Subscription: pending/processing/shipped/rejected only.
      *
      * @return array{
      *   checked: int,
@@ -726,7 +712,7 @@ class ErpOrderService
                 $query->where('is_sent_to_erp', true)
                     ->orWhereNotNull('erp_invoice_no');
             })
-            ->whereIn('status', ['pending', 'processing']);
+            ->whereIn('status', ['pending', 'processing', 'rejected']);
 
         return $this->runErpStatusSyncBatch(
             $this->fetchNextErpStatusSyncOrders($baseQuery, $limit),
@@ -753,7 +739,7 @@ class ErpOrderService
 
         $baseQuery = SubscriptionOrder::query()
             ->whereNotNull('sent_to_erp_at')
-            ->whereIn('status', ['pending', 'processing', 'shipped']);
+            ->whereIn('status', ['pending', 'processing', 'shipped', 'rejected']);
 
         return $this->runErpStatusSyncBatch(
             $this->fetchNextErpStatusSyncOrders($baseQuery, $limit),
@@ -763,19 +749,6 @@ class ErpOrderService
         );
     }
 
-    /**
-     * @param  iterable<int, Order|SubscriptionOrder>  $orders
-     * @param  callable(Order|SubscriptionOrder): array<string, mixed>  $syncCallback
-     * @return array{
-     *   checked: int,
-     *   updated: int,
-     *   unchanged: int,
-     *   failed: int,
-     *   limit: int,
-     *   eligible_total: int,
-     *   results: list<array<string, mixed>>
-     * }
-     */
     private function runErpStatusSyncBatch(
         iterable $orders,
         callable $syncCallback,
@@ -824,14 +797,6 @@ class ErpOrderService
         return $summary;
     }
 
-    /**
-     * Pick the next batch of orders/subscription orders to sync.
-     * Prioritizes never-synced rows, then the least recently synced, so the job
-     * rotates through the full eligible set instead of rechecking the same IDs.
-     *
-     * @param  \Illuminate\Database\Eloquent\Builder<Order|SubscriptionOrder>  $baseQuery
-     * @return \Illuminate\Support\Collection<int, Order|SubscriptionOrder>
-     */
     private function fetchNextErpStatusSyncOrders($baseQuery, int $limit)
     {
         return (clone $baseQuery)
@@ -895,10 +860,7 @@ class ErpOrderService
         return null;
     }
 
-    /**
-     * @param  array{method?: string, query?: array, json?: array, log_context?: array}  $options
-     * @return array{success: bool, status: int|null, body: mixed, error: string|null}
-     */
+
     private function request(string $url, array $options = []): array
     {
         $method = strtoupper($options['method'] ?? 'GET');
@@ -1167,11 +1129,6 @@ class ErpOrderService
         ];
     }
 
-    /**
-     * @param  array<string, scalar|array|null>  $query
-     * @param  array<string, mixed>  $logContext
-     * @return array{success: bool, status: int|null, body: mixed, error: string|null}
-     */
     private function requestUsingPhpStream(string $url, array $query, array $logContext): array
     {
         if (!ini_get('allow_url_fopen')) {
@@ -1269,11 +1226,6 @@ class ErpOrderService
         return $this->logFailedPayload && $method === 'POST' && (is_array($payload) || is_string($body));
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     * @param  array<string, mixed>  $logContext
-     * @return array{method: string, body: string, log_payload: array<string, mixed>, log_context: array<string, mixed>}
-     */
     private function buildSendOrderRequestOptions(array $payload, array $logContext): array
     {
         $body = $this->encodeOrderPayloadJson($payload);
