@@ -29,12 +29,18 @@ class ProductPackagingRepository implements ProductPackagingRepositoryInterface
             }
         }
 
+        $this->applySubcategoryFilter($query, $filters);
+
         return $query->orderBy('name')->paginate($perPage);
     }
 
-    public function getAll(): Collection
+    public function getAll(array $filters = []): Collection
     {
-        return $this->model->orderBy('name')->get();
+        $query = $this->model->query();
+
+        $this->applySubcategoryFilter($query, $filters);
+
+        return $query->orderBy('name')->get();
     }
 
     public function getActive(): Collection
@@ -74,5 +80,21 @@ class ProductPackagingRepository implements ProductPackagingRepositoryInterface
         }
 
         return (bool) $packaging->delete();
+    }
+
+    /**
+     * Limit packagings to those used by product variants in the given subcategory.
+     */
+    private function applySubcategoryFilter($query, array $filters): void
+    {
+        if (!isset($filters['subcategory_id']) || !is_numeric($filters['subcategory_id'])) {
+            return;
+        }
+
+        $subcategoryId = (int) $filters['subcategory_id'];
+
+        $query->whereHas('productVariants.product', function ($productQuery) use ($subcategoryId) {
+            $productQuery->where('subcategory_id', $subcategoryId);
+        });
     }
 }

@@ -10,7 +10,7 @@ interface ProductPackagingRepositoryInterface
 {
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator;
 
-    public function getAll(): Collection;
+    public function getAll(array $filters = []): Collection;
 
     public function getActive(): Collection;
 

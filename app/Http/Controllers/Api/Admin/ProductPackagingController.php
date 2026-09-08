@@ -20,12 +20,14 @@ class ProductPackagingController extends BaseApiController
         $request->validate([
             'search' => 'nullable|string|max:255',
             'status' => 'nullable|in:active,inactive',
+            'subcategory_id' => 'nullable|integer|exists:subcategories,id',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
         $filters = array_filter([
             'search' => $request->input('search'),
             'status' => $request->input('status'),
+            'subcategory_id' => $request->input('subcategory_id'),
         ], fn ($value) => $value !== null && $value !== '');
 
         $perPage = $request->input('per_page', 15);
@@ -121,10 +123,19 @@ class ProductPackagingController extends BaseApiController
 
     /**
      * Public list of all packagings (no auth, no pagination).
+     * Optional subcategory_id returns only packagings used by variants in that subcategory.
      */
-    public function all(): JsonResponse
+    public function all(Request $request): JsonResponse
     {
-        $packagings = $this->productPackagingRepository->getAll();
+        $request->validate([
+            'subcategory_id' => 'nullable|integer|exists:subcategories,id',
+        ]);
+
+        $filters = array_filter([
+            'subcategory_id' => $request->input('subcategory_id'),
+        ], fn ($value) => $value !== null && $value !== '');
+
+        $packagings = $this->productPackagingRepository->getAll($filters);
 
         return $this->successResponse(
             ProductPackagingResource::collection($packagings),
