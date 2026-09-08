@@ -30,9 +30,8 @@ class ProductPackagingRepository implements ProductPackagingRepositoryInterface
         }
 
         $this->applySubcategoryFilter($query, $filters);
-        $this->applyVariantPriceSort($query, $filters);
 
-        return $query->paginate($perPage);
+        return $query->orderBy('name')->paginate($perPage);
     }
 
     public function getAll(array $filters = []): Collection
@@ -40,17 +39,13 @@ class ProductPackagingRepository implements ProductPackagingRepositoryInterface
         $query = $this->model->query();
 
         $this->applySubcategoryFilter($query, $filters);
-        $this->applyVariantPriceSort($query, $filters);
 
-        return $query->get();
+        return $query->orderBy('name')->get();
     }
 
     public function getActive(): Collection
     {
-        $query = $this->model->active();
-        $this->applyVariantPriceSort($query);
-
-        return $query->get();
+        return $this->model->active()->orderBy('name')->get();
     }
 
     public function findById(int $id): ?ProductPackaging
@@ -101,26 +96,5 @@ class ProductPackagingRepository implements ProductPackagingRepositoryInterface
         $query->whereHas('productVariants.product', function ($productQuery) use ($subcategoryId) {
             $productQuery->where('subcategory_id', $subcategoryId);
         });
-    }
-
-    /**
-     * Sort packagings by the lowest related variant price, then by name.
-     * When subcategory_id is present, only variants in that subcategory are used.
-     */
-    private function applyVariantPriceSort($query, array $filters = []): void
-    {
-        $query->withMin(['productVariants as min_variant_price' => function ($variantQuery) use ($filters) {
-            if (!isset($filters['subcategory_id']) || !is_numeric($filters['subcategory_id'])) {
-                return;
-            }
-
-            $subcategoryId = (int) $filters['subcategory_id'];
-            $variantQuery->whereHas('product', function ($productQuery) use ($subcategoryId) {
-                $productQuery->where('subcategory_id', $subcategoryId);
-            });
-        }], 'price')
-            ->orderByRaw('min_variant_price IS NULL')
-            ->orderBy('min_variant_price')
-            ->orderBy('name');
     }
 }

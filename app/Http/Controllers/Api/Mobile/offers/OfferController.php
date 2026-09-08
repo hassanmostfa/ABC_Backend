@@ -30,9 +30,12 @@ class OfferController extends BaseApiController
             
             // Exclude subscription offers for mobile
             $filters['exclude_subscription'] = true;
+            $filters['sort_by_price'] = true;
             
             // Get offers using repository
             $offers = $this->offerRepository->getAllPaginated($filters, $perPage);
+
+            unset($filters['sort_by_price']);
 
             // Transform data using OfferListResource
             $transformedOffers = OfferListResource::collection($offers->items());

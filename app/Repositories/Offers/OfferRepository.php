@@ -90,6 +90,10 @@ class OfferRepository implements OfferRepositoryInterface
             $this->applyStockStatusFilter($query, $filters['stock_status']);
         }
 
+        if (!empty($filters['sort_by_price'])) {
+            return $this->paginateSortedByPrice($query, $perPage);
+        }
+
         // Default sorting by created_at desc
         $query->orderBy('created_at', 'desc');
 
@@ -194,6 +198,29 @@ class OfferRepository implements OfferRepositoryInterface
         return $query->get()
             ->sortBy(fn (Offer $offer) => $offer->priceAfterDiscount())
             ->values();
+    }
+
+    /**
+     * Paginate offers after sorting by payable price (price_after_discount), lowest first.
+     */
+    private function paginateSortedByPrice($query, int $perPage): LengthAwarePaginator
+    {
+        $offers = $query->get()
+            ->sortBy(fn (Offer $offer) => $offer->priceAfterDiscount())
+            ->values();
+
+        $page = LengthAwarePaginator::resolveCurrentPage();
+
+        return new LengthAwarePaginator(
+            $offers->forPage($page, $perPage)->values(),
+            $offers->count(),
+            $perPage,
+            $page,
+            [
+                'path' => LengthAwarePaginator::resolveCurrentPath(),
+                'query' => request()->query(),
+            ]
+        );
     }
 
     private function applyStockStatusFilter($query, string $stockStatus): void
