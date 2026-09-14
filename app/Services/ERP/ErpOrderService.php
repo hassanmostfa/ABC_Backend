@@ -406,6 +406,28 @@ class ErpOrderService
 
             $previousStatus = $order->status;
             $erpData = $this->extractErpOrderPayloadData($result['body'] ?? null);
+
+            if ($this->shouldSkipCancelledWithoutSchedule($localStatus, $erpData)) {
+                Log::channel('erp')->info('Skipping cancelled status with null/placeholder scheduleDate', [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'erp_status' => $erpStatus,
+                    'scheduleDate' => $erpData['scheduleDate'] ?? $erpData['schedule_date'] ?? null,
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Skipped: ERP cancelled status with no valid schedule date',
+                    'updated' => false,
+                    'order' => $order,
+                    'previous_status' => $previousStatus,
+                    'erp_status' => $erpStatus,
+                    'local_status' => $localStatus,
+                    'erp_response' => $result['body'],
+                    'erp_http_status' => $result['status'],
+                ];
+            }
+
             $updateData = $this->buildOrderUpdateFromErpData($order, $localStatus, $erpData);
 
             if ($updateData === []) {
@@ -556,6 +578,28 @@ class ErpOrderService
 
             $previousStatus = $order->status;
             $erpData = $this->extractErpOrderPayloadData($result['body'] ?? null);
+
+            if ($this->shouldSkipCancelledWithoutSchedule($localStatus, $erpData)) {
+                Log::channel('erp')->info('Skipping cancelled status with null/placeholder scheduleDate for subscription order', [
+                    'subscription_order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'erp_status' => $erpStatus,
+                    'scheduleDate' => $erpData['scheduleDate'] ?? $erpData['schedule_date'] ?? null,
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Skipped: ERP cancelled status with no valid schedule date',
+                    'updated' => false,
+                    'order' => $order,
+                    'previous_status' => $previousStatus,
+                    'erp_status' => $erpStatus,
+                    'local_status' => $localStatus,
+                    'erp_response' => $result['body'],
+                    'erp_http_status' => $result['status'],
+                ];
+            }
+
             $updateData = $this->buildSubscriptionOrderUpdateFromErpData($order, $localStatus, $erpData);
 
             if ($updateData === []) {
@@ -645,6 +689,22 @@ class ErpOrderService
             'date' => $parsed->format('Y-m-d'),
             'time' => $parsed->format('H:i:s'),
         ];
+    }
+
+    /**
+     * Skip cancelled status when scheduleDate is null or a placeholder (e.g. 0001-01-01T00:00:00).
+     *
+     * @param  array<string, mixed>  $erpData
+     */
+    private function shouldSkipCancelledWithoutSchedule(string $localStatus, array $erpData): bool
+    {
+        if ($localStatus !== 'cancelled') {
+            return false;
+        }
+
+        $scheduleDate = $erpData['scheduleDate'] ?? $erpData['schedule_date'] ?? null;
+
+        return $this->parseErpScheduleDate($scheduleDate) === null;
     }
 
     /**
