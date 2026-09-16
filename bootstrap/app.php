@@ -6,6 +6,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Auth\AuthenticationException;
 use App\Http\Middleware\ApiAuth;
 use App\Http\Middleware\CheckAdminPermission;
+use App\Http\Middleware\RestrictSpecialOrderPortalToken;
 use App\Http\Middleware\EnsureCustomerAccountCompleted;
 use App\Http\Middleware\PreventUpdateCompletedOrder;
 use App\Http\Middleware\VerifyOctopusApiToken;
@@ -24,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'admin.permission' => CheckAdminPermission::class,
+            'special-order.portal' => RestrictSpecialOrderPortalToken::class,
             'api.auth' => ApiAuth::class,
             'prevent.update.completed.order' => PreventUpdateCompletedOrder::class,
             'customer.account.completed' => EnsureCustomerAccountCompleted::class,

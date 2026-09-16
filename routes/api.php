@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\Admin\AreaController;
 use App\Http\Controllers\Api\Admin\SocialMediaLinkController;
 use App\Http\Controllers\Api\Admin\CareerController;
 use App\Http\Controllers\Api\Admin\OrderController;
+use App\Http\Controllers\Api\Admin\SpecialOrderController;
 use App\Http\Controllers\Api\Admin\RefundRequestController;
 use App\Http\Controllers\Api\Admin\ComplaintController;
 use App\Http\Controllers\Api\Admin\InvoiceController;
@@ -80,10 +81,12 @@ use App\Http\Controllers\Api\WarehouseStockController;
 Route::prefix('admin')->group(function () {
    Route::post('/login', [AdminController::class, 'login'])
       ->middleware('throttle:5,1'); // Strict rate limit: 5 attempts per minute
+   Route::post('/special-orders/login', [SpecialOrderController::class, 'login'])
+      ->middleware('throttle:5,1');
 });
 
 // Admin Management Routes (Protected)
-Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
+Route::middleware(['auth:sanctum', 'special-order.portal'])->prefix('admin')->group(function () {
    // Admin Authentication (Protected)
    Route::controller(AdminController::class)->group(function () {
       Route::post('/logout', 'logout');
@@ -330,6 +333,17 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
          Route::post('/{id}/sync-erp-status', 'syncErpStatus')->middleware('admin.permission:orders,edit');
          Route::post('/{id}/switch-to-payment-link', 'switchToPaymentLink')->middleware('admin.permission:orders,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:orders,delete');
+      });
+
+      // Special Orders Management (call center requests a manual final price; an approver signs off)
+      Route::controller(SpecialOrderController::class)->prefix('special-orders')->group(function () {
+         Route::post('/logout', 'logout');
+         Route::get('/me', 'me')->middleware('admin.permission:special_order_approvals,view');
+         Route::get('/', 'index')->middleware('admin.permission:special_order_approvals,view');
+         Route::post('/', 'store')->middleware(['admin.permission:special_orders,add', 'customer.account.completed']);
+         Route::get('/{id}', 'show')->middleware('admin.permission:special_order_approvals,view');
+         Route::patch('/{id}/approve', 'approve')->middleware('admin.permission:special_order_approvals,edit');
+         Route::patch('/{id}/reject', 'reject')->middleware('admin.permission:special_order_approvals,edit');
       });
 
       // Refund Requests Management

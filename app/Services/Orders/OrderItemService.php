@@ -150,6 +150,75 @@ class OrderItemService
             return;
         }
 
+        foreach ($this->allocateProportionally($nets, $netSubtotal, $target) as $idx => $disc) {
+            $orderItemsData[$idx]['discount'] = round(($orderItemsData[$idx]['discount'] ?? 0) + $disc, 3);
+        }
+    }
+
+    /**
+     * Allocate a special-order discount across all lines with the same proportional rule used for
+     * coupon and fixed offer discounts, so the ERP payload keeps deriving net unit prices from
+     * (total_price - discount) without any special casing.
+     */
+    public function applySpecialDiscountToLines(array &$orderItemsData, float $specialDiscount): void
+    {
+        if ($specialDiscount <= 0 || empty($orderItemsData)) {
+            return;
+        }
+
+        $nets = [];
+        $netSubtotal = 0.0;
+        foreach ($orderItemsData as $i => $row) {
+            $nets[$i] = max(0, (float) ($row['total_price'] ?? 0) - (float) ($row['discount'] ?? 0));
+            $netSubtotal += $nets[$i];
+        }
+
+        if ($netSubtotal <= 0) {
+            return;
+        }
+
+        $target = min($specialDiscount, $netSubtotal);
+
+        foreach ($this->allocateProportionally($nets, $netSubtotal, $target) as $idx => $disc) {
+            $orderItemsData[$idx]['discount'] = round(($orderItemsData[$idx]['discount'] ?? 0) + $disc, 3);
+        }
+    }
+
+    /**
+     * Re-spread a special order's granted discount over an order's persisted lines and refresh their tax.
+     */
+    public function reallocateSpecialDiscountForOrder(int $orderId, float $specialDiscount): void
+    {
+        $items = $this->orderItemRepository->getByOrder($orderId)->values();
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        $rows = $items->map(fn ($item) => [
+            'total_price' => (float) $item->total_price,
+            'discount' => 0.0,
+        ])->all();
+
+        $this->applySpecialDiscountToLines($rows, $specialDiscount);
+        $this->applyLineTax($rows);
+
+        foreach ($items as $index => $item) {
+            $this->orderItemRepository->update($item->id, [
+                'discount' => $rows[$index]['discount'],
+                'tax' => $rows[$index]['tax'],
+            ]);
+        }
+    }
+
+    /**
+     * Split $target across lines by their share of $netSubtotal, pushing the rounding remainder
+     * onto the largest line so the parts always add back up to $target.
+     *
+     * @param  array<int, float>  $nets
+     * @return array<int, float>
+     */
+    private function allocateProportionally(array $nets, float $netSubtotal, float $target): array
+    {
         $byIndex = [];
         foreach ($nets as $i => $net) {
             if ($net > 0) {
@@ -157,9 +226,12 @@ class OrderItemService
             }
         }
 
-        $sumAfter = array_sum($byIndex);
-        $diff = round($target - $sumAfter, 3);
-        if (abs($diff) >= 0.0005 && !empty($byIndex)) {
+        if (empty($byIndex)) {
+            return [];
+        }
+
+        $diff = round($target - array_sum($byIndex), 3);
+        if (abs($diff) >= 0.0005) {
             $fixIdx = array_key_first($byIndex);
             $maxAmt = -1.0;
             foreach ($byIndex as $idx => $_) {
@@ -169,12 +241,10 @@ class OrderItemService
                     $fixIdx = $idx;
                 }
             }
-            $byIndex[$fixIdx] = round(($byIndex[$fixIdx] ?? 0) + $diff, 3);
+            $byIndex[$fixIdx] = round($byIndex[$fixIdx] + $diff, 3);
         }
 
-        foreach ($byIndex as $idx => $disc) {
-            $orderItemsData[$idx]['discount'] = round(($orderItemsData[$idx]['discount'] ?? 0) + $disc, 3);
-        }
+        return $byIndex;
     }
 
     /**

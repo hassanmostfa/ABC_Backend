@@ -8,6 +8,7 @@ use App\Jobs\SendPaymentLinkSmsJob;
 use App\Models\Order;
 use App\Models\OrderCheckout;
 use App\Models\Payment;
+use App\Models\SpecialOrder;
 use App\Services\Payment\OttuPaymentProcessor;
 use App\Services\Payment\OttuService;
 use Illuminate\Support\Facades\DB;
@@ -26,15 +27,33 @@ class OrderCheckoutService
     public function initiateCheckout(array $data): array
     {
         $draft = $this->orderService->prepareOrderDraft($data);
-        $customerId = $data['customer_id'] ?? null;
-        $paymentGatewaySrc = $data['src'] ?? null;
 
+        return $this->startCheckoutFromDraft(
+            $draft,
+            $data['customer_id'] ?? null,
+            $data['source'] ?? 'call_center',
+            $data['src'] ?? null
+        );
+    }
+
+    /**
+     * Open an Ottu checkout for an already-prepared draft. Special orders reuse this with a frozen
+     * draft and the order number they reserved when the approval was requested.
+     *
+     * @return array{success: bool, checkout: OrderCheckout, payment_link: ?string, is_checkout: true}
+     */
+    public function startCheckoutFromDraft(
+        OrderDraft $draft,
+        ?int $customerId,
+        string $source,
+        ?string $paymentGatewaySrc,
+        ?string $reservedOrderNumber = null
+    ): array {
         if (!$paymentGatewaySrc) {
             throw new \Exception('Payment source (src) is required for online payment.');
         }
 
-        $source = $data['source'] ?? 'call_center';
-        $orderNumber = $this->orderService->generateOrderNumber($source);
+        $orderNumber = $reservedOrderNumber ?? $this->orderService->generateOrderNumber($source);
         $amountDue = $draft->amountDue();
         $expiresAt = now()->addMinutes((int) config('services.ottu.checkout_ttl_minutes', 60));
 
@@ -329,6 +348,11 @@ class OrderCheckoutService
                 'status' => OrderCheckout::STATUS_PAID,
                 'order_id' => $order->id,
             ]);
+
+            SpecialOrder::query()
+                ->where('order_checkout_id', $locked->id)
+                ->whereNull('order_id')
+                ->update(['order_id' => $order->id]);
 
             DB::commit();
 

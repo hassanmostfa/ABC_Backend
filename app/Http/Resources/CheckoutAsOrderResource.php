@@ -93,6 +93,7 @@ class CheckoutAsOrderResource extends JsonResource
                 'delivery_fee' => (float) ($invoiceAmounts['deliveryFee'] ?? 0),
                 'offer_discount' => (float) $draft->offerDiscount,
                 'coupons_discount' => (float) $draft->couponsDiscount,
+                'special_discount' => (float) $draft->specialDiscount,
                 'used_points' => (int) $draft->usedPoints,
                 'points_discount' => (float) $draft->pointsDiscount,
                 'total_discount' => (float) ($invoiceAmounts['totalDiscount'] ?? 0),

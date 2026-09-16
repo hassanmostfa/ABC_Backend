@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\Invoice;
 use App\Models\Offer;
 use App\Models\OrderCheckout;
+use App\Models\SpecialOrder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -182,7 +183,6 @@ class OrderService
             $offerDiscount,
             $couponResolution['eligible_variant_ids']
         );
-        $this->orderItemService->applyLineTax($orderItemsData);
 
         $requestedPoints = $data['used_points'] ?? 0;
         $pointsResult = $this->pointsService->calculateDiscount($requestedPoints, $totalAmount, $offerDiscount);
@@ -198,9 +198,20 @@ class OrderService
             $deliveryType = 'pickup';
         }
 
+        $specialDiscount = $this->resolveSpecialDiscount(
+            $data['special_final_price'] ?? null,
+            $finalAmountAfterAllDiscounts,
+            $orderItemsData,
+            $deliveryType
+        );
+        $this->orderItemService->applySpecialDiscountToLines($orderItemsData, $specialDiscount);
+        $this->orderItemService->applyLineTax($orderItemsData);
+
         $charityId = $data['charity_id'] ?? null;
         $customerId = $data['customer_id'] ?? null;
 
+        // Minimums are judged on the order's real value; a special order's approved discount is a
+        // deliberate concession and must not trip them.
         if ($charityId) {
             $minimumCharityOrder = (float) \App\Models\Setting::getValue('minimum_charity_order', 13);
             if ($finalAmountAfterAllDiscounts < $minimumCharityOrder) {
@@ -218,7 +229,8 @@ class OrderService
             $offerDiscount,
             $couponsDiscount,
             $pointsDiscount,
-            $deliveryType
+            $deliveryType,
+            $specialDiscount
         );
         $amountDue = $invoiceAmounts['amountDue'];
 
@@ -247,6 +259,7 @@ class OrderService
             'created_by_type',
             'order_number',
             'reason',
+            'special_final_price',
         ]);
 
         if (isset($orderData['delivery_type']) && $orderData['delivery_type'] === 'delivery') {
@@ -315,7 +328,59 @@ class OrderService
             source: $source,
             paymentMethod: $paymentMethod,
             paymentGatewaySrc: $paymentGatewaySrc,
+            specialDiscount: $specialDiscount,
         );
+    }
+
+    /**
+     * Back-solve the discount that lands the invoice exactly on a special order's agreed final price:
+     * amountDue = (netAmount - specialDiscount) * (1 + taxRate) + deliveryFee.
+     *
+     * @param  array<int, array<string, mixed>>  $orderItemsData
+     * @throws \Exception
+     */
+    protected function resolveSpecialDiscount(
+        float|int|string|null $finalPrice,
+        float $netAmountBeforeSpecial,
+        array $orderItemsData,
+        string $deliveryType
+    ): float {
+        if ($finalPrice === null || $finalPrice === '') {
+            return 0.00;
+        }
+
+        $finalPrice = (float) $finalPrice;
+        if ($finalPrice < 0) {
+            throw new \Exception('Special order final price cannot be negative.');
+        }
+
+        $taxRate = (float) \App\Models\Setting::getValue('tax', 0.15);
+        $deliveryFee = $deliveryType === 'delivery'
+            ? (float) \App\Models\Setting::getValue('delivery_price', 0)
+            : 0.00;
+
+        if ($finalPrice < $deliveryFee) {
+            throw new \Exception("Special order final price must at least cover the delivery fee of {$deliveryFee}.");
+        }
+
+        $targetNetAmount = ($finalPrice - $deliveryFee) / (1 + $taxRate);
+        $specialDiscount = round($netAmountBeforeSpecial - $targetNetAmount, 3);
+
+        if ($specialDiscount <= 0) {
+            throw new \Exception('Special order final price must be lower than the normal order total.');
+        }
+
+        // Lines carry the discount for ERP, so it can never exceed what the lines can absorb.
+        $lineNetSubtotal = 0.00;
+        foreach ($orderItemsData as $row) {
+            $lineNetSubtotal += max(0, (float) ($row['total_price'] ?? 0) - (float) ($row['discount'] ?? 0));
+        }
+
+        if ($specialDiscount > round(min($netAmountBeforeSpecial, $lineNetSubtotal), 3)) {
+            throw new \Exception('Special order final price is too low for the items on this order.');
+        }
+
+        return $specialDiscount;
     }
 
     /**
@@ -360,7 +425,8 @@ class OrderService
             $draft->usedPoints,
             $draft->pointsDiscount,
             $invoiceAmounts['totalDiscount'],
-            $shouldMarkInvoicePaid
+            $shouldMarkInvoicePaid,
+            $draft->specialDiscount
         );
 
         if ($isWalletPayment) {
@@ -527,13 +593,21 @@ class OrderService
                 $deliveryType = 'pickup';
             }
 
+            // An approved special order keeps its granted discount across edits; re-processed items
+            // come back with zeroed line discounts, so spread it over the lines again for ERP.
+            $specialDiscount = (float) ($currentInvoice->special_discount ?? 0);
+            if ($specialDiscount > 0 && $recalculatedTotalAmount !== null) {
+                $this->orderItemService->reallocateSpecialDiscountForOrder($id, $specialDiscount);
+            }
+
             // Calculate invoice amounts (includes delivery fee if delivery)
             $invoiceAmounts = $this->invoiceService->calculateAmounts(
                 $currentTotalAmount,
                 $offerDiscount,
                 $couponsDiscount,
                 $pointsDiscount,
-                $deliveryType
+                $deliveryType,
+                $specialDiscount
             );
             $newAmountDue = $invoiceAmounts['amountDue'];
 
@@ -592,7 +666,8 @@ class OrderService
                     $usedPoints,
                     $pointsDiscount,
                     $invoiceAmounts['totalDiscount'],
-                    $isWalletPayment // Pass isPaid flag
+                    $isWalletPayment, // Pass isPaid flag
+                    $specialDiscount
                 );
             }
 
@@ -1132,8 +1207,12 @@ class OrderService
             ->orderBy('order_number', 'desc')
             ->first();
 
+        $lastSpecialOrder = SpecialOrder::where('order_number', 'LIKE', $pattern)
+            ->orderBy('order_number', 'desc')
+            ->first();
+
         $sequence = 1;
-        foreach ([$lastOrder?->order_number, $lastCheckout?->order_number] as $orderNumber) {
+        foreach ([$lastOrder?->order_number, $lastCheckout?->order_number, $lastSpecialOrder?->order_number] as $orderNumber) {
             if (!$orderNumber) {
                 continue;
             }

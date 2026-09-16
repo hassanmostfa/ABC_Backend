@@ -30,6 +30,7 @@ class OrderDraft
         public readonly string $source,
         public readonly ?string $paymentMethod,
         public readonly ?string $paymentGatewaySrc,
+        public readonly float $specialDiscount = 0.00,
     ) {}
 
     public function amountDue(): float
@@ -59,6 +60,7 @@ class OrderDraft
             'source' => $this->source,
             'paymentMethod' => $this->paymentMethod,
             'paymentGatewaySrc' => $this->paymentGatewaySrc,
+            'specialDiscount' => $this->specialDiscount,
         ];
     }
 
@@ -82,6 +84,7 @@ class OrderDraft
             source: $this->source,
             paymentMethod: $this->paymentMethod,
             paymentGatewaySrc: $this->paymentGatewaySrc,
+            specialDiscount: $this->specialDiscount,
         );
     }
 
@@ -124,6 +127,7 @@ class OrderDraft
             source: (string) ($payload['source'] ?? 'call_center'),
             paymentMethod: $payload['paymentMethod'] ?? null,
             paymentGatewaySrc: $payload['paymentGatewaySrc'] ?? null,
+            specialDiscount: (float) ($payload['specialDiscount'] ?? 0),
         );
     }
 }

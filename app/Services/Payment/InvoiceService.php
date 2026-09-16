@@ -22,6 +22,7 @@ class InvoiceService
      * @param float $couponsDiscount
      * @param float $pointsDiscount
      * @param string|null $deliveryType Optional: 'delivery' or 'pickup' to calculate delivery fee
+     * @param float $specialDiscount Manual discount granted on an approved special order
      * @return array
      */
     public function calculateAmounts(
@@ -29,12 +30,13 @@ class InvoiceService
         float $offerDiscount,
         float $couponsDiscount,
         float $pointsDiscount,
-        ?string $deliveryType = null
+        ?string $deliveryType = null,
+        float $specialDiscount = 0.00
     ): array
     {
         // Calculate final amount after all discounts
-        $finalAmount = $totalAmount - $offerDiscount - $couponsDiscount - $pointsDiscount;
-        $totalDiscount = $offerDiscount + $couponsDiscount + $pointsDiscount;
+        $finalAmount = $totalAmount - $offerDiscount - $couponsDiscount - $pointsDiscount - $specialDiscount;
+        $totalDiscount = $offerDiscount + $couponsDiscount + $pointsDiscount + $specialDiscount;
 
         // Calculate delivery fee if delivery type is 'delivery'
         $deliveryFee = 0.00;
@@ -85,7 +87,8 @@ class InvoiceService
         int $usedPoints,
         float $pointsDiscount,
         float $totalDiscount,
-        bool $isPaid = false
+        bool $isPaid = false,
+        float $specialDiscount = 0.00
     ) {
         $existingInvoice = $this->invoiceRepository->getByOrder($orderId);
         
@@ -99,6 +102,7 @@ class InvoiceService
                 'delivery_fee' => $deliveryFee,
                 'offer_discount' => $offerDiscount,
                 'coupons_discount' => $couponsDiscount,
+                'special_discount' => $specialDiscount,
                 'used_points' => $usedPoints,
                 'points_discount' => $pointsDiscount,
                 'total_discount' => $totalDiscount,
@@ -181,7 +185,8 @@ class InvoiceService
         int $usedPoints,
         float $pointsDiscount,
         float $totalDiscount,
-        bool $isPaid = false
+        bool $isPaid = false,
+        float $specialDiscount = 0.00
     ): void {
         $updateData = [
             'amount_due' => $amountDue,
@@ -189,6 +194,7 @@ class InvoiceService
             'delivery_fee' => $deliveryFee,
             'offer_discount' => $offerDiscount,
             'coupons_discount' => $couponsDiscount,
+            'special_discount' => $specialDiscount,
             'used_points' => $usedPoints,
             'points_discount' => $pointsDiscount,
             'total_discount' => $totalDiscount,

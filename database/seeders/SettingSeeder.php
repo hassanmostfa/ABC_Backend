@@ -57,6 +57,10 @@ class SettingSeeder extends Seeder
                 'value' => '13', // Minimum charity order amount
             ],
             [
+                'key' => 'special_order_max_discount_percentage',
+                'value' => '50', // Largest discount (%) the call center may grant on a special order
+            ],
+            [
                 'key' => 'opening_time',
                 'value' => '10:00 am', // Opening time
             ],
