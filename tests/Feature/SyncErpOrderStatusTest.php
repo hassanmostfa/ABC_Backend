@@ -128,6 +128,56 @@ class SyncErpOrderStatusTest extends TestCase
         $this->assertNull($cancelled->fresh()->erp_status_synced_at);
     }
 
+    public function test_sync_skips_cancelled_erp_status_when_order_was_created_today(): void
+    {
+        $order = $this->createSentOrder(['status' => 'pending']);
+
+        Http::fake([
+            'https://erp.test/API/Order/GetOrderStatus*' => Http::response([
+                'data' => [
+                    'status' => 'Cancelled',
+                    'invoiceNo' => 'I300',
+                    'scheduleDate' => now()->toIso8601String(),
+                ],
+                'message' => 'Success',
+                'status' => 0,
+            ], 200),
+        ]);
+
+        $result = app(ErpOrderService::class)->syncOrderStatusFromErp($order);
+
+        $this->assertTrue($result['success']);
+        $this->assertFalse($result['updated']);
+        $this->assertSame('Skipped: ERP cancelled status for order created today', $result['message']);
+        $this->assertSame('pending', $order->fresh()->status);
+        $this->assertNull($order->fresh()->erp_invoice_no);
+    }
+
+    public function test_sync_updates_cancelled_erp_status_when_order_was_created_before_today(): void
+    {
+        $order = $this->createSentOrder(['status' => 'pending']);
+        $order->forceFill(['created_at' => now()->subDay()])->saveQuietly();
+
+        Http::fake([
+            'https://erp.test/API/Order/GetOrderStatus*' => Http::response([
+                'data' => [
+                    'status' => 'Cancelled',
+                    'invoiceNo' => 'I301',
+                    'scheduleDate' => now()->subDay()->toIso8601String(),
+                ],
+                'message' => 'Success',
+                'status' => 0,
+            ], 200),
+        ]);
+
+        $result = app(ErpOrderService::class)->syncOrderStatusFromErp($order->fresh());
+
+        $this->assertTrue($result['success']);
+        $this->assertTrue($result['updated']);
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->assertSame('I301', $order->fresh()->erp_invoice_no);
+    }
+
     public function test_batch_sync_includes_rejected_orders(): void
     {
         $rejected = $this->createSentOrder(['status' => 'rejected']);

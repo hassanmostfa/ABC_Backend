@@ -428,6 +428,27 @@ class ErpOrderService
                 ];
             }
 
+            if ($this->shouldSkipCancelledForTodaysOrder($localStatus, $order)) {
+                Log::channel('erp')->info('Skipping cancelled status for order created today', [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'erp_status' => $erpStatus,
+                    'order_date' => $order->created_at?->toDateString(),
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Skipped: ERP cancelled status for order created today',
+                    'updated' => false,
+                    'order' => $order,
+                    'previous_status' => $previousStatus,
+                    'erp_status' => $erpStatus,
+                    'local_status' => $localStatus,
+                    'erp_response' => $result['body'],
+                    'erp_http_status' => $result['status'],
+                ];
+            }
+
             $updateData = $this->buildOrderUpdateFromErpData($order, $localStatus, $erpData);
 
             if ($updateData === []) {
@@ -600,6 +621,27 @@ class ErpOrderService
                 ];
             }
 
+            if ($this->shouldSkipCancelledForTodaysOrder($localStatus, $order)) {
+                Log::channel('erp')->info('Skipping cancelled status for subscription order created today', [
+                    'subscription_order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'erp_status' => $erpStatus,
+                    'order_date' => $order->created_at?->toDateString(),
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Skipped: ERP cancelled status for order created today',
+                    'updated' => false,
+                    'order' => $order,
+                    'previous_status' => $previousStatus,
+                    'erp_status' => $erpStatus,
+                    'local_status' => $localStatus,
+                    'erp_response' => $result['body'],
+                    'erp_http_status' => $result['status'],
+                ];
+            }
+
             $updateData = $this->buildSubscriptionOrderUpdateFromErpData($order, $localStatus, $erpData);
 
             if ($updateData === []) {
@@ -705,6 +747,20 @@ class ErpOrderService
         $scheduleDate = $erpData['scheduleDate'] ?? $erpData['schedule_date'] ?? null;
 
         return $this->parseErpScheduleDate($scheduleDate) === null;
+    }
+
+    /**
+     * Skip cancelled status when the local order date (created_at) is today.
+     */
+    private function shouldSkipCancelledForTodaysOrder(string $localStatus, Order|SubscriptionOrder $order): bool
+    {
+        if ($localStatus !== 'cancelled') {
+            return false;
+        }
+
+        $orderDate = $order->created_at ?? now();
+
+        return $orderDate->isToday();
     }
 
     /**
