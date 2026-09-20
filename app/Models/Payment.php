@@ -24,6 +24,7 @@ class Payment extends Model
     protected $fillable = [
         'invoice_id',
         'customer_id',
+        'wallet_charge_offer_id',
         'creator_id',
         'creator_type',
         'order_checkout_id',
@@ -61,6 +62,11 @@ class Payment extends Model
     public function customer()
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function walletChargeOffer()
+    {
+        return $this->belongsTo(WalletChargeOffer::class);
     }
 
     public function creator(): MorphTo

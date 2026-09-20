@@ -30,6 +30,7 @@ class PaymentRepository implements PaymentRepositoryInterface
             'invoice.order.items',
             'invoice.order.customerAddress',
             'customer',
+            'walletChargeOffer',
             'creator',
             'orderCheckout',
             'orderCheckout.customer',
@@ -258,7 +259,7 @@ class PaymentRepository implements PaymentRepositoryInterface
         
         if ($payment) {
             $payment->update($data);
-            return $payment->fresh(['invoice', 'invoice.order', 'invoice.order.customer', 'invoice.order.charity', 'customer']);
+            return $payment->fresh(['invoice', 'invoice.order', 'invoice.order.customer', 'invoice.order.charity', 'customer', 'walletChargeOffer']);
         }
 
         return null;

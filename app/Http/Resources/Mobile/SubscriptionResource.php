@@ -35,6 +35,7 @@ class SubscriptionResource extends JsonResource
             }),
             'period' => $this->period,
             'period_months' => (int) $this->period,
+            'delivery_period_months' => $this->getDeliveryPeriodInMonths(),
             'period_label' => $this->getPeriodLabel($lang),
             'sizes' => SubscriptionSize::fromOffer($this->offer),
             'points' => (int) $this->points,

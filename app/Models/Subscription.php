@@ -101,8 +101,7 @@ class Subscription extends Model
                 break;
             
             case 'free_months':
-                // Free months discount is handled differently in the service
-                // by reducing the total period for calculation
+                // Free months are extra delivery months; the customer still pays the full plan period.
                 return 0;
         }
 
@@ -110,17 +109,32 @@ class Subscription extends Model
     }
 
     /**
-     * Get the effective period for pricing (excluding free months)
+     * Free months granted as a subscription reward.
+     */
+    public function freeMonths(): int
+    {
+        if ($this->discount_type === 'free_months' && (int) $this->discount_free_months > 0) {
+            return (int) $this->discount_free_months;
+        }
+
+        return 0;
+    }
+
+    /**
+     * Period used for pricing. Free months are extra deliveries, so the customer
+     * still pays the full subscription period (e.g. 6 months + 1 free → pay 6).
      */
     public function getEffectivePeriodForPricing(): int
     {
-        $period = $this->getPeriodInMonthsAttribute();
-        
-        if ($this->discount_type === 'free_months' && $this->discount_free_months > 0) {
-            $effectivePeriod = $period - $this->discount_free_months;
-            return max(0, $effectivePeriod);
-        }
-        
-        return $period;
+        return $this->getPeriodInMonthsAttribute();
+    }
+
+    /**
+     * Period used to generate delivery orders (paid months + free months).
+     * Example: 6-month plan + 1 free month → pay 6 months, receive 7 months of orders.
+     */
+    public function getDeliveryPeriodInMonths(): int
+    {
+        return $this->getPeriodInMonthsAttribute() + $this->freeMonths();
     }
 }

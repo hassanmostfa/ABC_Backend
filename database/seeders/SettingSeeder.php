@@ -25,7 +25,7 @@ class SettingSeeder extends Seeder
             ],
             [
                 'key' => 'wallet_charge_gift',
-                'value' => '5', // Fixed bonus (KWD) when charging wallet (e.g. 5 = 5 KWD bonus, 50 KWD charge -> 55 KWD balance)
+                'value' => '5', // Default gift percentage when no charge offer is selected (e.g. 5 = 5%, 50 KWD charge -> 52.5 KWD balance)
             ],
             [
                 'key' => 'minimum_wallet_charge',

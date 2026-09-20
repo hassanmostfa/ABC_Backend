@@ -35,6 +35,7 @@ class CustomerSubscriptionResource extends JsonResource
             'subscription' => [
                 'period' => $this->subscription->period,
                 'period_months' => (int) $this->subscription->period,
+                'delivery_period_months' => $this->subscription->getDeliveryPeriodInMonths(),
                 'points' => (int) $this->subscription->points,
                 'offer' => [
                     'id' => $this->subscription->offer->id,

@@ -40,6 +40,16 @@ class PaymentResource extends JsonResource
             'amount' => (float) $this->amount,
             'bonus_amount' => (float) ($this->bonus_amount ?? 0),
             'total_amount' => isset($this->total_amount) ? (float) $this->total_amount : null,
+            'wallet_charge_offer_id' => $this->wallet_charge_offer_id,
+            'wallet_charge_offer' => $this->when(
+                $this->relationLoaded('walletChargeOffer') && $this->walletChargeOffer,
+                fn () => [
+                    'id' => $this->walletChargeOffer->id,
+                    'charge_amount' => (float) $this->walletChargeOffer->charge_amount,
+                    'get_amount' => (float) $this->walletChargeOffer->get_amount,
+                    'bonus_amount' => $this->walletChargeOffer->bonusAmount(),
+                ]
+            ),
             'method' => $this->method,
             'src' => $this->payment_gateway_src,
             'status' => $this->status,
@@ -128,6 +138,7 @@ class PaymentResource extends JsonResource
                 ? "Wallet top-up {$reference}"
                 : 'Wallet top-up',
             'reference' => $reference,
+            'wallet_charge_offer_id' => $this->wallet_charge_offer_id,
             'order_id' => null,
             'order_number' => null,
             'checkout_id' => null,

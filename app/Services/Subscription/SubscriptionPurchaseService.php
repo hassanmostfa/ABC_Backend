@@ -63,18 +63,18 @@ class SubscriptionPurchaseService
 
         $startDate = Carbon::parse($data['start_date'] ?? now());
         $periodMonths = (int) $subscription->period;
-        $endDate = $startDate->copy()->addMonths($periodMonths);
+        $deliveryPeriodMonths = $subscription->getDeliveryPeriodInMonths();
+        $endDate = $startDate->copy()->addMonths($deliveryPeriodMonths);
         $ordersPerMonth = (int) $data['orders_per_month'];
         $monthlyDeliveryTemplate = $data['delivery_schedule'];
         $deliverySchedule = $this->expandDeliveryScheduleFromMonthlyTemplate(
             $monthlyDeliveryTemplate,
-            $periodMonths
+            $deliveryPeriodMonths
         );
 
-        // Calculate subtotal based on discount type
-        $effectivePeriod = $subscription->getEffectivePeriodForPricing();
-        $periodTotals = SubscriptionPricing::periodTotals($subscription->offer, $effectivePeriod);
-        $subtotalBeforeDiscount = SubscriptionPricing::periodTotals($subscription->offer, $periodMonths)['total_after_price'];
+        // Customer pays for the full plan period. Free months only add extra deliveries.
+        $periodTotals = SubscriptionPricing::periodTotals($subscription->offer, $periodMonths);
+        $subtotalBeforeDiscount = $periodTotals['total_after_price'];
         $subtotal = $periodTotals['total_after_price'];
         
         // Apply percentage or fixed discount
@@ -95,11 +95,12 @@ class SubscriptionPurchaseService
                 'subscription_id' => $subscription->id,
                 'offer_id' => $subscription->offer_id,
                 'period' => $subscription->period,
+                'delivery_period_months' => $deliveryPeriodMonths,
                 'points' => $subscription->points,
                 'orders_per_month' => $ordersPerMonth,
                 'start_date' => $startDate->format('Y-m-d'),
                 'end_date' => $endDate->format('Y-m-d'),
-                'total_orders' => $periodMonths * $ordersPerMonth,
+                'total_orders' => $deliveryPeriodMonths * $ordersPerMonth,
                 'subtotal' => $subtotal,
                 'subtotal_before_discount' => $subtotalBeforeDiscount,
                 'subscription_discount' => $subscriptionDiscount,
@@ -348,6 +349,7 @@ class SubscriptionPurchaseService
             'metadata' => [
                 'offer_id' => $draft['offer_id'] ?? $subscription->offer_id,
                 'period' => $draft['period'] ?? $subscription->period,
+                'delivery_period_months' => (int) ($draft['delivery_period_months'] ?? $subscription->getDeliveryPeriodInMonths()),
                 'points' => $draft['points'] ?? $subscription->points,
                 'monthly_delivery_template' => $draft['monthly_delivery_template'] ?? [],
                 'payment_gateway_src' => $locked->payment_gateway_src,
@@ -602,7 +604,7 @@ class SubscriptionPurchaseService
         array $deliverySchedule
     ): void {
         $ordersPerMonth = $customerSubscription->orders_per_month;
-        $periodMonths = (int) $subscription->period;
+        $periodMonths = $subscription->getDeliveryPeriodInMonths();
         $offer = $subscription->offer;
         $metadata = $customerSubscription->metadata ?? [];
         

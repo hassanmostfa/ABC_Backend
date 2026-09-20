@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\Admin\CustomerAddressController;
 use App\Http\Controllers\Api\Admin\TeamMemberController;
 use App\Http\Controllers\Api\Admin\SliderController;
 use App\Http\Controllers\Api\Admin\FaqController;
+use App\Http\Controllers\Api\Admin\WalletChargeOfferController;
 use App\Http\Controllers\Api\Admin\CouponController as AdminCouponController;
 use App\Http\Controllers\Api\Admin\ActivityLogController;
 use App\Http\Controllers\Api\Admin\NotificationController as AdminNotificationController;
@@ -314,6 +315,16 @@ Route::middleware(['auth:sanctum', 'special-order.portal'])->prefix('admin')->gr
          Route::get('/{id}', 'show')->middleware('admin.permission:faqs,view');
          Route::put('/{id}', 'update')->middleware('admin.permission:faqs,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:faqs,delete');
+      });
+
+            // Wallet Charge Offers Management
+      Route::controller(WalletChargeOfferController::class)->prefix('wallet-charge-offers')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:wallet_charge_offers,view');
+         Route::post('/', 'store')->middleware('admin.permission:wallet_charge_offers,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:wallet_charge_offers,view');
+         Route::put('/{id}', 'update')->middleware('admin.permission:wallet_charge_offers,edit');
+         Route::patch('/{id}/toggle-active', 'toggleActive')->middleware('admin.permission:wallet_charge_offers,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:wallet_charge_offers,delete');
       });
 
             // Orders Management
@@ -689,6 +700,7 @@ Route::middleware('api.auth')->prefix('mobile/points-transactions')->group(funct
 Route::middleware('api.auth')->prefix('mobile/wallet')->group(function () {
    Route::post('/charge', [MobileWalletController::class, 'charge']);
    Route::get('/charge-settings', [MobileWalletController::class, 'chargeSettings']);
+   Route::get('/charge-offers', [MobileWalletController::class, 'chargeOffers']);
 });
 
 Route::middleware('api.auth')->prefix('mobile/coupons')->group(function () {

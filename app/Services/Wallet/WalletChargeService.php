@@ -4,8 +4,10 @@ namespace App\Services\Wallet;
 
 use App\Models\Payment;
 use App\Models\Setting;
+use App\Models\WalletChargeOffer;
 use App\Repositories\Customers\CustomerRepositoryInterface;
 use App\Repositories\Payments\PaymentRepositoryInterface;
+use App\Repositories\WalletChargeOffers\WalletChargeOfferRepositoryInterface;
 use App\Services\Payment\OttuService;
 use App\Support\PaymentCreatorResolver;
 use Illuminate\Support\Facades\DB;
@@ -17,18 +19,19 @@ class WalletChargeService
         protected CustomerRepositoryInterface $customerRepository,
         protected WalletService $walletService,
         protected OttuService $ottuService,
-        protected PaymentRepositoryInterface $paymentRepository
+        protected PaymentRepositoryInterface $paymentRepository,
+        protected WalletChargeOfferRepositoryInterface $walletChargeOfferRepository
     ) {}
 
     /**
      * Create wallet charge and generate payment link (stored as Payment with type=wallet_charge)
      */
-    public function createCharge(int $customerId, float $amount, ?string $paymentGatewaySrc = null): array
+    public function createCharge(int $customerId, float $amount, ?string $paymentGatewaySrc = null, ?int $offerId = null): array
     {
-        if ($amount <= 0 || !$customerId) {
+        if (!$customerId) {
             return [
                 'success' => false,
-                'message' => 'Amount must be greater than zero.',
+                'message' => 'Customer not found.',
             ];
         }
 
@@ -40,9 +43,15 @@ class WalletChargeService
             ];
         }
 
-        $giftAmount = (float) Setting::getValue('wallet_charge_gift', 0);
-        $bonusAmount = round($giftAmount, 2);
-        $totalAmount = $amount + $bonusAmount;
+        $resolved = $this->resolveChargeAmounts($amount, $offerId);
+        if (!$resolved['success']) {
+            return $resolved;
+        }
+
+        $amount = $resolved['amount'];
+        $bonusAmount = $resolved['bonus_amount'];
+        $totalAmount = $resolved['total_amount'];
+        $offer = $resolved['offer'];
 
         try {
             DB::beginTransaction();
@@ -53,6 +62,7 @@ class WalletChargeService
             $payment = $this->paymentRepository->create(array_merge([
                 'invoice_id' => null,
                 'customer_id' => $customerId,
+                'wallet_charge_offer_id' => $offer?->id,
                 'reference' => $reference,
                 'type' => Payment::TYPE_WALLET_CHARGE,
                 'payment_number' => $paymentNumber,
@@ -72,11 +82,12 @@ class WalletChargeService
 
             return [
                 'success' => true,
-                'payment' => $payment->fresh(),
+                'payment' => $payment->fresh(['walletChargeOffer']),
                 'payment_link' => $paymentLink,
                 'amount' => $amount,
                 'bonus_amount' => $bonusAmount,
                 'total_amount' => $totalAmount,
+                'offer' => $offer,
             ];
         } catch (\Exception $e) {
             DB::rollBack();
@@ -160,6 +171,61 @@ class WalletChargeService
         if ($payment->status === 'pending' && $payment->type === Payment::TYPE_WALLET_CHARGE) {
             $this->paymentRepository->update($payment->id, ['status' => 'failed']);
         }
+    }
+
+    /**
+     * Resolve payable amount, bonus, and credited total.
+     * Selected active offer wins; otherwise wallet_charge_gift is applied as a percentage.
+     *
+     * @return array{success: bool, message?: string, amount?: float, bonus_amount?: float, total_amount?: float, offer?: WalletChargeOffer|null}
+     */
+    protected function resolveChargeAmounts(float $amount, ?int $offerId): array
+    {
+        if ($offerId) {
+            $offer = $this->walletChargeOfferRepository->findActiveById($offerId);
+            if (!$offer) {
+                return [
+                    'success' => false,
+                    'message' => 'Selected charge offer is not available.',
+                ];
+            }
+
+            $chargeAmount = round((float) $offer->charge_amount, 3);
+            $totalAmount = round((float) $offer->get_amount, 3);
+
+            if ($chargeAmount <= 0) {
+                return [
+                    'success' => false,
+                    'message' => 'Amount must be greater than zero.',
+                ];
+            }
+
+            return [
+                'success' => true,
+                'amount' => $chargeAmount,
+                'bonus_amount' => round($totalAmount - $chargeAmount, 3),
+                'total_amount' => $totalAmount,
+                'offer' => $offer,
+            ];
+        }
+
+        if ($amount <= 0) {
+            return [
+                'success' => false,
+                'message' => 'Amount must be greater than zero.',
+            ];
+        }
+
+        $giftPercent = (float) Setting::getValue('wallet_charge_gift', 5);
+        $bonusAmount = round($amount * ($giftPercent / 100), 3);
+
+        return [
+            'success' => true,
+            'amount' => round($amount, 3),
+            'bonus_amount' => $bonusAmount,
+            'total_amount' => round($amount + $bonusAmount, 3),
+            'offer' => null,
+        ];
     }
 
     /**

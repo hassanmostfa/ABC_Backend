@@ -167,6 +167,7 @@ class SubscriptionResource extends JsonResource
             }),
             'period' => $this->period,
             'period_in_months' => (int) $this->period,
+            'delivery_period_months' => $this->getDeliveryPeriodInMonths(),
             'points' => (int) $this->points,
             'discount_type' => $this->discount_type,
             'discount_value' => $this->discount_value ? (float) $this->discount_value : null,
