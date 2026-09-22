@@ -14,6 +14,7 @@ class Payment extends Model
     const TYPE_WALLET_CHARGE = 'wallet_charge';
     const TYPE_ORDER_CHECKOUT = 'order_checkout';
     const TYPE_SUBSCRIPTION = 'subscription';
+    const TYPE_SERVICE = 'service';
 
     const STATUS_PENDING = 'pending';
     const STATUS_COMPLETED = 'completed';
@@ -29,6 +30,7 @@ class Payment extends Model
         'creator_type',
         'order_checkout_id',
         'subscription_checkout_id',
+        'service_checkout_id',
         'reference',
         'type',
         'payment_number',
@@ -82,6 +84,11 @@ class Payment extends Model
     public function subscriptionCheckout()
     {
         return $this->belongsTo(SubscriptionCheckout::class);
+    }
+
+    public function serviceCheckout()
+    {
+        return $this->belongsTo(ServiceCheckout::class);
     }
 
     public function scopeWalletCharge($query)

@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderCheckout;
 use App\Models\Payment;
+use App\Models\ServiceCheckout;
 use App\Models\SubscriptionCheckout;
 use App\Support\PaymentCreatorResolver;
 use App\Services\Orders\OrderDraft;
@@ -674,6 +675,133 @@ class OttuService
     }
 
     /**
+     * Create a payment transaction for a service purchase.
+     */
+    public function createServicePayment(
+        ServiceCheckout $checkout,
+        float $amount,
+        ?string $pgCodeOverride = null,
+        ?int $timeoutSeconds = null
+    ): string {
+        $checkout->loadMissing('customer');
+        $customer = $checkout->customer;
+        if (!$customer) {
+            throw new \Exception('Customer is required for service payment');
+        }
+
+        $endpoint = $this->checkoutCreateEndpoint();
+        $pgCode = $this->resolvePgCode($pgCodeOverride);
+        $orderNo = $checkout->checkout_number;
+
+        $payload = [
+            'type' => config('services.ottu.type', 'payment_request'),
+            'pg_codes' => [$pgCode],
+            'amount' => number_format($amount, 3, '.', ''),
+            'currency_code' => config('services.ottu.currency', 'KWD'),
+            'order_no' => $orderNo,
+            'customer_id' => (string) $customer->id,
+            'customer_first_name' => $customer->name,
+            'customer_email' => $this->resolveCustomerEmail($customer),
+            'customer_phone' => $customer->phone,
+            'webhook_url' => route('payments.notification'),
+            'redirect_url' => route('payments.success'),
+            'extra' => [
+                'payment_type' => Payment::TYPE_SERVICE,
+                'service_checkout_id' => (string) $checkout->id,
+            ],
+        ];
+
+        $this->applyLiveCheckoutFields(
+            $payload,
+            $customer,
+            $orderNo,
+            $amount,
+            Payment::TYPE_SERVICE
+        );
+
+        Log::info('Ottu service payment request', [
+            'endpoint' => $endpoint,
+            'service_checkout_id' => $checkout->id,
+            'checkout_number' => $orderNo,
+        ]);
+
+        $timeout = $timeoutSeconds ?? config('services.ottu.timeout', 60);
+        $connectTimeout = min(10, (int) config('services.ottu.connect_timeout', 15));
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Api-Key ' . $this->apiKey(),
+            'Content-Type' => 'application/json',
+        ])->connectTimeout($connectTimeout)->timeout($timeout)->post($endpoint, $payload);
+
+        Log::info('Ottu service payment response', [
+            'status' => $response->status(),
+            'body' => $response->json(),
+        ]);
+
+        if (!$response->successful()) {
+            throw new \Exception($this->resolveOttuErrorMessage($response));
+        }
+
+        $data = $response->json();
+        $paymentUrl = $this->extractCheckoutLinkFromResponse($data, $pgCode);
+        if ($paymentUrl === null) {
+            throw new \Exception('Payment URL not found in Ottu response');
+        }
+
+        $this->lastCheckoutSessionId = isset($data['session_id'])
+            ? (string) $data['session_id']
+            : $this->extractSessionIdFromUrl($paymentUrl);
+
+        return $paymentUrl;
+    }
+
+    /**
+     * Store a pending payment row for a service checkout session.
+     */
+    public function ensurePendingServicePayment(
+        ServiceCheckout $checkout,
+        string $sessionId,
+        float $amount,
+        ?string $paymentGatewaySrc = null,
+        ?string $paymentLink = null
+    ): Payment {
+        $link = $paymentLink ?? $checkout->payment_link;
+
+        $attributes = [
+            'invoice_id' => null,
+            'service_checkout_id' => $checkout->id,
+            'customer_id' => $checkout->customer_id,
+            'reference' => $checkout->checkout_number,
+            'type' => Payment::TYPE_SERVICE,
+            'payment_gateway_src' => $paymentGatewaySrc ?? $checkout->payment_gateway_src,
+            'amount' => $amount,
+            'bonus_amount' => 0,
+            'total_amount' => $amount,
+            'method' => 'online',
+            'payment_link' => $link,
+        ];
+
+        $payment = Payment::firstOrCreate(
+            ['gateway' => 'ottu', 'track_id' => $sessionId],
+            array_merge($attributes, PaymentCreatorResolver::forCustomer((int) $checkout->customer_id), [
+                'payment_number' => $this->generatePaymentNumber(),
+                'status' => Payment::STATUS_PENDING,
+            ])
+        );
+
+        if (!$payment->wasRecentlyCreated) {
+            $payment->fill($attributes);
+            if ($payment->status !== Payment::STATUS_COMPLETED) {
+                $payment->status = Payment::STATUS_PENDING;
+                $payment->paid_at = null;
+            }
+            $payment->save();
+        }
+
+        return $payment->fresh();
+    }
+
+    /**
      * Find an existing Ottu payment link that can be reused for retry (invoice not yet paid).
      *
      * @return array{payment_link: string, session_id: string, payment: Payment|null}|null
@@ -1281,6 +1409,7 @@ class OttuService
             'wallet_charge' => "Wallet top-up {$reference} ({$formattedAmount} {$currency})",
             Payment::TYPE_ORDER_CHECKOUT => "Order payment {$reference} ({$formattedAmount} {$currency})",
             Payment::TYPE_SUBSCRIPTION => "Subscription payment {$reference} ({$formattedAmount} {$currency})",
+            Payment::TYPE_SERVICE => "Service payment {$reference} ({$formattedAmount} {$currency})",
             default => "Payment for {$reference} ({$formattedAmount} {$currency})",
         };
     }

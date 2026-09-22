@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\Admin\TeamMemberController;
 use App\Http\Controllers\Api\Admin\SliderController;
 use App\Http\Controllers\Api\Admin\FaqController;
 use App\Http\Controllers\Api\Admin\WalletChargeOfferController;
+use App\Http\Controllers\Api\Admin\ServiceController;
 use App\Http\Controllers\Api\Admin\CouponController as AdminCouponController;
 use App\Http\Controllers\Api\Admin\ActivityLogController;
 use App\Http\Controllers\Api\Admin\NotificationController as AdminNotificationController;
@@ -49,6 +50,7 @@ use App\Http\Controllers\Api\UtilsController;
 use App\Http\Controllers\Api\Mobile\auth\AuthController as MobileAuthController;
 use App\Http\Controllers\Api\Mobile\offers\OfferController as MobileOfferController;
 use App\Http\Controllers\Api\Mobile\subscriptions\SubscriptionController as MobileSubscriptionController;
+use App\Http\Controllers\Api\Mobile\services\ServiceController as MobileServiceController;
 use App\Http\Controllers\Api\Mobile\categories\CategoryController as MobileCategoryController;
 use App\Http\Controllers\Api\Mobile\orders\OrderController as MobileOrderController;
 use App\Http\Controllers\Api\Web\orders\OrderController as WebOrderController;
@@ -306,6 +308,16 @@ Route::middleware(['auth:sanctum', 'special-order.portal'])->prefix('admin')->gr
          Route::post('/{id}', 'update')->middleware('admin.permission:sliders,edit');
          Route::patch('/{id}/toggle-published', 'togglePublished')->middleware('admin.permission:sliders,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:sliders,delete');
+      });
+
+      // Services Management
+      Route::controller(ServiceController::class)->prefix('services')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:services,view');
+         Route::post('/', 'store')->middleware('admin.permission:services,add');
+         Route::get('/{id}', 'show')->middleware('admin.permission:services,view');
+         Route::post('/{id}', 'update')->middleware('admin.permission:services,edit');
+         Route::patch('/{id}/toggle-active', 'toggleActive')->middleware('admin.permission:services,edit');
+         Route::delete('/{id}', 'destroy')->middleware('admin.permission:services,delete');
       });
 
             // FAQs Management
@@ -604,6 +616,15 @@ Route::prefix('subscriptions')->group(function () {
    });
 
    Route::get('/{id}', [MobileSubscriptionController::class, 'show'])->whereNumber('id');
+});
+
+Route::prefix('mobile/services')->group(function () {
+   Route::get('/', [MobileServiceController::class, 'index']);
+
+   Route::middleware('api.auth')->group(function () {
+      Route::post('/purchase', [MobileServiceController::class, 'purchase'])->middleware('customer.account.completed');
+      Route::get('/vouchers', [MobileServiceController::class, 'vouchers']);
+   });
 });
 
 Route::prefix('mobile/app-content')->group(function () {

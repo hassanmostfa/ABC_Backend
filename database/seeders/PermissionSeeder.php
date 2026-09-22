@@ -85,6 +85,7 @@ class PermissionSeeder extends Seeder
                     ['name' => 'Contact_Us', 'slug' => 'contact_us', 'sort_order' => 0],
                     ['name' => 'Social Media Links', 'slug' => 'social_media_links', 'sort_order' => 0],
                     ['name' => 'General Settings', 'slug' => 'settings', 'sort_order' => 0],
+                    ['name' => 'Services', 'slug' => 'services', 'sort_order' => 0],
                     ['name' => 'Team Members', 'slug' => 'team_members', 'sort_order' => 0],
                     ['name' => 'Activity Logs', 'slug' => 'activity_logs', 'sort_order' => 0],
                     ['name' => 'Notifications', 'slug' => 'notifications', 'sort_order' => 0],

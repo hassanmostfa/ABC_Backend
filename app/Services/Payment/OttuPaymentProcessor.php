@@ -8,9 +8,12 @@ use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderCheckout;
 use App\Models\Payment;
+use App\Models\ServiceCheckout;
+use App\Models\ServiceVoucher;
 use App\Models\SubscriptionCheckout;
 use App\Repositories\Orders\OrderRepositoryInterface;
 use App\Services\Orders\OrderCheckoutService;
+use App\Services\Services\ServicePurchaseService;
 use App\Services\Subscription\SubscriptionPurchaseService;
 use App\Support\PaymentCreatorResolver;
 use Illuminate\Support\Facades\DB;
@@ -297,6 +300,10 @@ class OttuPaymentProcessor
             return $this->processVerifiedSubscriptionPayment($trackId, $statusResult, $receiptId);
         }
 
+        if ($existingPayment && $existingPayment->type === Payment::TYPE_SERVICE) {
+            return $this->processVerifiedServicePayment($trackId, $statusResult, $receiptId);
+        }
+
         if ($existingPayment && $existingPayment->type === Payment::TYPE_ORDER_CHECKOUT) {
             return $this->processVerifiedCheckoutPayment($trackId, $statusResult);
         }
@@ -326,6 +333,14 @@ class OttuPaymentProcessor
 
             if ($subscriptionInvoice) {
                 return $this->processVerifiedSubscriptionPayment($trackId, $statusResult, $receiptId);
+            }
+
+            $serviceCheckout = $orderNumber
+                ? ServiceCheckout::query()->where('checkout_number', $orderNumber)->first()
+                : null;
+
+            if ($serviceCheckout) {
+                return $this->processVerifiedServicePayment($trackId, $statusResult, $receiptId);
             }
 
             return ['processed' => false, 'reason' => 'order_not_found'];
@@ -600,6 +615,104 @@ class OttuPaymentProcessor
         }
 
         return app(SubscriptionPurchaseService::class)->fulfillCheckout($checkout, $payment, $statusResult);
+    }
+
+    /**
+     * @return array{processed: bool, idempotent?: bool, voucher?: ServiceVoucher, payment_status?: string, reason?: string}
+     */
+    public function processVerifiedServicePayment(
+        string $trackId,
+        array $statusResult,
+        ?string $receiptId = null
+    ): array {
+        $referenceNumber = isset($statusResult['reference_number']) ? (string) $statusResult['reference_number'] : null;
+        $payment = $this->findOttuPayment($trackId, $referenceNumber);
+
+        $checkout = null;
+        if ($payment?->service_checkout_id) {
+            $checkout = ServiceCheckout::query()->find($payment->service_checkout_id);
+        }
+
+        if (!$checkout) {
+            $orderNumber = $statusResult['requested_order_id'] ?? null;
+            if ($orderNumber) {
+                $checkout = ServiceCheckout::query()->where('checkout_number', $orderNumber)->first();
+            }
+        }
+
+        if (!$checkout) {
+            return ['processed' => false, 'reason' => 'service_checkout_not_found'];
+        }
+
+        if (!$payment) {
+            $payment = Payment::firstOrCreate(
+                ['gateway' => 'ottu', 'track_id' => $trackId],
+                array_merge([
+                    'invoice_id' => null,
+                    'service_checkout_id' => $checkout->id,
+                    'customer_id' => $checkout->customer_id,
+                    'reference' => $checkout->checkout_number,
+                    'type' => Payment::TYPE_SERVICE,
+                    'payment_number' => $this->generatePaymentNumber(),
+                    'payment_gateway_src' => $checkout->payment_gateway_src,
+                    'amount' => $statusResult['amount'] ?? (float) $checkout->amount_due,
+                    'bonus_amount' => 0,
+                    'total_amount' => $statusResult['amount'] ?? (float) $checkout->amount_due,
+                    'method' => 'online',
+                    'payment_link' => $checkout->payment_link,
+                    'status' => Payment::STATUS_PENDING,
+                ], PaymentCreatorResolver::forCustomer((int) $checkout->customer_id))
+            );
+        }
+
+        if ($payment && $payment->status === Payment::STATUS_COMPLETED && $checkout->service_voucher_id) {
+            $voucher = ServiceVoucher::query()
+                ->with(['service', 'customer'])
+                ->find($checkout->service_voucher_id);
+
+            return [
+                'processed' => true,
+                'idempotent' => true,
+                'voucher' => $voucher,
+                'payment_status' => Payment::STATUS_COMPLETED,
+            ];
+        }
+
+        if (!($statusResult['is_success'] ?? false)) {
+            if ($this->shouldAllowPaymentRetry()) {
+                if ($payment && $payment->status !== Payment::STATUS_COMPLETED) {
+                    $payment->update(['status' => Payment::STATUS_PENDING, 'paid_at' => null]);
+                }
+
+                return [
+                    'processed' => true,
+                    'payment_status' => Payment::STATUS_PENDING,
+                ];
+            }
+
+            if ($payment && $payment->status !== Payment::STATUS_COMPLETED) {
+                $payment->update(['status' => Payment::STATUS_FAILED]);
+            }
+            if ($checkout->isPending()) {
+                $checkout->update(['status' => ServiceCheckout::STATUS_FAILED]);
+            }
+
+            return [
+                'processed' => true,
+                'payment_status' => Payment::STATUS_FAILED,
+            ];
+        }
+
+        if ($checkout->status === ServiceCheckout::STATUS_FAILED) {
+            $checkout->update(['status' => ServiceCheckout::STATUS_PENDING]);
+            $checkout->refresh();
+        }
+
+        if ($receiptId && empty($statusResult['receipt_id'])) {
+            $statusResult['receipt_id'] = $receiptId;
+        }
+
+        return app(ServicePurchaseService::class)->fulfillCheckout($checkout, $payment, $statusResult);
     }
 
     /**

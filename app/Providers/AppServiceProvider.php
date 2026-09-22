@@ -60,6 +60,8 @@ use App\Repositories\Complaints\ComplaintRepositoryInterface;
 use App\Repositories\Complaints\ComplaintRepository;
 use App\Repositories\WalletChargeOffers\WalletChargeOfferRepositoryInterface;
 use App\Repositories\WalletChargeOffers\WalletChargeOfferRepository;
+use App\Repositories\Services\ServiceRepositoryInterface;
+use App\Repositories\Services\ServiceRepository;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -98,6 +100,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(FeedbackRepositoryInterface::class, FeedbackRepository::class);
         $this->app->bind(ComplaintRepositoryInterface::class, ComplaintRepository::class);
         $this->app->bind(WalletChargeOfferRepositoryInterface::class, WalletChargeOfferRepository::class);
+        $this->app->bind(ServiceRepositoryInterface::class, ServiceRepository::class);
     }
 
     /**
