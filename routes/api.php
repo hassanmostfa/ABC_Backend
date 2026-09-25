@@ -455,8 +455,6 @@ Route::middleware(['auth:sanctum', 'special-order.portal'])->prefix('admin')->gr
          Route::patch('/{id}/toggle-active', 'toggleActive')->middleware('admin.permission:coupons,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:coupons,delete');
       });
-
-
 });
 
 // Payment Callback Routes (Public - called by Ottu)

@@ -6,6 +6,9 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
+Schedule::command('queue:work --queue=default,notifications --stop-when-empty --tries=3')
+    ->everyMinute()
+    ->withoutOverlapping(10);
 Schedule::command('warehouse:sync-stock')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('orders:expire-checkouts')->hourly()->withoutOverlapping();
 Schedule::command('orders:sync-erp-status')->hourly()->withoutOverlapping();

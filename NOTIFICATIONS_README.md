@@ -97,8 +97,8 @@ This file documents all current business cases where `sendNotification()` is tri
 - **Recipients:** All active customers (`customers.is_active = true`).
 - **Type:** `general` or `offer`
 - **Data payload:** `general_notification_id`, plus `offer_id` when type is `offer`
-- Delivery is queued (`DispatchGeneralNotificationJob` -> `SendGeneralNotificationChunkJob`, 200 customers per job) on the `notifications` queue (`NOTIFICATIONS_QUEUE`). The worker must listen on it, with `default` first so order/ERP jobs keep priority:
-  `php artisan queue:work --queue=default,notifications`
+- Delivery is queued (`DispatchGeneralNotificationJob` -> `SendGeneralNotificationChunkJob`, 200 customers per job) on the `notifications` queue (`NOTIFICATIONS_QUEUE`). `routes/console.php` runs `queue:work --queue=default,notifications --stop-when-empty` every minute with `withoutOverlapping(10)`, so a send that lasts longer than one minute keeps running and the next minute does not start a second worker. Cron only needs:
+  `* * * * * cd /path/to/ABC-Backend && php artisan schedule:run`
 - Pushes are sent in parallel (`NOTIFICATIONS_PUSH_CONCURRENCY`, default 50) with HTTP timeouts (`FIREBASE_CONNECT_TIMEOUT`, `FIREBASE_TIMEOUT`).
 - Device tokens that FCM reports as unregistered/invalid are deleted automatically.
 - Push title/body are sent in each customer's `current_language`.
@@ -117,9 +117,9 @@ Send body:
 
 ```json
 {
-  "type": "offer",
+ "type": "offer",
   "offer_id": 12,
-  "title_en": "Summer offer is live",
+  "title_e n": "Summer offer is live",
   "title_ar": "عرض الصيف متاح الآن",
   "message_en": "Buy 2 get 1 free, this week only.",
   "message_ar": "اشترِ 2 واحصل على 1 مجاناً، هذا الأسبوع فقط."
