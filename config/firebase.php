@@ -13,4 +13,14 @@ return [
 
     'credentials' => env('FIREBASE_CREDENTIALS_PATH', 'storage/firebase/abc.json'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | HTTP Timeouts (seconds)
+    |--------------------------------------------------------------------------
+    */
+
+    'connect_timeout' => (float) env('FIREBASE_CONNECT_TIMEOUT', 5),
+
+    'timeout' => (float) env('FIREBASE_TIMEOUT', 10),
+
 ];

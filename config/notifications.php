@@ -22,4 +22,20 @@ return [
     |
     */
     'send_to_firebase' => env('NOTIFICATIONS_SEND_TO_FIREBASE', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | General (Broadcast) Notifications
+    |--------------------------------------------------------------------------
+    |
+    | Broadcasts to all customers run on their own queue so they never delay
+    | order / ERP jobs. The worker must listen on it, e.g.:
+    |   php artisan queue:work --queue=default,notifications
+    |
+    | push_concurrency = parallel FCM requests per chunk job.
+    |
+    */
+    'queue' => env('NOTIFICATIONS_QUEUE', 'notifications'),
+
+    'push_concurrency' => (int) env('NOTIFICATIONS_PUSH_CONCURRENCY', 50),
 ];

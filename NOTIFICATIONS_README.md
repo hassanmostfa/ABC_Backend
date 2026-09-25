@@ -90,6 +90,60 @@ This file documents all current business cases where `sendNotification()` is tri
 - **Type:** `payment`
 - **Data payload:** `order_id`, `order_number`, `invoice_id`, `payment_id`, `status`
 
+### 10) General Notification (sent by admin from dashboard)
+
+- **Where:** `app/Services/Notification/GeneralNotificationService.php`
+- **Triggered when:** Admin calls `POST /api/admin/general-notifications`.
+- **Recipients:** All active customers (`customers.is_active = true`).
+- **Type:** `general` or `offer`
+- **Data payload:** `general_notification_id`, plus `offer_id` when type is `offer`
+- Delivery is queued (`DispatchGeneralNotificationJob` -> `SendGeneralNotificationChunkJob`, 200 customers per job) on the `notifications` queue (`NOTIFICATIONS_QUEUE`). The worker must listen on it, with `default` first so order/ERP jobs keep priority:
+  `php artisan queue:work --queue=default,notifications`
+- Pushes are sent in parallel (`NOTIFICATIONS_PUSH_CONCURRENCY`, default 50) with HTTP timeouts (`FIREBASE_CONNECT_TIMEOUT`, `FIREBASE_TIMEOUT`).
+- Device tokens that FCM reports as unregistered/invalid are deleted automatically.
+- Push title/body are sent in each customer's `current_language`.
+
+## General Notifications (Admin Dashboard)
+
+Permission slug: `general_notifications` (`view` for listing, `add` for sending).
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/admin/general-notifications` | History. Filters: `type`, `status`, `offer_id`, `search`, `per_page` |
+| `POST` | `/api/admin/general-notifications` | Send to all active customers |
+| `GET` | `/api/admin/general-notifications/{id}` | Details and delivery stats |
+
+Send body:
+
+```json
+{
+  "type": "offer",
+  "offer_id": 12,
+  "title_en": "Summer offer is live",
+  "title_ar": "عرض الصيف متاح الآن",
+  "message_en": "Buy 2 get 1 free, this week only.",
+  "message_ar": "اشترِ 2 واحصل على 1 مجاناً، هذا الأسبوع فقط."
+}
+```
+
+- `type`: `general` (no `offer_id` allowed) or `offer` (`offer_id` required).
+- The offer must be active, currently within its start/end dates, and not a subscription offer.
+- `status` moves `pending` -> `processing` -> `completed` (or `failed`). The response also includes `recipients_count`, `read_count`, `push_sent_count`, `push_failed_count`, `processed_chunks` / `total_chunks`.
+
+### Mobile app handling
+
+FCM data payload (all values are strings):
+
+| Key | General | Offer |
+| --- | --- | --- |
+| `type` | `general` | `offer` |
+| `notification_id` | in-app notification id (use to mark as read) | same |
+| `general_notification_id` | broadcast id | same |
+| `offer_id` | not present | offer id |
+
+When the user taps a notification with `type = "offer"`, open offer details using `GET /api/mobile/offers/{offer_id}`.
+The same `type` and `data.offer_id` are returned by `GET /api/mobile/notifications`, so taps from the in-app notifications list should behave the same way.
+
 ## Language Behavior
 
 - Preferred customer language is updated through:

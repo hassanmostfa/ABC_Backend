@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\Admin\ServiceController;
 use App\Http\Controllers\Api\Admin\CouponController as AdminCouponController;
 use App\Http\Controllers\Api\Admin\ActivityLogController;
 use App\Http\Controllers\Api\Admin\NotificationController as AdminNotificationController;
+use App\Http\Controllers\Api\Admin\GeneralNotificationController;
 use App\Http\Controllers\Api\Admin\StatisticsController;
 use App\Http\Controllers\Api\Web\ProductController as WebProductController;
 use App\Http\Controllers\Api\Web\CategoryController as WebCategoryController;
@@ -436,6 +437,13 @@ Route::middleware(['auth:sanctum', 'special-order.portal'])->prefix('admin')->gr
          Route::patch('/{id}/mark-read', 'markAsRead')->middleware('admin.permission:notifications,edit');
          Route::patch('/mark-all-read', 'markAllAsRead')->middleware('admin.permission:notifications,edit');
          Route::delete('/{id}', 'destroy')->middleware('admin.permission:notifications,delete');
+      });
+
+            // General Notifications (broadcast to all customers)
+      Route::controller(GeneralNotificationController::class)->prefix('general-notifications')->group(function () {
+         Route::get('/', 'index')->middleware('admin.permission:general_notifications,view');
+         Route::post('/', 'store')->middleware('admin.permission:general_notifications,add');
+         Route::get('/{id}', 'show')->whereNumber('id')->middleware('admin.permission:general_notifications,view');
       });
 
       // Coupons Management (Admin)

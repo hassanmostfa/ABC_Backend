@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
@@ -23,6 +24,7 @@ class Notification extends Model
         'is_read',
         'read_at',
         'data',
+        'general_notification_id',
     ];
 
     /**
@@ -42,6 +44,14 @@ class Notification extends Model
     public function notifiable(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /**
+     * Get the admin broadcast this notification was created from (if any).
+     */
+    public function generalNotification(): BelongsTo
+    {
+        return $this->belongsTo(GeneralNotification::class);
     }
 
     /**

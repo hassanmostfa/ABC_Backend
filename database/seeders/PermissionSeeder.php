@@ -89,6 +89,7 @@ class PermissionSeeder extends Seeder
                     ['name' => 'Team Members', 'slug' => 'team_members', 'sort_order' => 0],
                     ['name' => 'Activity Logs', 'slug' => 'activity_logs', 'sort_order' => 0],
                     ['name' => 'Notifications', 'slug' => 'notifications', 'sort_order' => 0],
+                    ['name' => 'General Notifications', 'slug' => 'general_notifications', 'sort_order' => 0],
                     ['name' => 'Sliders', 'slug' => 'sliders', 'sort_order' => 0],
                     ['name' => 'FAQs', 'slug' => 'faqs', 'sort_order' => 0],
                     ['name' => 'Wallet Charge Offers', 'slug' => 'wallet_charge_offers', 'sort_order' => 0],
