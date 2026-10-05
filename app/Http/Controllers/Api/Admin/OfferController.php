@@ -66,10 +66,13 @@ class OfferController extends BaseApiController
         $perPage = $request->input('per_page', 15);
         $filters = $request->offerFilters();
         
-        // Add filter to get only subscription offers
+        // Add filter to get only subscription offers, cheapest payable price first
         $filters['is_subscription'] = true;
+        $filters['sort_by_price'] = true;
         
         $offers = $this->offerRepository->getAllPaginated($filters, $perPage);
+
+        unset($filters['sort_by_price']);
 
         // Transform data using OfferResource
         $transformedOffers = OfferResource::collection($offers->items());

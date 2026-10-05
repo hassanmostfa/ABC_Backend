@@ -11,8 +11,8 @@ class RestrictSpecialOrderPortalToken
     public const ABILITY = 'special-order-approver';
 
     /**
-     * Tokens issued by the special-orders portal login may only list, view, approve, and reject
-     * special orders. They cannot create special orders or call any other admin API.
+     * Tokens issued by the special-orders portal login may only list, view, confirm, approve, and
+     * reject special orders. They cannot create special orders or call any other admin API.
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -53,7 +53,7 @@ class RestrictSpecialOrderPortalToken
             return true;
         }
 
-        if ($method === 'PATCH' && preg_match('#^api/admin/special-orders/\d+/(approve|reject)$#', $path)) {
+        if ($method === 'PATCH' && preg_match('#^api/admin/special-orders/\d+/(confirm|approve|reject)$#', $path)) {
             return true;
         }
 

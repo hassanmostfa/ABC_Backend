@@ -13,6 +13,7 @@ use App\Http\Resources\Mobile\SubscriptionCheckoutResource;
 use App\Http\Resources\Mobile\SubscriptionOrderResource;
 use App\Models\SubscriptionOrder;
 use App\Services\Subscription\SubscriptionPurchaseService;
+use App\Support\SubscriptionPricing;
 use App\Support\SubscriptionSize;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -133,7 +134,13 @@ class SubscriptionController extends BaseApiController
                 });
             }
 
-            $subscriptions = $query->orderBy('period')->get();
+            $subscriptions = $query->get()
+                ->sortBy(fn (Subscription $subscription) => (int) $subscription->id)
+                ->sortBy(fn (Subscription $subscription) => (int) $subscription->period)
+                ->sortBy(fn (Subscription $subscription) => (int) round(
+                    SubscriptionPricing::forPlan($subscription)['total_after_price'] * 1000
+                ))
+                ->values();
 
             $response = [
                 'success' => true,

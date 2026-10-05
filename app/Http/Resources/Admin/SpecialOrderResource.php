@@ -57,12 +57,24 @@ class SpecialOrderResource extends JsonResource
                 ? \Carbon\Carbon::parse($orderData['delivery_time'])->format('H:i')
                 : null,
             'items' => $this->buildItemsPreview($draft),
+            'approval_step' => match ($specialOrder->status) {
+                SpecialOrder::STATUS_PENDING => 'home_delivery_manager',
+                SpecialOrder::STATUS_MANAGER_CONFIRMED => 'ceo',
+                default => null,
+            },
             'requested_by' => $this->whenLoaded('requestedBy', fn () => [
                 'id' => $specialOrder->requestedBy->id,
                 'name' => $specialOrder->requestedBy->name,
                 'email' => $specialOrder->requestedBy->email,
                 'employee_code' => $specialOrder->requestedBy->employee_code,
             ]),
+            'confirmed_by' => $this->whenLoaded('confirmedBy', fn () => $specialOrder->confirmedBy ? [
+                'id' => $specialOrder->confirmedBy->id,
+                'name' => $specialOrder->confirmedBy->name,
+                'email' => $specialOrder->confirmedBy->email,
+            ] : null),
+            'confirmed_at' => \format_datetime_app_tz($specialOrder->confirmed_at),
+            'confirmation_notes' => $specialOrder->confirmation_notes,
             'reviewed_by' => $this->whenLoaded('reviewedBy', fn () => $specialOrder->reviewedBy ? [
                 'id' => $specialOrder->reviewedBy->id,
                 'name' => $specialOrder->reviewedBy->name,

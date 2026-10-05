@@ -34,17 +34,26 @@ class CheckAdminPermission
             ], 403);
         }
 
-        // Check if admin has the required permission
-        if ($action) {
-            $hasPermission = $user->hasPermission($permission, $action);
-        } else {
-            $hasPermission = $user->hasAnyPermission($permission);
+        // A pipe-separated permission list means any one of those permissions is enough.
+        $permissions = array_values(array_filter(array_map('trim', explode('|', $permission))));
+        $hasPermission = false;
+
+        foreach ($permissions as $permissionSlug) {
+            $hasPermission = $action
+                ? $user->hasPermission($permissionSlug, $action)
+                : $user->hasAnyPermission($permissionSlug);
+
+            if ($hasPermission) {
+                break;
+            }
         }
 
         if (!$hasPermission) {
+            $required = implode(' or ', $permissions);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Insufficient permissions. You need ' . ($action ? "$action permission for $permission" : "permission for $permission")
+                'message' => 'Insufficient permissions. You need ' . ($action ? "$action permission for $required" : "permission for $required")
             ], 403);
         }
 

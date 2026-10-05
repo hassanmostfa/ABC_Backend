@@ -12,12 +12,15 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Call-center orders sold at a manually agreed final price. Nothing is created or sent to ERP until
- * an approver signs off; the discount that bridges the normal total and the agreed price is frozen
- * into the draft so approval just replays the regular order pipeline.
+ * Call-center orders sold at a manually agreed final price. The home delivery manager confirms the
+ * request, then the CEO approves it. Nothing is created or sent to ERP until that second approval;
+ * the discount that bridges the normal total and the agreed price is frozen into the draft so the
+ * CEO approval just replays the regular order pipeline.
  */
 class SpecialOrderService
 {
+    public const CONFIRMATION_PERMISSION = 'special_order_confirmations';
+
     public const APPROVAL_PERMISSION = 'special_order_approvals';
 
     public function __construct(
@@ -76,19 +79,59 @@ class SpecialOrderService
             'requested_by_id' => $admin?->id,
         ]);
 
-        $this->notifyApprovers($specialOrder);
+        $this->notifyApprovers($specialOrder, self::CONFIRMATION_PERMISSION, 'manager');
 
         return $specialOrder;
     }
 
     /**
+     * Home delivery manager confirmation. This does not create the order or send a payment link.
+     *
+     * @return array{success: bool, message: string, special_order?: SpecialOrder}
+     */
+    public function confirm(SpecialOrder $specialOrder, ?Admin $admin = null, ?string $notes = null): array
+    {
+        $updated = SpecialOrder::query()
+            ->whereKey($specialOrder->id)
+            ->where('status', SpecialOrder::STATUS_PENDING)
+            ->update([
+                'status' => SpecialOrder::STATUS_MANAGER_CONFIRMED,
+                'confirmed_by_id' => $admin?->id,
+                'confirmed_at' => now(),
+                'confirmation_notes' => $notes,
+            ]);
+
+        if ($updated === 0) {
+            return ['success' => false, 'message' => 'This special order is not waiting for home delivery manager confirmation.'];
+        }
+
+        $specialOrder = $specialOrder->fresh();
+        $this->notifyApprovers($specialOrder, self::APPROVAL_PERMISSION, 'ceo');
+        $this->notifyRequester($specialOrder, 'confirmed');
+
+        return [
+            'success' => true,
+            'message' => 'Special order confirmed and sent to the CEO for approval.',
+            'special_order' => $specialOrder,
+        ];
+    }
+
+    /**
+     * CEO approval. Cash and wallet orders are created now. Online orders get a payment link;
+     * the order itself is created after that payment succeeds.
+     *
      * @return array{success: bool, message: string, special_order?: SpecialOrder, payment_link?: ?string}
      * @throws \Exception
      */
     public function approve(SpecialOrder $specialOrder, ?Admin $admin = null, ?string $notes = null): array
     {
-        if (!$specialOrder->isPending()) {
-            return ['success' => false, 'message' => 'This special order has already been reviewed.'];
+        if (!$specialOrder->isManagerConfirmed()) {
+            return [
+                'success' => false,
+                'message' => $specialOrder->isPending()
+                    ? 'The home delivery manager must confirm this special order before the CEO can approve it.'
+                    : 'This special order has already been reviewed.',
+            ];
         }
 
         $draft = OrderDraft::fromPayloadArray($specialOrder->draft());
@@ -100,16 +143,37 @@ class SpecialOrderService
         ];
 
         if ($specialOrder->payment_method === 'online_link') {
-            $result = $this->orderCheckoutService->startCheckoutFromDraft(
-                $draft,
-                $specialOrder->customer_id,
-                $specialOrder->source,
-                $specialOrder->payment_gateway_src,
-                $specialOrder->order_number
-            );
+            $claimed = $this->claimCeoApproval($specialOrder, $review);
+            if (!$claimed) {
+                return ['success' => false, 'message' => 'This special order has already been reviewed.'];
+            }
 
-            $specialOrder->update($review + ['order_checkout_id' => $result['checkout']->id]);
-            $this->notifyRequester($specialOrder, approved: true);
+            try {
+                $result = $this->orderCheckoutService->startCheckoutFromDraft(
+                    $draft,
+                    $specialOrder->customer_id,
+                    $specialOrder->source,
+                    $specialOrder->payment_gateway_src,
+                    $specialOrder->order_number
+                );
+                $specialOrder->update(['order_checkout_id' => $result['checkout']->id]);
+            } catch (\Throwable $e) {
+                SpecialOrder::query()
+                    ->whereKey($specialOrder->id)
+                    ->where('status', SpecialOrder::STATUS_APPROVED)
+                    ->whereNull('order_id')
+                    ->whereNull('order_checkout_id')
+                    ->update([
+                        'status' => SpecialOrder::STATUS_MANAGER_CONFIRMED,
+                        'reviewed_by_id' => null,
+                        'reviewed_at' => null,
+                        'review_notes' => null,
+                    ]);
+
+                throw $e;
+            }
+
+            $this->notifyRequester($specialOrder->fresh(), 'approved');
 
             return [
                 'success' => true,
@@ -126,7 +190,10 @@ class SpecialOrderService
                 $draft,
                 reservedOrderNumber: $specialOrder->order_number
             );
-            $specialOrder->update($review + ['order_id' => $order->id]);
+            $claimed = $this->claimCeoApproval($specialOrder, $review + ['order_id' => $order->id]);
+            if (!$claimed) {
+                throw new \Exception('This special order has already been reviewed.', 400);
+            }
             DB::commit();
         } catch (\Exception $e) {
             DB::rollBack();
@@ -135,7 +202,7 @@ class SpecialOrderService
 
         DispatchErpOrderJob::dispatchAfterResponse($order->id);
         SendOrderCreatedNotificationsJob::dispatch($order->id)->afterResponse();
-        $this->notifyRequester($specialOrder, approved: true);
+        $this->notifyRequester($specialOrder->fresh(), 'approved');
 
         return [
             'success' => true,
@@ -149,18 +216,26 @@ class SpecialOrderService
      */
     public function reject(SpecialOrder $specialOrder, string $reason, ?Admin $admin = null): array
     {
-        if (!$specialOrder->isPending()) {
+        if (!$specialOrder->isPending() && !$specialOrder->isManagerConfirmed()) {
             return ['success' => false, 'message' => 'This special order has already been reviewed.'];
         }
 
-        $specialOrder->update([
-            'status' => SpecialOrder::STATUS_REJECTED,
-            'reviewed_by_id' => $admin?->id,
-            'reviewed_at' => now(),
-            'rejection_reason' => $reason,
-        ]);
+        $updated = SpecialOrder::query()
+            ->whereKey($specialOrder->id)
+            ->whereIn('status', [SpecialOrder::STATUS_PENDING, SpecialOrder::STATUS_MANAGER_CONFIRMED])
+            ->update([
+                'status' => SpecialOrder::STATUS_REJECTED,
+                'reviewed_by_id' => $admin?->id,
+                'reviewed_at' => now(),
+                'rejection_reason' => $reason,
+            ]);
 
-        $this->notifyRequester($specialOrder, approved: false);
+        if ($updated === 0) {
+            return ['success' => false, 'message' => 'This special order has already been reviewed.'];
+        }
+
+        $specialOrder = $specialOrder->fresh();
+        $this->notifyRequester($specialOrder, 'rejected');
 
         return [
             'success' => true,
@@ -170,14 +245,27 @@ class SpecialOrderService
     }
 
     /**
-     * Ping every active admin whose role can see the approval queue.
+     * Apply the CEO decision only while the order is still waiting on that step.
+     *
+     * @param  array<string, mixed>  $attributes
      */
-    protected function notifyApprovers(SpecialOrder $specialOrder): void
+    protected function claimCeoApproval(SpecialOrder $specialOrder, array $attributes): bool
+    {
+        return SpecialOrder::query()
+            ->whereKey($specialOrder->id)
+            ->where('status', SpecialOrder::STATUS_MANAGER_CONFIRMED)
+            ->update($attributes) > 0;
+    }
+
+    /**
+     * Ping every active admin who can act on the current approval step.
+     */
+    protected function notifyApprovers(SpecialOrder $specialOrder, string $permissionSlug, string $step): void
     {
         try {
             $roleIds = RolePermission::query()
                 ->where('can_view', true)
-                ->whereHas('permissionItem', fn ($query) => $query->where('slug', self::APPROVAL_PERMISSION))
+                ->whereHas('permissionItem', fn ($query) => $query->where('slug', $permissionSlug))
                 ->pluck('role_id');
 
             if ($roleIds->isEmpty()) {
@@ -189,16 +277,31 @@ class SpecialOrderService
                 ->whereIn('role_id', $roleIds)
                 ->pluck('id');
 
+            $priceLine = "{$specialOrder->final_price} KWD instead of {$specialOrder->original_amount_due} KWD ({$specialOrder->discount_percentage}% discount)";
+            $priceLineAr = "{$specialOrder->final_price} د.ك بدلاً من {$specialOrder->original_amount_due} د.ك (خصم {$specialOrder->discount_percentage}%)";
+
+            if ($step === 'ceo') {
+                $title = 'Special Order CEO Approval Needed';
+                $body = "Special order {$specialOrder->order_number} was confirmed by the home delivery manager and needs CEO approval: {$priceLine}.";
+                $titleAr = 'طلب خاص بانتظار موافقة المدير التنفيذي';
+                $bodyAr = "تم تأكيد الطلب الخاص {$specialOrder->order_number} من مدير التوصيل المنزلي وبانتظار موافقة المدير التنفيذي: {$priceLineAr}.";
+            } else {
+                $title = 'Special Order Confirmation Needed';
+                $body = "Special order {$specialOrder->order_number} needs home delivery manager confirmation: {$priceLine}.";
+                $titleAr = 'طلب خاص بانتظار تأكيد مدير التوصيل';
+                $bodyAr = "الطلب الخاص {$specialOrder->order_number} بانتظار تأكيد مدير التوصيل المنزلي: {$priceLineAr}.";
+            }
+
             foreach ($adminIds as $adminId) {
                 sendNotification(
                     $adminId,
                     null,
-                    'Special Order Approval Needed',
-                    "Special order {$specialOrder->order_number} needs approval: {$specialOrder->final_price} KWD instead of {$specialOrder->original_amount_due} KWD ({$specialOrder->discount_percentage}% discount).",
+                    $title,
+                    $body,
                     'special_order',
                     $this->notificationData($specialOrder),
-                    'طلب خاص بانتظار الموافقة',
-                    "الطلب الخاص {$specialOrder->order_number} بانتظار الموافقة: {$specialOrder->final_price} د.ك بدلاً من {$specialOrder->original_amount_due} د.ك (خصم {$specialOrder->discount_percentage}%)."
+                    $titleAr,
+                    $bodyAr
                 );
             }
         } catch (\Throwable $e) {
@@ -209,7 +312,7 @@ class SpecialOrderService
         }
     }
 
-    protected function notifyRequester(SpecialOrder $specialOrder, bool $approved): void
+    protected function notifyRequester(SpecialOrder $specialOrder, string $outcome): void
     {
         if (!$specialOrder->requested_by_id) {
             return;
@@ -217,20 +320,36 @@ class SpecialOrderService
 
         try {
             $reason = $specialOrder->rejection_reason;
+            [$title, $body, $titleAr, $bodyAr] = match ($outcome) {
+                'confirmed' => [
+                    'Special Order Confirmed',
+                    "Special order {$specialOrder->order_number} was confirmed by the home delivery manager and is waiting for CEO approval.",
+                    'تم تأكيد الطلب الخاص',
+                    "تم تأكيد الطلب الخاص {$specialOrder->order_number} من مدير التوصيل المنزلي وبانتظار موافقة المدير التنفيذي.",
+                ],
+                'approved' => [
+                    'Special Order Approved',
+                    "Special order {$specialOrder->order_number} was approved by the CEO.",
+                    'تمت الموافقة على الطلب الخاص',
+                    "تمت موافقة المدير التنفيذي على الطلب الخاص {$specialOrder->order_number}.",
+                ],
+                default => [
+                    'Special Order Rejected',
+                    "Special order {$specialOrder->order_number} was rejected: {$reason}",
+                    'تم رفض الطلب الخاص',
+                    "تم رفض الطلب الخاص {$specialOrder->order_number}: {$reason}",
+                ],
+            };
 
             sendNotification(
                 $specialOrder->requested_by_id,
                 null,
-                $approved ? 'Special Order Approved' : 'Special Order Rejected',
-                $approved
-                    ? "Special order {$specialOrder->order_number} was approved."
-                    : "Special order {$specialOrder->order_number} was rejected: {$reason}",
+                $title,
+                $body,
                 'special_order',
                 $this->notificationData($specialOrder),
-                $approved ? 'تمت الموافقة على الطلب الخاص' : 'تم رفض الطلب الخاص',
-                $approved
-                    ? "تمت الموافقة على الطلب الخاص {$specialOrder->order_number}."
-                    : "تم رفض الطلب الخاص {$specialOrder->order_number}: {$reason}"
+                $titleAr,
+                $bodyAr
             );
         } catch (\Throwable $e) {
             Log::warning('Failed to notify special order requester', [

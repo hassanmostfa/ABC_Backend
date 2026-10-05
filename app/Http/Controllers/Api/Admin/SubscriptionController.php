@@ -12,8 +12,10 @@ use App\Http\Resources\Admin\CustomerSubscriptionResource;
 use App\Http\Resources\Admin\SubscriptionOrderResource;
 use App\Http\Resources\Admin\RefundRequestResource;
 use App\Services\Payment\RefundRequestService;
+use App\Support\SubscriptionPricing;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class SubscriptionController extends BaseApiController
 {
@@ -81,9 +83,25 @@ class SubscriptionController extends BaseApiController
                 });
             }
 
-            $query->orderBy('created_at', 'desc');
-            
-            $subscriptions = $query->paginate($perPage);
+            $sorted = $query->get()
+                ->sortBy(fn (Subscription $subscription) => (int) $subscription->id)
+                ->sortBy(fn (Subscription $subscription) => (int) $subscription->period)
+                ->sortBy(fn (Subscription $subscription) => (int) round(
+                    SubscriptionPricing::forPlan($subscription)['total_after_price'] * 1000
+                ))
+                ->values();
+
+            $page = LengthAwarePaginator::resolveCurrentPage();
+            $subscriptions = new LengthAwarePaginator(
+                $sorted->forPage($page, $perPage)->values(),
+                $sorted->count(),
+                $perPage,
+                $page,
+                [
+                    'path' => LengthAwarePaginator::resolveCurrentPath(),
+                    'query' => $request->query(),
+                ]
+            );
 
             $transformedSubscriptions = SubscriptionResource::collection($subscriptions->items());
 

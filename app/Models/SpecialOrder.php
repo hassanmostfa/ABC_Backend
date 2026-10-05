@@ -11,6 +11,7 @@ class SpecialOrder extends Model
     use HasFactory;
 
     public const STATUS_PENDING = 'pending';
+    public const STATUS_MANAGER_CONFIRMED = 'manager_confirmed';
     public const STATUS_APPROVED = 'approved';
     public const STATUS_REJECTED = 'rejected';
     public const STATUS_CANCELLED = 'cancelled';
@@ -28,6 +29,9 @@ class SpecialOrder extends Model
         'discount_percentage',
         'status',
         'requested_by_id',
+        'confirmed_by_id',
+        'confirmed_at',
+        'confirmation_notes',
         'reviewed_by_id',
         'reviewed_at',
         'review_notes',
@@ -42,6 +46,7 @@ class SpecialOrder extends Model
         'final_price' => 'decimal:3',
         'special_discount' => 'decimal:3',
         'discount_percentage' => 'decimal:2',
+        'confirmed_at' => 'datetime',
         'reviewed_at' => 'datetime',
     ];
 
@@ -53,6 +58,11 @@ class SpecialOrder extends Model
     public function requestedBy(): BelongsTo
     {
         return $this->belongsTo(Admin::class, 'requested_by_id');
+    }
+
+    public function confirmedBy(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class, 'confirmed_by_id');
     }
 
     public function reviewedBy(): BelongsTo
@@ -73,6 +83,11 @@ class SpecialOrder extends Model
     public function isPending(): bool
     {
         return $this->status === self::STATUS_PENDING;
+    }
+
+    public function isManagerConfirmed(): bool
+    {
+        return $this->status === self::STATUS_MANAGER_CONFIRMED;
     }
 
     public function draft(): array

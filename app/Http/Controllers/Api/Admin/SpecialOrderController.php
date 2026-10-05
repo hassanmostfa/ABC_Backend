@@ -21,8 +21,8 @@ class SpecialOrderController extends BaseApiController
     ) {}
 
     /**
-     * Dedicated login for the special-order approval page. Only admins who can view and
-     * approve/reject special orders are allowed in.
+     * Dedicated login for the special-order approval page. Home delivery managers and the CEO
+     * are allowed in.
      */
     public function login(Request $request): JsonResponse
     {
@@ -42,10 +42,7 @@ class SpecialOrderController extends BaseApiController
             return $this->errorResponse('حسابك غير مفعل الرجاء التواصل مع الادارة', 401);
         }
 
-        if (
-            !$admin->hasPermission(SpecialOrderService::APPROVAL_PERMISSION, 'view')
-            || !$admin->hasPermission(SpecialOrderService::APPROVAL_PERMISSION, 'edit')
-        ) {
+        if (!$this->canUseApprovalPortal($admin)) {
             return $this->errorResponse('ليس لديك صلاحية الدخول إلى صفحة اعتماد الطلبات الخاصة', 403);
         }
 
@@ -102,14 +99,14 @@ class SpecialOrderController extends BaseApiController
     {
         $request->validate([
             'search' => 'nullable|string|max:1000',
-            'status' => 'nullable|in:pending,approved,rejected,cancelled',
+            'status' => 'nullable|in:pending,manager_confirmed,approved,rejected,cancelled',
             'payment_method' => 'nullable|in:cash,wallet,online_link',
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date|after_or_equal:date_from',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
-        $query = SpecialOrder::with(['customer', 'requestedBy', 'reviewedBy'])
+        $query = SpecialOrder::with(['customer', 'requestedBy', 'confirmedBy', 'reviewedBy'])
             ->orderByDesc('created_at');
 
         if ($search = $request->input('search')) {
@@ -167,7 +164,7 @@ class SpecialOrderController extends BaseApiController
 
             return $this->createdResponse(
                 new SpecialOrderResource($specialOrder),
-                'Special order submitted for approval'
+                'Special order submitted for home delivery manager confirmation'
             );
         } catch (\Exception $e) {
             $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 400;
@@ -184,6 +181,7 @@ class SpecialOrderController extends BaseApiController
         $specialOrder = SpecialOrder::with([
             'customer',
             'requestedBy',
+            'confirmedBy',
             'reviewedBy',
             'orderCheckout',
             'order.customer',
@@ -200,7 +198,51 @@ class SpecialOrderController extends BaseApiController
     }
 
     /**
-     * Approve the special order: create the order (or its payment link) at the discounted price.
+     * Home delivery manager confirmation. The order and payment link are not created yet.
+     */
+    public function confirm(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $specialOrder = SpecialOrder::find($id);
+
+        if (!$specialOrder) {
+            return $this->notFoundResponse('Special order not found');
+        }
+
+        try {
+            $admin = $request->user();
+            $result = $this->specialOrderService->confirm(
+                $specialOrder,
+                $admin instanceof Admin ? $admin : null,
+                $validated['notes'] ?? null
+            );
+
+            if (!$result['success']) {
+                return $this->errorResponse($result['message'], 400);
+            }
+
+            logAdminActivity('confirmed', 'SpecialOrder', $id, [
+                'order_number' => $specialOrder->order_number,
+            ]);
+
+            $result['special_order']->load(['customer', 'requestedBy', 'confirmedBy', 'reviewedBy']);
+
+            return $this->successResponse(
+                new SpecialOrderResource($result['special_order']),
+                $result['message']
+            );
+        } catch (\Exception $e) {
+            $code = is_numeric($e->getCode()) && $e->getCode() > 0 ? (int) $e->getCode() : 500;
+
+            return $this->errorResponse($e->getMessage(), $code);
+        }
+    }
+
+    /**
+     * CEO approval: create the order, or send its payment link, at the discounted price.
      */
     public function approve(Request $request, int $id): JsonResponse
     {
@@ -231,7 +273,7 @@ class SpecialOrderController extends BaseApiController
                 'order_id' => $result['special_order']->order_id,
             ]);
 
-            $result['special_order']->load(['customer', 'requestedBy', 'reviewedBy', 'orderCheckout', 'order']);
+            $result['special_order']->load(['customer', 'requestedBy', 'confirmedBy', 'reviewedBy', 'orderCheckout', 'order']);
 
             return $this->successResponse([
                 'special_order' => new SpecialOrderResource($result['special_order']),
@@ -255,7 +297,15 @@ class SpecialOrderController extends BaseApiController
             return $this->notFoundResponse('Special order not found');
         }
 
+        if (!$specialOrder->isPending() && !$specialOrder->isManagerConfirmed()) {
+            return $this->errorResponse('This special order has already been reviewed.', 400);
+        }
+
         $admin = $request->user();
+        if (!$admin instanceof Admin || !$this->canRejectAtCurrentStep($admin, $specialOrder)) {
+            return $this->errorResponse('You can reject this special order only at your approval step.', 403);
+        }
+
         $result = $this->specialOrderService->reject(
             $specialOrder,
             $request->validated('reason'),
@@ -271,7 +321,7 @@ class SpecialOrderController extends BaseApiController
             'reason' => $request->validated('reason'),
         ]);
 
-        $result['special_order']->load(['customer', 'requestedBy', 'reviewedBy']);
+        $result['special_order']->load(['customer', 'requestedBy', 'confirmedBy', 'reviewedBy']);
 
         return $this->successResponse(
             new SpecialOrderResource($result['special_order']),
@@ -303,10 +353,38 @@ class SpecialOrderController extends BaseApiController
      */
     private function portalPermissions(Admin $admin): array
     {
+        $canConfirm = $admin->hasPermission(SpecialOrderService::CONFIRMATION_PERMISSION, 'edit');
+        $canApprove = $admin->hasPermission(SpecialOrderService::APPROVAL_PERMISSION, 'edit');
+
         return [
-            'can_view' => $admin->hasPermission(SpecialOrderService::APPROVAL_PERMISSION, 'view'),
-            'can_approve' => $admin->hasPermission(SpecialOrderService::APPROVAL_PERMISSION, 'edit'),
-            'can_reject' => $admin->hasPermission(SpecialOrderService::APPROVAL_PERMISSION, 'edit'),
+            'can_view' => $admin->hasPermission(SpecialOrderService::CONFIRMATION_PERMISSION, 'view')
+                || $admin->hasPermission(SpecialOrderService::APPROVAL_PERMISSION, 'view'),
+            'can_confirm' => $canConfirm,
+            'can_approve' => $canApprove,
+            'can_reject' => $canConfirm || $canApprove,
         ];
+    }
+
+    private function canUseApprovalPortal(Admin $admin): bool
+    {
+        $canConfirm = $admin->hasPermission(SpecialOrderService::CONFIRMATION_PERMISSION, 'view')
+            && $admin->hasPermission(SpecialOrderService::CONFIRMATION_PERMISSION, 'edit');
+        $canApprove = $admin->hasPermission(SpecialOrderService::APPROVAL_PERMISSION, 'view')
+            && $admin->hasPermission(SpecialOrderService::APPROVAL_PERMISSION, 'edit');
+
+        return $canConfirm || $canApprove;
+    }
+
+    private function canRejectAtCurrentStep(Admin $admin, SpecialOrder $specialOrder): bool
+    {
+        if ($specialOrder->isPending()) {
+            return $admin->hasPermission(SpecialOrderService::CONFIRMATION_PERMISSION, 'edit');
+        }
+
+        if ($specialOrder->isManagerConfirmed()) {
+            return $admin->hasPermission(SpecialOrderService::APPROVAL_PERMISSION, 'edit');
+        }
+
+        return false;
     }
 }
