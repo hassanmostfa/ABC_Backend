@@ -4,6 +4,7 @@ namespace App\Repositories\Complaints;
 
 use App\Enums\ComplaintStatus;
 use App\Mail\ComplaintAcknowledgementMail;
+use App\Mail\ComplaintActionRequiredMail;
 use App\Models\Complaint;
 use App\Models\ComplaintAttachment;
 use App\Models\ComplaintAudit;
@@ -203,6 +204,7 @@ class ComplaintRepository implements ComplaintRepositoryInterface
             }
 
             $this->sendAcknowledgement($complaint);
+            $this->notifyActionTeam($complaint);
             $this->detectRepeatComplaint($complaint);
 
             logAdminActivity('created', 'Complaint', $complaint->id, [
@@ -701,6 +703,25 @@ class ComplaintRepository implements ComplaintRepositoryInterface
                     'message' => $e->getMessage(),
                 ]);
             }
+        }
+    }
+
+    protected function notifyActionTeam(Complaint $complaint): void
+    {
+        $recipients = config('complaints.action_emails', []);
+
+        if ($recipients === []) {
+            return;
+        }
+
+        try {
+            Mail::to($recipients)->send(new ComplaintActionRequiredMail($complaint));
+        } catch (\Exception $e) {
+            Log::warning('Failed to send complaint action email', [
+                'complaint_id' => $complaint->id,
+                'recipients' => $recipients,
+                'message' => $e->getMessage(),
+            ]);
         }
     }
 
