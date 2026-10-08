@@ -25,6 +25,8 @@ class CustomerResource extends JsonResource
             'email' => $this->email,
             'points' => (int) ($this->points ?? 0),
             'current_language' => $this->current_language ?? 'en',
+            'device_platform' => $this->device_platform,
+            'app_version' => $this->app_version,
             'unread_notifications_count' => $this->getUnreadNotificationsCount($this->id),
             'is_active' => (bool) $this->is_active,
             'wallet' => $this->whenLoaded('wallet', function () {

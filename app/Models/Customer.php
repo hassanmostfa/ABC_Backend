@@ -26,6 +26,8 @@ class Customer extends Authenticatable
         'is_completed',
         'points',
         'current_language',
+        'device_platform',
+        'app_version',
         'referral_code',
         'referred_by',
     ];

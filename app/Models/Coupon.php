@@ -12,6 +12,8 @@ class Coupon extends Model
     public const TYPE_GENERAL = 'general';
     public const TYPE_PRODUCT_VARIANT = 'product_variant';
     public const TYPE_WELCOME = 'welcome';
+    public const TYPE_WINBACK = 'winback';
+    public const TYPE_TOP_CUSTOMER = 'top_customer';
 
     protected $fillable = [
         'code',
@@ -61,5 +63,10 @@ class Coupon extends Model
     public function productVariants()
     {
         return $this->belongsToMany(ProductVariant::class, 'coupon_product_variant');
+    }
+
+    public function deviceUsages()
+    {
+        return $this->hasMany(CouponDeviceUsage::class);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Customer;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Auth\AuthenticationException;
@@ -27,6 +28,38 @@ class ApiAuth
             ], 401);
         }
 
+        $this->captureCustomerAppInfo($request);
+
         return $next($request);
+    }
+
+    /**
+     * Store the last known app platform and version when the mobile app sends them.
+     * Missing or invalid headers are ignored so the request still succeeds.
+     */
+    private function captureCustomerAppInfo(Request $request): void
+    {
+        $customer = auth('sanctum')->user();
+        if (!$customer instanceof Customer) {
+            return;
+        }
+
+        $updates = [];
+
+        $platform = strtolower(trim((string) $request->header('X-Device-Platform', '')));
+        if (in_array($platform, ['ios', 'android'], true) && $customer->device_platform !== $platform) {
+            $updates['device_platform'] = $platform;
+        }
+
+        $version = trim((string) $request->header('X-App-Version', ''));
+        if ($version !== '' && strlen($version) <= 32 && $customer->app_version !== $version) {
+            $updates['app_version'] = $version;
+        }
+
+        if ($updates === []) {
+            return;
+        }
+
+        $customer->update($updates);
     }
 }

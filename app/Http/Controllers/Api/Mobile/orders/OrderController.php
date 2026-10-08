@@ -14,6 +14,7 @@ use App\Models\Setting;
 use App\Repositories\Orders\OrderRepositoryInterface;
 use App\Services\Orders\OrderCancellationService;
 use App\Services\Orders\OrderService;
+use App\Support\DeviceId;
 use App\Jobs\SendOrderCreatedNotificationsJob;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -67,6 +68,7 @@ class OrderController extends BaseApiController
             $orderData = $request->validated();
             $orderData['customer_id'] = $customer->id;
             $orderData['source'] = 'app';
+            $orderData['device_id'] = DeviceId::fromRequest($request);
 
             // Create order using the same service as admin
             $result = $this->orderService->createOrder($orderData);

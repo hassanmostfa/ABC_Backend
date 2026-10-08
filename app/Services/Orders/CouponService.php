@@ -3,9 +3,11 @@
 namespace App\Services\Orders;
 
 use App\Models\Coupon;
+use App\Models\CouponDeviceUsage;
 use App\Models\Customer;
 use App\Models\Setting;
 use App\Repositories\Coupons\CouponRepositoryInterface;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -96,9 +98,15 @@ class CouponService
      *
      * @param  array{variant_ids?: int[]}  $orderContext  Optional: variant_ids for product_variant coupon, order_amount for min check
      */
-    public function validateForApplyCode(string $code, ?int $customerId = null, ?float $orderAmount = null, array $orderContext = []): array
-    {
-        return DB::transaction(function () use ($code, $customerId, $orderAmount, $orderContext) {
+    public function validateForApplyCode(
+        string $code,
+        ?int $customerId = null,
+        ?float $orderAmount = null,
+        array $orderContext = [],
+        ?string $deviceId = null,
+        bool $requireDevice = false
+    ): array {
+        return DB::transaction(function () use ($code, $customerId, $orderAmount, $orderContext, $deviceId, $requireDevice) {
             $coupon = Coupon::query()
                 ->with('productVariants')
                 ->where('code', strtoupper(trim($code)))
@@ -169,6 +177,11 @@ class CouponService
                 }
             }
 
+            $deviceError = $this->deviceUsageError($coupon, $deviceId, $requireDevice);
+            if ($deviceError !== null) {
+                return $deviceError;
+            }
+
             // Note: used_count is NOT incremented here - it will be incremented when order is successfully created
             return [
                 'success' => true,
@@ -191,7 +204,9 @@ class CouponService
         string $couponCode,
         float $orderAmountAfterOffers,
         ?int $customerId = null,
-        array $orderContext = []
+        array $orderContext = [],
+        ?string $deviceId = null,
+        bool $requireDevice = false
     ): array {
         if ($orderAmountAfterOffers <= 0) {
             throw new \InvalidArgumentException('Order amount must be greater than zero to apply a coupon.');
@@ -201,7 +216,9 @@ class CouponService
             $couponCode,
             $customerId,
             $orderAmountAfterOffers,
-            $orderContext
+            $orderContext,
+            $deviceId,
+            $requireDevice
         );
 
         if (!$validation['success']) {
@@ -246,10 +263,15 @@ class CouponService
     }
 
     /**
-     * Increment coupon usage count (call within order creation transaction after order is successfully created)
+     * Increment coupon usage count (call within order creation transaction after order is successfully created).
+     * When a device id is present, also record that this device redeemed the coupon.
      */
-    public function incrementCouponUsage(string $code): bool
-    {
+    public function incrementCouponUsage(
+        string $code,
+        ?string $deviceId = null,
+        ?int $customerId = null,
+        ?int $orderId = null
+    ): bool {
         $coupon = Coupon::where('code', strtoupper(trim($code)))
             ->lockForUpdate()
             ->first();
@@ -258,8 +280,76 @@ class CouponService
             return false;
         }
 
+        if ($deviceId !== null && $deviceId !== '') {
+            CouponDeviceUsage::query()
+                ->where('device_id', $deviceId)
+                ->lockForUpdate()
+                ->get();
+
+            $deviceError = $this->deviceUsageError($coupon, $deviceId, false);
+            if ($deviceError !== null) {
+                throw new \InvalidArgumentException($deviceError['message']);
+            }
+
+            try {
+                CouponDeviceUsage::create([
+                    'coupon_id' => $coupon->id,
+                    'customer_id' => $customerId,
+                    'order_id' => $orderId,
+                    'device_id' => $deviceId,
+                    'device_scope' => CouponDeviceUsage::scopeFor($coupon),
+                ]);
+            } catch (QueryException $e) {
+                if ((string) $e->getCode() === '23000') {
+                    throw new \InvalidArgumentException($this->deviceReuseMessage($coupon));
+                }
+
+                throw $e;
+            }
+        }
+
         $coupon->increment('used_count');
         return true;
+    }
+
+    /**
+     * @return array{success: false, message: string}|null
+     */
+    private function deviceUsageError(Coupon $coupon, ?string $deviceId, bool $requireDevice): ?array
+    {
+        if ($deviceId === null || $deviceId === '') {
+            if (!$requireDevice) {
+                return null;
+            }
+
+            return [
+                'success' => false,
+                'message' => 'A valid device id is required to use this coupon.',
+            ];
+        }
+
+        $alreadyUsed = CouponDeviceUsage::query()
+            ->where('device_id', $deviceId)
+            ->where('device_scope', CouponDeviceUsage::scopeFor($coupon))
+            ->exists();
+
+        if (!$alreadyUsed) {
+            return null;
+        }
+
+        return [
+            'success' => false,
+            'message' => $this->deviceReuseMessage($coupon),
+        ];
+    }
+
+    private function deviceReuseMessage(Coupon $coupon): string
+    {
+        if ($coupon->type === Coupon::TYPE_WELCOME) {
+            return 'A welcome coupon has already been used on this device.';
+        }
+
+        return 'This coupon has already been used on this device.';
     }
 
     /**

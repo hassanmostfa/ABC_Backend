@@ -22,6 +22,7 @@ use App\Services\ERP\ErpOrderService;
 use App\Jobs\DispatchErpOrderJob;
 use App\Jobs\SendOrderCreatedNotificationsJob;
 use App\Jobs\SendPaymentLinkSmsJob;
+use App\Support\DeviceId;
 use App\Support\PaymentCreatorResolver;
 
 class OrderService
@@ -254,6 +255,7 @@ class OrderService
             'src',
             'coupons_discount',
             'coupon_code',
+            'device_id',
             'acting_admin_id',
             'created_by_id',
             'created_by_type',
@@ -407,7 +409,16 @@ class OrderService
         }
 
         if ($draft->appliedCouponCode) {
-            $this->couponService->incrementCouponUsage($draft->appliedCouponCode);
+            $deviceId = DeviceId::normalize($draft->requestData['device_id'] ?? null);
+            $recorded = $this->couponService->incrementCouponUsage(
+                $draft->appliedCouponCode,
+                $deviceId,
+                $order->customer_id ? (int) $order->customer_id : null,
+                $order->id
+            );
+            if (!$recorded) {
+                throw new \InvalidArgumentException('Invalid coupon code.');
+            }
         }
 
         $invoiceAmounts = $draft->invoiceAmounts;
@@ -1124,6 +1135,8 @@ class OrderService
         }
 
         $orderAmountAfterOffers = max(0, $totalAmount - $offerDiscount);
+        $source = $data['source'] ?? 'call_center';
+        $deviceId = DeviceId::normalize($data['device_id'] ?? null);
 
         $resolved = $this->couponService->resolveDiscountForOrder(
             $couponCode,
@@ -1132,7 +1145,9 @@ class OrderService
             [
                 'variant_ids' => array_values(array_unique($variantIds)),
                 'order_items' => $orderItemsData,
-            ]
+            ],
+            $deviceId,
+            in_array($source, ['app', 'web'], true)
         );
 
         return [

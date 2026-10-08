@@ -13,6 +13,8 @@ Schedule::command('warehouse:sync-stock')->everyFiveMinutes()->withoutOverlappin
 Schedule::command('orders:expire-checkouts')->hourly()->withoutOverlapping();
 Schedule::command('orders:sync-erp-status')->hourly()->withoutOverlapping();
 Schedule::command('complaints:send-target-reminders')->dailyAt('09:00')->withoutOverlapping();
+Schedule::command('customers:send-winback-coupons')->dailyAt('10:00')->withoutOverlapping();
+Schedule::command('customers:send-top-customer-coupons')->monthlyOn(1, '11:00')->withoutOverlapping();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());

@@ -17,6 +17,7 @@ use App\Support\SubscriptionPricing;
 use App\Support\SubscriptionSize;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 
 class SubscriptionController extends BaseApiController
@@ -44,6 +45,7 @@ class SubscriptionController extends BaseApiController
             'packaging' => 'nullable|integer|min:1',
             'period' => 'nullable|in:3,6,12',
             'size' => 'nullable|string|max:100',
+            'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
         try {
@@ -134,7 +136,9 @@ class SubscriptionController extends BaseApiController
                 });
             }
 
-            $subscriptions = $query->get()
+            $perPage = (int) $request->input('per_page', 15);
+
+            $sorted = $query->get()
                 ->sortBy(fn (Subscription $subscription) => (int) $subscription->id)
                 ->sortBy(fn (Subscription $subscription) => (int) $subscription->period)
                 ->sortBy(fn (Subscription $subscription) => (int) round(
@@ -142,11 +146,31 @@ class SubscriptionController extends BaseApiController
                 ))
                 ->values();
 
+            $page = LengthAwarePaginator::resolveCurrentPage();
+            $subscriptions = new LengthAwarePaginator(
+                $sorted->forPage($page, $perPage)->values(),
+                $sorted->count(),
+                $perPage,
+                $page,
+                [
+                    'path' => LengthAwarePaginator::resolveCurrentPath(),
+                    'query' => $request->query(),
+                ]
+            );
+
             $response = [
                 'success' => true,
                 'message' => 'Subscriptions retrieved successfully',
-                'data' => SubscriptionResource::collection($subscriptions),
+                'data' => SubscriptionResource::collection($subscriptions->items()),
                 'available_sizes' => $availableSizes,
+                'pagination' => [
+                    'current_page' => $subscriptions->currentPage(),
+                    'last_page' => $subscriptions->lastPage(),
+                    'per_page' => $subscriptions->perPage(),
+                    'total' => $subscriptions->total(),
+                    'from' => $subscriptions->firstItem(),
+                    'to' => $subscriptions->lastItem(),
+                ],
             ];
 
             // Add filters to response if any were applied

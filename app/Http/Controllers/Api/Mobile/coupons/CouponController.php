@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Requests\Mobile\ApplyCouponRequest;
 use App\Models\Coupon;
 use App\Services\Orders\CouponService;
+use App\Support\DeviceId;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -24,12 +25,15 @@ class CouponController extends BaseApiController
         $customerId = Auth::guard('sanctum')->id();
         $orderAmount = $request->validated('order_amount');
         $variantIds = $request->validated('variant_ids') ?? [];
+        $deviceId = DeviceId::fromRequest($request);
 
         $result = $this->couponService->validateForApplyCode(
             $request->validated('code'),
             $customerId,
             $orderAmount !== null ? (float) $orderAmount : null,
-            ['variant_ids' => $variantIds]
+            ['variant_ids' => $variantIds],
+            $deviceId,
+            true
         );
 
         if (!$result['success']) {
