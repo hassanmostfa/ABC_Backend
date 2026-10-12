@@ -174,6 +174,8 @@ class OrderService
             $offerDiscount += $offerResult['offerDiscount'];
         }
 
+        $this->orderItemService->assertSufficientStock($orderItemsData);
+
         $couponResolution = $this->resolveCouponsDiscountForOrder($data, $totalAmount, $offerDiscount, $orderItemsData);
         $couponsDiscount = $couponResolution['coupons_discount'];
         $appliedCouponCode = $couponResolution['coupon_code'];

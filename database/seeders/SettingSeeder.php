@@ -81,6 +81,10 @@ class SettingSeeder extends Seeder
                 'value' => '1', // 1 = sync stock from ERP, 0 = skip ERP stock sync
             ],
             [
+                'key' => 'order_stock_check_enabled',
+                'value' => '1', // 1 = reject orders that exceed variant stock, 0 = create the order anyway
+            ],
+            [
                 'key' => 'slot_interval',
                 'value' => '720', // Slot interval (in minutes)
             ],

@@ -108,6 +108,8 @@ class OctopusOrderService
                 $offerDiscount += $offerResult['offerDiscount'];
             }
 
+            app(OrderItemService::class)->assertSufficientStock($orderItemsData);
+
             // Apply line tax
             $taxRate = (float) \App\Models\Setting::getValue('tax', 0.15);
             foreach ($orderItemsData as &$row) {
@@ -284,6 +286,20 @@ class OctopusOrderService
      */
     protected function processItemsByShortItem(array $items): array
     {
+        $mergedItems = [];
+        foreach ($items as $item) {
+            $shortItem = (string) $item['short_item'];
+            if (isset($mergedItems[$shortItem])) {
+                $mergedItems[$shortItem]['quantity'] += (int) $item['quantity'];
+            } else {
+                $mergedItems[$shortItem] = [
+                    'short_item' => $shortItem,
+                    'quantity' => (int) $item['quantity'],
+                ];
+            }
+        }
+        $items = array_values($mergedItems);
+
         $shortItems = collect($items)->pluck('short_item')->unique()->values()->all();
         $variants = ProductVariant::with('product')
             ->whereIn('short_item', $shortItems)
@@ -305,7 +321,7 @@ class OctopusOrderService
             $quantity = $item['quantity'];
 
             $availableQuantity = $variant->quantity ?? 0;
-            if ($availableQuantity < $quantity) {
+            if (OrderItemService::stockCheckEnabled() && $availableQuantity < $quantity) {
                 $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
                 $sizeInfo = $variant->size ? ' - ' . $variant->size : '';
                 throw new \Exception(

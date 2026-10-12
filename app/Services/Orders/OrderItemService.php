@@ -5,6 +5,7 @@ namespace App\Services\Orders;
 use App\Repositories\Orders\OrderItemRepositoryInterface;
 use App\Models\OrderItem;
 use App\Models\ProductVariant;
+use App\Models\Setting;
 use Illuminate\Support\Facades\DB;
 
 class OrderItemService
@@ -14,6 +15,20 @@ class OrderItemService
     public function __construct(OrderItemRepositoryInterface $orderItemRepository)
     {
         $this->orderItemRepository = $orderItemRepository;
+    }
+
+    /**
+     * Setting order_stock_check_enabled: 1/true checks stock, 0/false creates the order anyway.
+     */
+    public static function stockCheckEnabled(): bool
+    {
+        $value = Setting::getValue('order_stock_check_enabled', '1');
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes'], true);
     }
 
     /**
@@ -61,7 +76,7 @@ class OrderItemService
             $quantity = $item['quantity'];
             
             $availableQuantity = $variant->quantity ?? 0;
-            if ($availableQuantity < $quantity) {
+            if (self::stockCheckEnabled() && $availableQuantity < $quantity) {
                 DB::rollBack();
                 $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
                 $sizeInfo = $variant->size ? ' - ' . $variant->size : '';
@@ -98,6 +113,50 @@ class OrderItemService
             'orderItemsData' => $orderItemsData,
             'totalAmount' => $totalAmount
         ];
+    }
+
+    /**
+     * Reject the order when the final lines (cart items plus offer conditions and rewards)
+     * ask for more than the variant currently has.
+     *
+     * @param  array<int, array<string, mixed>>  $orderItemsData
+     * @throws \Exception
+     */
+    public function assertSufficientStock(array $orderItemsData): void
+    {
+        if (!self::stockCheckEnabled()) {
+            return;
+        }
+
+        $quantityByVariant = collect($orderItemsData)
+            ->filter(fn ($row) => !empty($row['variant_id']))
+            ->groupBy(fn ($row) => (int) $row['variant_id'])
+            ->map(fn ($rows) => (int) $rows->sum('quantity'));
+
+        if ($quantityByVariant->isEmpty()) {
+            return;
+        }
+
+        $variants = ProductVariant::with('product')
+            ->whereIn('id', $quantityByVariant->keys()->all())
+            ->get()
+            ->keyBy('id');
+
+        foreach ($quantityByVariant as $variantId => $quantity) {
+            $variant = $variants->get($variantId);
+            if (!$variant) {
+                throw new \Exception('Variant not found: ' . $variantId);
+            }
+
+            $availableQuantity = (int) ($variant->quantity ?? 0);
+            if (self::stockCheckEnabled() && $availableQuantity < $quantity) {
+                $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
+                $sizeInfo = $variant->size ? ' - ' . $variant->size : '';
+                throw new \Exception(
+                    "Insufficient quantity for {$productName}{$sizeInfo}. Available: {$availableQuantity}, Requested: {$quantity}"
+                );
+            }
+        }
     }
 
     /**
@@ -438,7 +497,7 @@ class OrderItemService
                 $availableQuantity = $variant->quantity ?? 0;
             }
             
-            if ($availableQuantity < $quantity) {
+            if (self::stockCheckEnabled() && $availableQuantity < $quantity) {
                 DB::rollBack();
                 $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
                 $sizeInfo = $variant->size ? ' - ' . $variant->size : '';

@@ -122,21 +122,20 @@ class OfferService
                         'condition'
                     );
 
-                    // Find existing item index (if exists)
-                    $existingItemIndex = collect($orderItemsData)->search(function ($item) use ($variant) {
-                        return isset($item['variant_id']) && $item['variant_id'] == $variant->id;
-                    });
+                    $existingItemIndex = $this->findItemIndexByVariantId($orderItemsData, (int) $variant->id);
 
-                    $conditionQuantity = $condition->quantity;
+                    $conditionQuantity = (int) $condition->quantity;
+                    $requiredQuantity = $existingItemIndex !== false
+                        ? (int) $orderItemsData[$existingItemIndex]['quantity'] + $conditionQuantity
+                        : $conditionQuantity;
 
-                    // Check if variant has sufficient quantity
-                    $availableQuantity = $variant->quantity ?? 0;
-                    if ($availableQuantity < $conditionQuantity) {
+                    $availableQuantity = (int) ($variant->quantity ?? 0);
+                    if (OrderItemService::stockCheckEnabled() && $availableQuantity < $requiredQuantity) {
                         DB::rollBack();
                         $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
                         $sizeInfo = $variant->size ? ' - ' . $variant->size : '';
                         throw new \Exception(
-                            "Insufficient quantity for offer condition product {$productName}{$sizeInfo}. Available: {$availableQuantity}, Required: {$conditionQuantity}"
+                            "Insufficient quantity for offer condition product {$productName}{$sizeInfo}. Available: {$availableQuantity}, Required: {$requiredQuantity}"
                         );
                     }
 
@@ -207,7 +206,7 @@ class OfferService
                         : $rewardQuantity;
 
                     $availableQuantity = $variant->quantity ?? 0;
-                    if ($availableQuantity < $requiredQuantity) {
+                    if (OrderItemService::stockCheckEnabled() && $availableQuantity < $requiredQuantity) {
                         DB::rollBack();
                         $sizeInfo = $variant->size ? ' - ' . $variant->size : '';
                         throw new \Exception(
@@ -264,21 +263,20 @@ class OfferService
                         'condition'
                     );
 
-                    // Find existing item index (if exists)
-                    $existingItemIndex = collect($orderItemsData)->search(function ($item) use ($variant) {
-                        return isset($item['variant_id']) && $item['variant_id'] == $variant->id;
-                    });
+                    $existingItemIndex = $this->findItemIndexByVariantId($orderItemsData, (int) $variant->id);
 
-                    $conditionQuantity = $condition->quantity;
+                    $conditionQuantity = (int) $condition->quantity;
+                    $requiredQuantity = $existingItemIndex !== false
+                        ? (int) $orderItemsData[$existingItemIndex]['quantity'] + $conditionQuantity
+                        : $conditionQuantity;
 
-                    // Check if variant has sufficient quantity
-                    $availableQuantity = $variant->quantity ?? 0;
-                    if ($availableQuantity < $conditionQuantity) {
+                    $availableQuantity = (int) ($variant->quantity ?? 0);
+                    if (OrderItemService::stockCheckEnabled() && $availableQuantity < $requiredQuantity) {
                         DB::rollBack();
                         $productName = $variant->product->name_en ?? $variant->product->name_ar ?? 'Product';
                         $sizeInfo = $variant->size ? ' - ' . $variant->size : '';
                         throw new \Exception(
-                            "Insufficient quantity for offer condition product {$productName}{$sizeInfo}. Available: {$availableQuantity}, Required: {$conditionQuantity}"
+                            "Insufficient quantity for offer condition product {$productName}{$sizeInfo}. Available: {$availableQuantity}, Required: {$requiredQuantity}"
                         );
                     }
 
@@ -412,7 +410,7 @@ class OfferService
                 $rewardQuantity = $reward->quantity;
                 $availableQuantity = $variant->quantity ?? 0;
 
-                if ($availableQuantity < $rewardQuantity) {
+                if (OrderItemService::stockCheckEnabled() && $availableQuantity < $rewardQuantity) {
                     DB::rollBack();
                     $sizeInfo = $variant->size ? ' - ' . $variant->size : '';
                     throw new \Exception(
