@@ -15,6 +15,11 @@ class Setting extends Model
     const TRANSLATABLE_KEYS = ['about', 'terms_and_conditions', 'subscription_terms_and_conditions', 'app_ordering_disabled_message'];
 
     /**
+     * Keys whose value is a JSON array of email addresses
+     */
+    const EMAIL_LIST_KEYS = ['complaint_action_emails'];
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var array<int, string>
@@ -67,5 +72,39 @@ class Setting extends Model
         }
 
         return $setting->value ?? $default;
+    }
+
+    /**
+     * Parse a stored email list (JSON array, or comma/newline separated string)
+     * into unique, trimmed, lowercase addresses.
+     *
+     * @return array<int, string>
+     */
+    public static function parseEmailList(?string $raw): array
+    {
+        $raw = trim((string) $raw);
+        if ($raw === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        $items = is_array($decoded) ? $decoded : preg_split('/[,;\s]+/', $raw);
+
+        $emails = array_map(fn ($email) => is_string($email) ? strtolower(trim($email)) : '', $items);
+
+        return array_values(array_unique(array_filter($emails)));
+    }
+
+    /**
+     * Get an email list setting; falls back to $default only when the setting row does not exist.
+     *
+     * @param array<int, string> $default
+     * @return array<int, string>
+     */
+    public static function getEmailList(string $key, array $default = []): array
+    {
+        $setting = self::where('key', $key)->first();
+
+        return $setting ? self::parseEmailList($setting->value) : $default;
     }
 }

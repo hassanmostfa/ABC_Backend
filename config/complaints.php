@@ -9,6 +9,8 @@ return [
     |
     | These addresses receive an email each time a complaint is registered
     | so the team can take action. Comma-separated in COMPLAINT_ACTION_EMAILS.
+    | Managed at runtime via the "complaint_action_emails" setting; this list
+    | only seeds that setting and is used if the setting row is missing.
     |
     */
 

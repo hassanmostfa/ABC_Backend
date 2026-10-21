@@ -10,6 +10,7 @@ use App\Models\ComplaintAttachment;
 use App\Models\ComplaintAudit;
 use App\Models\ComplaintCommunication;
 use App\Models\ComplaintStatusHistory;
+use App\Models\Setting;
 use App\Traits\ManagesFileUploads;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -708,7 +709,7 @@ class ComplaintRepository implements ComplaintRepositoryInterface
 
     protected function notifyActionTeam(Complaint $complaint): void
     {
-        $recipients = config('complaints.action_emails', []);
+        $recipients = Setting::getEmailList('complaint_action_emails', config('complaints.action_emails', []));
 
         if ($recipients === []) {
             return;

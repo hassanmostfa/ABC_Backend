@@ -96,6 +96,10 @@ class SettingSeeder extends Seeder
                 'key' => 'day_offs',
                 'value' => '[]', // Day offs (JSON array, e.g., ["saturday", "sunday"])
             ],
+            [
+                'key' => 'complaint_action_emails',
+                'value' => json_encode(config('complaints.action_emails', [])), // Emails notified on every new complaint (JSON array)
+            ],
             // Payment gateway / method customer codes (configure per provider)
             [
                 'key' => 'cash_customer_code',

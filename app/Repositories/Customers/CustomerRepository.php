@@ -41,6 +41,11 @@ class CustomerRepository implements CustomerRepositoryInterface
             }
         }
 
+        // Filter by account completion
+        if (isset($filters['is_completed'])) {
+            $query->where('is_completed', (bool) $filters['is_completed']);
+        }
+
         // Filter by points range
         if (isset($filters['min_points']) && is_numeric($filters['min_points'])) {
             $query->where('points', '>=', $filters['min_points']);

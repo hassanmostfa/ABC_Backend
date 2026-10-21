@@ -33,6 +33,7 @@ class OfferListFilterRequest extends FormRequest
             'stock_status' => 'nullable|in:in_stock,out_of_stock',
             'search' => 'nullable|string|max:1000',
             'is_subscription' => 'nullable|boolean',
+            'active_only' => 'nullable|boolean',
         ];
     }
 
@@ -51,7 +52,7 @@ class OfferListFilterRequest extends FormRequest
             'is_subscription' => $this->input('is_subscription') !== null ? $this->boolean('is_subscription') : null,
         ];
 
-        if ($activeOnly) {
+        if ($activeOnly || $this->boolean('active_only')) {
             $filters['active_only'] = true;
         }
 

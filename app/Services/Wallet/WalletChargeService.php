@@ -53,32 +53,29 @@ class WalletChargeService
         $totalAmount = $resolved['total_amount'];
         $offer = $resolved['offer'];
 
+        $payment = null;
+
         try {
-            DB::beginTransaction();
-
-            $reference = $this->generateReference();
-            $paymentNumber = $this->generatePaymentNumber();
-
-            $payment = $this->paymentRepository->create(array_merge([
+            // Committed before calling Ottu: once an order_no reaches Ottu it can never be reused,
+            // so a failed attempt must keep its reference instead of rolling it back.
+            $payment = DB::transaction(fn () => $this->paymentRepository->create(array_merge([
                 'invoice_id' => null,
                 'customer_id' => $customerId,
                 'wallet_charge_offer_id' => $offer?->id,
-                'reference' => $reference,
+                'reference' => $this->generateReference(),
                 'type' => Payment::TYPE_WALLET_CHARGE,
-                'payment_number' => $paymentNumber,
+                'payment_number' => $this->generatePaymentNumber(),
                 'amount' => $amount,
                 'bonus_amount' => $bonusAmount,
                 'total_amount' => $totalAmount,
                 'method' => 'online',
                 'status' => 'pending',
                 'payment_gateway_src' => $paymentGatewaySrc,
-            ], PaymentCreatorResolver::forCustomer($customerId)));
+            ], PaymentCreatorResolver::forCustomer($customerId))));
 
             $paymentLink = $this->ottuService->createWalletChargePayment($payment, $amount, $paymentGatewaySrc);
 
             $payment->update(['payment_link' => $paymentLink]);
-
-            DB::commit();
 
             return [
                 'success' => true,
@@ -90,8 +87,10 @@ class WalletChargeService
                 'offer' => $offer,
             ];
         } catch (\Exception $e) {
-            DB::rollBack();
+            $payment?->update(['status' => 'failed']);
             Log::error('Wallet charge creation failed', [
+                'payment_id' => $payment?->id,
+                'reference' => $payment?->reference,
                 'customer_id' => $customerId,
                 'amount' => $amount,
                 'error' => $e->getMessage(),
@@ -238,6 +237,7 @@ class WalletChargeService
         $lastPayment = Payment::walletCharge()
             ->where('reference', 'LIKE', "WCH-{$year}-%")
             ->orderBy('id', 'desc')
+            ->lockForUpdate()
             ->first();
 
         $seq = $lastPayment ? (int) substr($lastPayment->reference, -6) + 1 : 1;
@@ -252,6 +252,7 @@ class WalletChargeService
         $year = date('Y');
         $lastPayment = Payment::where('payment_number', 'LIKE', 'PAY-' . $year . '-%')
             ->orderBy('payment_number', 'desc')
+            ->lockForUpdate()
             ->first();
 
         $seq = 1;

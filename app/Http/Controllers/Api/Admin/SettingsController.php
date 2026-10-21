@@ -49,6 +49,15 @@ class SettingsController extends BaseApiController
     public function update(Request $request): JsonResponse
     {
         try {
+            $request->merge(['settings' => array_map(function ($settingData) {
+                if (is_array($settingData)
+                    && in_array($settingData['key'] ?? null, Setting::EMAIL_LIST_KEYS, true)
+                    && is_array($settingData['value'] ?? null)) {
+                    $settingData['value'] = json_encode(array_values($settingData['value']));
+                }
+                return $settingData;
+            }, (array) $request->input('settings', []))]);
+
             // Validate request
             $request->validate([
                 'settings' => 'required|array',
@@ -58,6 +67,21 @@ class SettingsController extends BaseApiController
                 'settings.*.translations.en' => 'nullable|string',
                 'settings.*.translations.ar' => 'nullable|string',
             ]);
+
+            $emailErrors = [];
+            foreach ($request->input('settings', []) as $index => $settingData) {
+                if (!in_array($settingData['key'], Setting::EMAIL_LIST_KEYS, true)) {
+                    continue;
+                }
+                foreach (Setting::parseEmailList($settingData['value'] ?? null) as $email) {
+                    if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+                        $emailErrors["settings.{$index}.value"][] = "Invalid email address: {$email}";
+                    }
+                }
+            }
+            if ($emailErrors !== []) {
+                throw \Illuminate\Validation\ValidationException::withMessages($emailErrors);
+            }
 
             DB::beginTransaction();
 
@@ -80,6 +104,8 @@ class SettingsController extends BaseApiController
                                     ['value' => $translationValue]
                                 );
                             }
+                        } elseif (in_array($key, Setting::EMAIL_LIST_KEYS, true)) {
+                            $setting->update(['value' => json_encode(Setting::parseEmailList($value))]);
                         } else {
                             $setting->update(['value' => $value ?? '']);
                         }
