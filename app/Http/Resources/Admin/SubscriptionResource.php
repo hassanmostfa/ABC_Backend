@@ -115,7 +115,9 @@ class SubscriptionResource extends JsonResource
                             'variant_sku' => $variant ? $variant->sku : null,
                             'price' => $originalPrice,
                             'available_quantity' => $variant ? $variant->quantity : null,
-                            'image' => $variant && $variant->image ? url($variant->image) : null,
+                            'image' => $variant && $variant->image
+                                ? $this->getFileUrl($variant->image, 'public', 'no-image.png')
+                                : null,
                             'variant_is_active' => $variant ? (bool) $variant->is_active : null,
                             'required_quantity' => $condition->quantity,
                             'is_active' => (bool) $condition->is_active,
@@ -139,7 +141,9 @@ class SubscriptionResource extends JsonResource
                             'variant_sku' => $variant ? $variant->sku : null,
                             'price' => $originalPrice,
                             'available_quantity' => $variant ? $variant->quantity : null,
-                            'image' => $variant && $variant->image ? url($variant->image) : null,
+                            'image' => $variant && $variant->image
+                                ? $this->getFileUrl($variant->image, 'public', 'no-image.png')
+                                : null,
                             'variant_is_active' => $variant ? (bool) $variant->is_active : null,
                             'reward_quantity' => $reward->quantity,
                             'discount_amount' => $reward->discount_amount ? (float) $reward->discount_amount : null,

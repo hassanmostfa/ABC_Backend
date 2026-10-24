@@ -61,7 +61,11 @@ class SubscriptionController extends BaseApiController
                 'offer.rewards.product',
                 'offer.rewards.productVariant',
                 'offer.charity',
-            ])->active();
+            ])
+                ->active()
+                ->whereHas('offer', function ($offerQuery) {
+                    $offerQuery->active();
+                });
 
             // Filter by period
             if ($period !== null) {

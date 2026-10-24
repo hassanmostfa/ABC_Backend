@@ -3,6 +3,7 @@
 namespace App\Repositories\Customers;
 
 use App\Models\Customer;
+use App\Models\Payment;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 
@@ -20,7 +21,7 @@ class CustomerRepository implements CustomerRepositoryInterface
      */
     public function getAllPaginated(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
-        $query = $this->model->with(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area']);
+        $query = $this->model->with($this->customerRelations());
 
         // Search functionality
         if (isset($filters['search']) && !empty($filters['search'])) {
@@ -82,11 +83,36 @@ class CustomerRepository implements CustomerRepositoryInterface
     }
 
     /**
+     * @return array<int, mixed>
+     */
+    protected function customerRelations(): array
+    {
+        return [
+            'wallet',
+            'addresses.country',
+            'addresses.governorate',
+            'addresses.area',
+            'payments' => function ($query) {
+                $query->where('status', Payment::STATUS_COMPLETED)
+                    ->where(function ($walletQuery) {
+                        $walletQuery->where('type', Payment::TYPE_WALLET_CHARGE)
+                            ->orWhere(function ($spendQuery) {
+                                $spendQuery->where('method', 'wallet')
+                                    ->where('type', '!=', Payment::TYPE_WALLET_CHARGE);
+                            });
+                    })
+                    ->orderByDesc('paid_at')
+                    ->orderByDesc('created_at');
+            },
+        ];
+    }
+
+    /**
      * Get all customers
      */
     public function getAll(): Collection
     {
-        return $this->model->with(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area'])->get();
+        return $this->model->with($this->customerRelations())->get();
     }
 
     /**
@@ -94,7 +120,7 @@ class CustomerRepository implements CustomerRepositoryInterface
      */
     public function findById(int $id): ?Customer
     {
-        return $this->model->with(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area'])->find($id);
+        return $this->model->with($this->customerRelations())->find($id);
     }
 
     /**
@@ -114,7 +140,7 @@ class CustomerRepository implements CustomerRepositoryInterface
         
         if ($customer) {
             $customer->update($data);
-            return $customer->fresh(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area']);
+            return $customer->fresh($this->customerRelations());
         }
 
         return null;
@@ -139,7 +165,7 @@ class CustomerRepository implements CustomerRepositoryInterface
      */
     public function getActive(): Collection
     {
-        return $this->model->with(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area'])->active()->get();
+        return $this->model->with($this->customerRelations())->active()->get();
     }
 
     /**
@@ -147,6 +173,6 @@ class CustomerRepository implements CustomerRepositoryInterface
      */
     public function getInactive(): Collection
     {
-        return $this->model->with(['wallet', 'addresses.country', 'addresses.governorate', 'addresses.area'])->inactive()->get();
+        return $this->model->with($this->customerRelations())->inactive()->get();
     }
 }

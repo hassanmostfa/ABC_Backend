@@ -91,6 +91,14 @@ class Customer extends Authenticatable
     }
 
     /**
+     * Get all payments made by this customer.
+     */
+    public function payments()
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    /**
      * Get the addresses for the customer
      */
     public function addresses()
