@@ -19,7 +19,7 @@ class SubscriptionOrderResource extends JsonResource
             'order_in_month' => (int) $this->order_in_month,
             'scheduled_delivery_date' => $this->scheduled_delivery_date?->format('Y-m-d'),
             'status' => $this->status,
-            'total_amount' => (float) $this->total_amount,
+            'total_amount' => (float) $this->resolvedTotalAmount(),
             'notes' => $this->notes,
             'items' => $this->when($this->relationLoaded('items'), function () use ($lang) {
                 return $this->items->map(function ($item) use ($lang) {

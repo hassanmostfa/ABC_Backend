@@ -93,6 +93,7 @@ class SubscriptionPurchaseService
             'checkout_number' => $this->generateCheckoutNumber(),
             'payload' => [
                 'subscription_id' => $subscription->id,
+                'customer_address_id' => $data['customer_address_id'] ?? null,
                 'offer_id' => $subscription->offer_id,
                 'period' => $subscription->period,
                 'delivery_period_months' => $deliveryPeriodMonths,
@@ -353,6 +354,7 @@ class SubscriptionPurchaseService
                 'points' => $draft['points'] ?? $subscription->points,
                 'monthly_delivery_template' => $draft['monthly_delivery_template'] ?? [],
                 'payment_gateway_src' => $locked->payment_gateway_src,
+                'customer_address_id' => $draft['customer_address_id'] ?? null,
                 'total_before_price' => (float) ($draft['total_before_price'] ?? $subtotal),
                 'total_after_price' => (float) ($draft['total_after_price'] ?? $subtotal),
                 'checkout_number' => $locked->checkout_number,
@@ -405,13 +407,23 @@ class SubscriptionPurchaseService
         ]);
 
         $metadata = $customerSubscription->metadata ?? [];
+        $metadataUpdated = false;
+        if ($storedTrackId !== '') {
+            $metadata['payment_track_id'] = $storedTrackId;
+            $metadataUpdated = true;
+        }
+
         if ($subscription->points > 0 && empty($metadata['points_awarded'])) {
             $customer = Customer::query()->find($customerSubscription->customer_id);
             if ($customer) {
                 $this->awardPoints($customer, $subscription->points);
                 $metadata['points_awarded'] = true;
-                $customerSubscription->update(['metadata' => $metadata]);
+                $metadataUpdated = true;
             }
+        }
+
+        if ($metadataUpdated) {
+            $customerSubscription->update(['metadata' => $metadata]);
         }
 
         foreach ($customerSubscription->orders()->get() as $order) {
@@ -610,6 +622,11 @@ class SubscriptionPurchaseService
         
         // Get subscription discount from metadata
         $subscriptionDiscount = (float) ($metadata['subscription_discount'] ?? 0);
+        $offerMonthlyPrices = SubscriptionPricing::monthlyPrices($offer);
+        $offerMonthlyDiscount = max(
+            0,
+            (float) ($offerMonthlyPrices['before'] ?? 0) - (float) ($offerMonthlyPrices['after'] ?? 0)
+        );
         
         // Calculate total value of all items to distribute discount
         $monthItems = $this->distributeItemsForMonth($offer, $ordersPerMonth);
@@ -620,6 +637,8 @@ class SubscriptionPurchaseService
             }
         }
         $totalItemsValue = $singleMonthItemsValue * $periodMonths;
+        $offerDiscountTotal = $offerMonthlyDiscount * $periodMonths;
+        $totalDiscount = $offerDiscountTotal + $subscriptionDiscount;
 
         $totalDeliveries = count($deliverySchedule);
 
@@ -631,7 +650,7 @@ class SubscriptionPurchaseService
 
             $itemsWithDiscounts = $this->applyProportionalDiscounts(
                 $monthItems[$itemsIndex] ?? $monthItems[0],
-                $subscriptionDiscount,
+                $totalDiscount,
                 $totalItemsValue
             );
 

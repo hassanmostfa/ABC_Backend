@@ -28,7 +28,8 @@ class CustomerRepository implements CustomerRepositoryInterface
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'LIKE', "%{$search}%")
                   ->orWhere('phone', 'LIKE', "%{$search}%")
-                  ->orWhere('email', 'LIKE', "%{$search}%");
+                  ->orWhere('email', 'LIKE', "%{$search}%")
+                  ->orWhere('app_version', 'LIKE', "%{$search}%");
             });
         }
 
@@ -39,6 +40,11 @@ class CustomerRepository implements CustomerRepositoryInterface
             } elseif ($filters['status'] === 'inactive') {
                 $query->where('is_active', false);
             }
+        }
+
+        // Filter by mobile platform
+        if (isset($filters['platform']) && $filters['platform'] !== '') {
+            $query->where('device_platform', $filters['platform']);
         }
 
         // Filter by account completion

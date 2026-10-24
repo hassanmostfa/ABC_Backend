@@ -132,7 +132,9 @@ class RefundRequestService
         }
 
         $pendingOrders = $customerSubscription->orders->where('status', 'pending');
-        $refundAmount = round((float) $pendingOrders->sum('total_amount'), 3);
+        $refundAmount = round((float) $pendingOrders->sum(
+            fn ($order) => $order->resolvedTotalAmount()
+        ), 3);
 
         if ($refundAmount <= 0 || $pendingOrders->isEmpty()) {
             return [

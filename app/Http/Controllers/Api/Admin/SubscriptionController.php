@@ -321,7 +321,7 @@ class SubscriptionController extends BaseApiController
                 'subscription.offer.conditions.productVariant',
                 'subscription.offer.rewards.product',
                 'subscription.offer.rewards.productVariant',
-                'invoice',
+                'invoice.payments',
             ])
                 ->withCount([
                     'orders as completed_orders_count' => fn ($q) => $q->where('status', 'delivered'),
@@ -418,7 +418,7 @@ class SubscriptionController extends BaseApiController
                 'subscription.offer.conditions.productVariant',
                 'subscription.offer.rewards.product',
                 'subscription.offer.rewards.productVariant',
-                'invoice',
+                'invoice.payments',
                 'orders' => fn ($q) => $q->orderBy('order_sequence'),
                 'orders.items.product',
                 'orders.items.productVariant',
@@ -471,7 +471,7 @@ class SubscriptionController extends BaseApiController
                 'subscription.offer.conditions.productVariant',
                 'subscription.offer.rewards.product',
                 'subscription.offer.rewards.productVariant',
-                'invoice',
+                'invoice.payments',
                 'orders' => fn ($q) => $q->orderBy('order_sequence'),
                 'orders.items.product',
                 'orders.items.productVariant',
@@ -513,7 +513,11 @@ class SubscriptionController extends BaseApiController
         try {
             $query = SubscriptionOrder::with([
                 'customer',
-                'customerSubscription.subscription.offer',
+                'customerSubscription.subscription.offer.conditions.product',
+                'customerSubscription.subscription.offer.conditions.productVariant',
+                'customerSubscription.subscription.offer.rewards.product',
+                'customerSubscription.subscription.offer.rewards.productVariant',
+                'customerSubscription.invoice.payments',
                 'items.product',
                 'items.productVariant',
             ])->orderBy('created_at', 'desc');
@@ -584,6 +588,36 @@ class SubscriptionController extends BaseApiController
             return response()->json($response);
         } catch (\Exception $e) {
             return $this->serverErrorResponse('An error occurred while retrieving subscription orders: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Show a single subscription order with customer, subscription, items, and payment details.
+     */
+    public function subscriptionOrderShow(int $id): JsonResponse
+    {
+        try {
+            $order = SubscriptionOrder::with([
+                'customer',
+                'customerSubscription.subscription.offer.conditions.product',
+                'customerSubscription.subscription.offer.conditions.productVariant',
+                'customerSubscription.subscription.offer.rewards.product',
+                'customerSubscription.subscription.offer.rewards.productVariant',
+                'customerSubscription.invoice.payments',
+                'items.product',
+                'items.productVariant',
+            ])->find($id);
+
+            if (!$order) {
+                return $this->notFoundResponse('Subscription order not found');
+            }
+
+            return $this->successResponse(
+                new SubscriptionOrderResource($order),
+                'Subscription order retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse('An error occurred while retrieving subscription order: ' . $e->getMessage());
         }
     }
 }

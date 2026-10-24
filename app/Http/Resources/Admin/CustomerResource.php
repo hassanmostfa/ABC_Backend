@@ -24,6 +24,11 @@ class CustomerResource extends JsonResource
             'customer_code' => $this->customer_code,
             'email' => $this->email,
             'points' => (int) ($this->points ?? 0),
+            'wallet_balance' => (float) (
+                $this->relationLoaded('wallet')
+                    ? ($this->wallet->balance ?? 0)
+                    : 0
+            ),
             'current_language' => $this->current_language ?? 'en',
             'device_platform' => $this->device_platform,
             'app_version' => $this->app_version,

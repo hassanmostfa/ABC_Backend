@@ -361,7 +361,14 @@ class SubscriptionController extends BaseApiController
                 ->findOrFail($id);
 
             $ordersQuery = SubscriptionOrder::query()
-                ->with(['items.product', 'items.productVariant'])
+                ->with([
+                    'items.product',
+                    'items.productVariant',
+                    'customerSubscription.subscription.offer.conditions.product',
+                    'customerSubscription.subscription.offer.conditions.productVariant',
+                    'customerSubscription.subscription.offer.rewards.product',
+                    'customerSubscription.subscription.offer.rewards.productVariant',
+                ])
                 ->where('customer_subscription_id', $subscription->id)
                 ->orderBy('order_sequence');
 

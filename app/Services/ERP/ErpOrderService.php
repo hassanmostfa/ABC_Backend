@@ -3,6 +3,7 @@
 namespace App\Services\ERP;
 
 use App\Models\Admin;
+use App\Models\CustomerAddress;
 use App\Models\Order;
 use App\Models\Setting;
 use App\Models\SubscriptionOrder;
@@ -109,6 +110,8 @@ class ErpOrderService
         if (!$order->relationLoaded('customerSubscription')) {
             $order->load('customerSubscription.subscription.offer.charity');
         }
+
+        $order->loadMissing('customerSubscription.invoice.payments');
 
         $payload  = $this->normalizeOrderPayloadPrices($this->buildSubscriptionOrderPayload($order));
         $endpoint = $this->buildEndpoint('/API/Order/SendOrder');
@@ -1426,8 +1429,7 @@ class ErpOrderService
             ? $order->scheduled_delivery_date->toDateString() 
             : $orderDate;
 
-        $customerSubscription = $order->customerSubscription;
-        $totalAmount = (float) $order->total_amount;
+        $totalAmount = $this->resolveSubscriptionErpOrderTotal($order);
         $deliveryFee = 0.00; // Subscription orders typically don't have delivery fees
 
         return [
@@ -1443,8 +1445,42 @@ class ErpOrderService
             'GrossTotal'    => $this->formatErpPrice($totalAmount),
             'TotalTax'      => $this->formatErpPrice(0),
             'TotalDiscount' => $this->formatErpPrice(0),
-            'allItems'      => $this->buildSubscriptionItems($order),
+            'allItems'      => $this->buildSubscriptionItems($order, $totalAmount),
         ];
+    }
+
+    private function resolveSubscriptionErpOrderTotal(SubscriptionOrder $order): float
+    {
+        $resolved = $order->resolvedTotalAmount();
+        $order->loadMissing('customerSubscription.subscription');
+
+        $customerSubscription = $order->customerSubscription;
+        $subscription = $customerSubscription?->subscription;
+
+        if (!$customerSubscription || !$subscription || $subscription->discount_type !== 'free_months') {
+            return $resolved;
+        }
+
+        $freeMonths = (int) ($subscription->discount_free_months ?? 0);
+        if ($freeMonths <= 0) {
+            return $resolved;
+        }
+
+        $totalOrders = (int) ($customerSubscription->total_orders ?? 0);
+        $paidTotal = round((float) ($customerSubscription->total_amount ?? 0), 3);
+        if ($totalOrders <= 0 || $paidTotal <= 0) {
+            return $resolved;
+        }
+
+        $baseOrderAmount = round($paidTotal / $totalOrders, 3);
+        $orderSequence = (int) ($order->order_sequence ?? 0);
+
+        if ($orderSequence === $totalOrders) {
+            $remainder = round($paidTotal - ($baseOrderAmount * max(0, $totalOrders - 1)), 3);
+            return max(0.0, $remainder);
+        }
+
+        return max(0.0, $baseOrderAmount);
     }
 
     /**
@@ -1710,12 +1746,12 @@ class ErpOrderService
     /**
      * Build the allItems array from subscription order items (one row per itemCode + uom).
      */
-    private function buildSubscriptionItems(SubscriptionOrder $order): array
+    private function buildSubscriptionItems(SubscriptionOrder $order, ?float $targetTotal = null): array
     {
         $grouped = [];
 
         foreach ($order->items as $item) {
-            $variant = $item->productVariant ?? $item->relationLoaded('productVariant') ? $item->productVariant : null;
+            $variant = $item->productVariant;
             $itemCode = $variant?->sku ?? '';
             $uom = $variant?->short_item ?? '';
             $key = $itemCode . '|' . $uom;
@@ -1736,6 +1772,32 @@ class ErpOrderService
             $grouped[$key]['quantity'] += $quantity;
             $grouped[$key]['netLineTotal'] += $netLineTotal;
             $grouped[$key]['taxAmount'] += $taxAmount;
+        }
+
+        if ($targetTotal !== null && $targetTotal > 0 && !empty($grouped)) {
+            $currentTotal = array_reduce($grouped, function (float $carry, array $row) {
+                return $carry + (float) ($row['netLineTotal'] ?? 0);
+            }, 0.0);
+
+            if ($currentTotal > 0.0) {
+                $targetTotal = round($targetTotal, self::ERP_PRICE_DECIMALS);
+                $allocated = 0.0;
+                $keys = array_keys($grouped);
+                $lastKey = end($keys);
+
+                foreach ($grouped as $key => &$row) {
+                    if ($key === $lastKey) {
+                        $scaled = round($targetTotal - $allocated, self::ERP_PRICE_DECIMALS);
+                    } else {
+                        $ratio = (float) $row['netLineTotal'] / $currentTotal;
+                        $scaled = round($targetTotal * $ratio, self::ERP_PRICE_DECIMALS);
+                        $allocated += $scaled;
+                    }
+
+                    $row['netLineTotal'] = max(0.0, $scaled);
+                }
+                unset($row);
+            }
         }
 
         return collect($grouped)->map(function (array $row) {
@@ -1775,11 +1837,40 @@ class ErpOrderService
     }
 
     /**
-     * Resolve LPO for subscription order (typically empty for subscriptions)
+     * Resolve LPO for subscription order from payment track_id.
      */
     private function resolveSubscriptionLpo(SubscriptionOrder $order): string
     {
-        return '';
+        $order->loadMissing('customerSubscription.invoice.payments');
+        $invoice = $order->customerSubscription?->invoice;
+
+        if ($invoice && $invoice->status === 'paid') {
+            $payments = $invoice->relationLoaded('payments')
+                ? $invoice->payments
+                : $invoice->payments()->get();
+
+            $completed = $payments->where('status', 'completed')->sortByDesc('id');
+            $withTrackId = $completed->first(function ($p) {
+                $t = $p->track_id ?? null;
+                return $t !== null && trim((string) $t) !== '';
+            });
+
+            if ($withTrackId) {
+                return (string) $withTrackId->track_id;
+            }
+
+            $latest = $completed->first();
+            if ($latest && $latest->track_id !== null && trim((string) $latest->track_id) !== '') {
+                return (string) $latest->track_id;
+            }
+        }
+
+        $metadata = is_array($order->customerSubscription?->metadata)
+            ? $order->customerSubscription->metadata
+            : [];
+
+        $fallbackTrackId = trim((string) ($metadata['payment_track_id'] ?? ''));
+        return $fallbackTrackId;
     }
 
     /**
@@ -1787,36 +1878,111 @@ class ErpOrderService
      */
     private function resolveSubscriptionNotes(SubscriptionOrder $order): string
     {
-        $lines = [];
-        $order->loadMissing('customerSubscription.subscription.offer.charity');
-        
-        $lines[] = 'Subscription Order';
-        $lines[] = 'Order Sequence: ' . $order->order_sequence;
-        $lines[] = 'Month: ' . $order->month_number . ', Order: ' . $order->order_in_month;
+        $parts = [];
+        $order->loadMissing('customer', 'customerSubscription');
 
-        if ($order->customerSubscription) {
-            $subscription = $order->customerSubscription->subscription;
-            if ($subscription && $subscription->offer) {
-                $offer = $subscription->offer;
-                $offerTitle = trim($offer->title_en ?? '');
-                if ($offerTitle !== '') {
-                    $lines[] = 'Offer: ' . $offerTitle;
-                }
+        $customerName = trim((string) ($order->customer?->name ?? ''));
+        if ($customerName !== '') {
+            $parts[] = $this->noteField('الاسم', $customerName);
+        }
 
-                if ($offer->charity_id && $offer->charity) {
-                    $charityName = trim($offer->charity->name_en ?? '');
-                    if ($charityName !== '') {
-                        $lines[] = 'Charity: ' . $charityName;
-                    }
-                }
+        $address = $this->resolveSubscriptionCustomerAddress($order);
+        if ($address) {
+            if ($governorateName = $this->localizedArabicName($address->governorate)) {
+                $parts[] = $this->noteField('محافظة', $governorateName);
+            }
+            if ($areaName = $this->localizedArabicName($address->area)) {
+                $parts[] = $this->noteField('منطقة', $areaName);
+            }
+            if (!empty($address->block)) {
+                $parts[] = $this->noteField('قطعة', (string) $address->block);
+            }
+            if (!empty($address->street)) {
+                $parts[] = $this->noteField('شارع', (string) $address->street);
+            }
+            if (!empty($address->building_name)) {
+                $parts[] = $this->noteField('مبنى', (string) $address->building_name);
+            }
+            if (!empty($address->apartment_number)) {
+                $parts[] = $this->noteField('شقة', (string) $address->apartment_number);
+            }
+            if (!empty($address->house)) {
+                $parts[] = $this->noteField('منزل', (string) $address->house);
+            }
+            if (!empty($address->company)) {
+                $parts[] = $this->noteField('شركة', (string) $address->company);
+            }
+            if ($addressLabel = trim((string) ($address->address_label ?? ''))) {
+                $parts[] = $this->noteField('التسمية', $addressLabel);
+            }
+            if ($directions = trim((string) ($address->additional_directions ?? ''))) {
+                $parts[] = $this->noteField('التوجيهات', $directions);
             }
         }
 
-        if ($order->notes) {
-            $lines[] = 'Notes: ' . trim($order->notes);
+        $customerPhone = trim((string) ($order->customer?->phone ?? ''));
+        if ($customerPhone !== '') {
+            $parts[] = $this->noteField('الهاتف', $customerPhone);
         }
 
-        return implode("\n", $lines);
+        $userNote = trim((string) ($order->notes ?? ''));
+        if ($userNote !== '') {
+            $parts[] = $this->noteField('ملاحظة', $userNote);
+        }
+
+        $paymentType = $this->resolveSubscriptionPaymentType($order);
+        if ($paymentType !== '') {
+            $parts[] = $this->noteField('الدفع', $paymentType);
+        }
+
+        return implode("\n", array_filter($parts));
+    }
+
+    private function resolveSubscriptionCustomerAddress(SubscriptionOrder $order): ?CustomerAddress
+    {
+        $order->loadMissing('customerSubscription');
+        $metadata = is_array($order->customerSubscription?->metadata)
+            ? $order->customerSubscription->metadata
+            : [];
+
+        $addressId = (int) ($metadata['customer_address_id'] ?? 0);
+        if ($addressId <= 0) {
+            return null;
+        }
+
+        $address = CustomerAddress::query()
+            ->with(['country', 'governorate', 'area'])
+            ->find($addressId);
+
+        if (!$address) {
+            return null;
+        }
+
+        if ((int) $address->customer_id !== (int) $order->customer_id) {
+            return null;
+        }
+
+        return $address;
+    }
+
+    private function resolveSubscriptionPaymentType(SubscriptionOrder $order): string
+    {
+        $order->loadMissing('customerSubscription');
+        $metadata = is_array($order->customerSubscription?->metadata)
+            ? $order->customerSubscription->metadata
+            : [];
+
+        $src = strtolower(trim((string) ($metadata['payment_gateway_src'] ?? '')));
+
+        if ($src === 'wallet') {
+            return 'محفظة';
+        }
+
+        if (in_array($src, ['knet', 'cc', 'credit_card'], true)) {
+            return 'إلكتروني';
+        }
+
+        return '';
     }
 
     /**

@@ -35,6 +35,7 @@ class CustomerController extends BaseApiController
         $request->validate([
             'search' => 'nullable|string|max:255',
             'status' => 'nullable|in:active,inactive',
+            'platform' => 'nullable|in:ios,android',
             'is_completed' => 'nullable|boolean',
             'min_points' => 'nullable|integer|min:0',
             'max_points' => 'nullable|integer|min:0|gte:min_points',
@@ -47,6 +48,7 @@ class CustomerController extends BaseApiController
         $filters = [
             'search' => $request->input('search'),
             'status' => $request->input('status'),
+            'platform' => $request->input('platform'),
             'is_completed' => $request->boolean('is_completed', true),
             'min_points' => $request->input('min_points'),
             'max_points' => $request->input('max_points'),

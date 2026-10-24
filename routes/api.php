@@ -234,6 +234,7 @@ Route::middleware(['auth:sanctum', 'special-order.portal'])->prefix('admin')->gr
             // Subscription Orders Management (orders from subscriptions)
       Route::controller(SubscriptionController::class)->prefix('subscription-orders')->group(function () {
          Route::get('/', 'subscriptionOrdersIndex')->middleware('admin.permission:subscriptions,view');
+         Route::get('/{id}', 'subscriptionOrderShow')->whereNumber('id')->middleware('admin.permission:subscriptions,view');
       });
 
             // Charities Management

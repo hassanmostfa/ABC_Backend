@@ -4,6 +4,7 @@ namespace App\Http\Requests\Mobile;
 
 use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Auth;
 
 class SubscriptionPurchaseRequest extends FormRequest
 {
@@ -14,8 +15,11 @@ class SubscriptionPurchaseRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
+        $customer = Auth::guard('sanctum')->user();
+
+        $rules = [
             'subscription_id' => 'required|integer|exists:subscriptions,id',
+            'customer_address_id' => ['required', 'integer', 'exists:customer_addresses,id'],
             'orders_per_month' => 'required|integer|min:1|max:4',
             'start_date' => 'nullable|date|after_or_equal:today',
             'delivery_schedule' => 'required|array',
@@ -24,6 +28,17 @@ class SubscriptionPurchaseRequest extends FormRequest
             'src' => 'required_unless:payment_method,wallet|nullable|string|in:knet,cc,wallet',
             'source' => 'nullable|string|in:app,web',
         ];
+
+        if ($customer) {
+            $rules['customer_address_id'][] = function ($attribute, $value, $fail) use ($customer) {
+                $address = \App\Models\CustomerAddress::find($value);
+                if ($address && (int) $address->customer_id !== (int) $customer->id) {
+                    $fail('العنوان المحدد لا ينتمي إليك');
+                }
+            };
+        }
+
+        return $rules;
     }
 
     public function messages(): array
@@ -31,6 +46,9 @@ class SubscriptionPurchaseRequest extends FormRequest
         return [
             'subscription_id.required' => 'الاشتراك مطلوب',
             'subscription_id.exists' => 'الاشتراك المحدد غير موجود',
+            'customer_address_id.required' => 'عنوان التوصيل مطلوب',
+            'customer_address_id.integer' => 'معرف عنوان التوصيل يجب أن يكون رقماً صحيحاً',
+            'customer_address_id.exists' => 'عنوان التوصيل المحدد غير موجود',
             'orders_per_month.required' => 'عدد الطلبات شهرياً مطلوب',
             'orders_per_month.min' => 'يجب أن يكون عدد الطلبات على الأقل 1',
             'orders_per_month.max' => 'عدد الطلبات لا يجب أن يتجاوز 4',

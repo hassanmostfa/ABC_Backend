@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Models\Payment;
 use App\Support\SubscriptionPricing;
 use App\Traits\CustomerUnreadNotificationsCountTrait;
 use App\Traits\ManagesFileUploads;
@@ -69,6 +70,7 @@ class CustomerSubscriptionResource extends JsonResource
                 $this->relationLoaded('invoice') && $this->invoice,
                 fn () => $this->invoice->payment_link
             ),
+            'subscription_payment_details' => $this->resolveSubscriptionPaymentDetails(),
             'customer' => $this->whenLoaded('customer', function () {
                 return [
                     'id' => $this->customer->id,
@@ -109,6 +111,8 @@ class CustomerSubscriptionResource extends JsonResource
             'next_delivery' => $this->getNextDelivery(),
             'orders' => $this->whenLoaded('orders', function () {
                 return $this->orders->map(function ($order) {
+                    $orderTotals = $this->calculateOrderTotals($order);
+
                     return [
                         'id' => $order->id,
                         'order_number' => $order->order_number,
@@ -117,7 +121,10 @@ class CustomerSubscriptionResource extends JsonResource
                         'order_in_month' => (int) $order->order_in_month,
                         'scheduled_delivery_date' => \format_date_app_tz($order->scheduled_delivery_date),
                         'status' => $order->status,
-                        'total_amount' => (float) $order->total_amount,
+                        'total_before_discount' => $orderTotals['before'],
+                        'total_after_discount' => $orderTotals['after'],
+                        'total_discount' => $orderTotals['discount'],
+                        'total_amount' => $orderTotals['after'],
                         'notes' => $order->notes,
                         'sent_to_erp_at' => \format_datetime_app_tz($order->sent_to_erp_at),
                         'items' => $order->relationLoaded('items')
@@ -199,6 +206,87 @@ class CustomerSubscriptionResource extends JsonResource
             'delivery_date' => \format_date_app_tz($nextOrder->scheduled_delivery_date),
             'month_number' => (int) $nextOrder->month_number,
             'order_in_month' => (int) $nextOrder->order_in_month,
+        ];
+    }
+
+    /**
+     * @return array{before: float, after: float, discount: float}
+     */
+    private function calculateOrderTotals(object $order): array
+    {
+        $after = round((float) $order->resolvedTotalAmount(), 3);
+
+        if (!$order->relationLoaded('items')) {
+            return [
+                'before' => $after,
+                'after' => $after,
+                'discount' => 0.0,
+            ];
+        }
+
+        $before = round((float) $order->items->sum(function ($item) {
+            return (float) $item->total_price;
+        }), 3);
+
+        if ($before <= 0) {
+            $before = $after;
+        }
+
+        return [
+            'before' => $before,
+            'after' => $after,
+            'discount' => round(max(0, $before - $after), 3),
+        ];
+    }
+
+    private function resolveSubscriptionPaymentDetails(): ?array
+    {
+        if (!$this->relationLoaded('invoice') || !$this->invoice) {
+            return null;
+        }
+
+        $invoice = $this->invoice;
+        $payments = $invoice->relationLoaded('payments')
+            ? $invoice->payments
+            : collect();
+
+        $latestPayment = $payments->sortByDesc('id')->first();
+        $latestCompletedPayment = $payments
+            ->where('status', 'completed')
+            ->sortByDesc('id')
+            ->first();
+
+        return [
+            'invoice' => [
+                'id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'amount_due' => (float) $invoice->amount_due,
+                'status' => $invoice->status,
+                'paid_at' => \format_datetime_app_tz($invoice->paid_at),
+            ],
+            'latest_payment' => $latestPayment ? $this->formatPayment($latestPayment) : null,
+            'latest_completed_payment' => $latestCompletedPayment ? $this->formatPayment($latestCompletedPayment) : null,
+        ];
+    }
+
+    private function formatPayment(Payment $payment): array
+    {
+        return [
+            'id' => $payment->id,
+            'payment_number' => $payment->payment_number,
+            'type' => $payment->type,
+            'gateway' => $payment->gateway,
+            'method' => $payment->method,
+            'src' => $payment->payment_gateway_src,
+            'status' => $payment->status,
+            'reference' => $payment->reference,
+            'track_id' => $payment->track_id,
+            'tran_id' => $payment->tran_id,
+            'payment_id' => $payment->payment_id,
+            'receipt_id' => $payment->receipt_id,
+            'amount' => (float) $payment->amount,
+            'total_amount' => (float) $payment->total_amount,
+            'paid_at' => \format_datetime_app_tz($payment->paid_at),
         ];
     }
 }

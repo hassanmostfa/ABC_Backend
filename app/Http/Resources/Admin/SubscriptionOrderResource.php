@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -9,6 +10,8 @@ class SubscriptionOrderResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $totals = $this->calculateOrderTotals();
+
         return [
             'id' => $this->id,
             'order_number' => $this->order_number,
@@ -19,7 +22,10 @@ class SubscriptionOrderResource extends JsonResource
             'order_in_month' => (int) $this->order_in_month,
             'scheduled_delivery_date' => $this->scheduled_delivery_date?->format('Y-m-d'),
             'status' => $this->status,
-            'total_amount' => (float) $this->total_amount,
+            'total_before_discount' => $totals['before'],
+            'total_after_discount' => $totals['after'],
+            'total_discount' => $totals['discount'],
+            'total_amount' => $totals['after'],
             'notes' => $this->notes,
             'sent_to_erp_at' => $this->sent_to_erp_at?->format('Y-m-d H:i:s'),
             'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
@@ -61,6 +67,7 @@ class SubscriptionOrderResource extends JsonResource
                     ),
                 ];
             }),
+            'payment_details' => $this->resolvePaymentDetails(),
             'items' => $this->when($this->relationLoaded('items'), function () {
                 return $this->items->map(function ($item) {
                     $product = $item->relationLoaded('product') ? $item->product : null;
@@ -89,6 +96,95 @@ class SubscriptionOrderResource extends JsonResource
                     ];
                 })->values();
             }),
+        ];
+    }
+
+    /**
+     * @return array{before: float, after: float, discount: float}
+     */
+    private function calculateOrderTotals(): array
+    {
+        $after = round((float) $this->resolvedTotalAmount(), 3);
+
+        if (!$this->relationLoaded('items')) {
+            return [
+                'before' => $after,
+                'after' => $after,
+                'discount' => 0.0,
+            ];
+        }
+
+        $before = round((float) $this->items->sum(function ($item) {
+            return (float) $item->total_price;
+        }), 3);
+
+        if ($before <= 0) {
+            $before = $after;
+        }
+
+        return [
+            'before' => $before,
+            'after' => $after,
+            'discount' => round(max(0, $before - $after), 3),
+        ];
+    }
+
+    private function resolvePaymentDetails(): ?array
+    {
+        if (!$this->relationLoaded('customerSubscription') || !$this->customerSubscription) {
+            return null;
+        }
+
+        if (!$this->customerSubscription->relationLoaded('invoice')) {
+            return null;
+        }
+
+        $invoice = $this->customerSubscription->invoice;
+        if (!$invoice) {
+            return null;
+        }
+
+        $payments = $invoice->relationLoaded('payments')
+            ? $invoice->payments
+            : collect();
+
+        $latestPayment = $payments->sortByDesc('id')->first();
+        $latestCompletedPayment = $payments
+            ->where('status', 'completed')
+            ->sortByDesc('id')
+            ->first();
+
+        return [
+            'invoice' => [
+                'id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'amount_due' => (float) $invoice->amount_due,
+                'status' => $invoice->status,
+                'paid_at' => $invoice->paid_at?->format('Y-m-d H:i:s'),
+            ],
+            'latest_payment' => $latestPayment ? $this->formatPayment($latestPayment) : null,
+            'latest_completed_payment' => $latestCompletedPayment ? $this->formatPayment($latestCompletedPayment) : null,
+        ];
+    }
+
+    private function formatPayment(Payment $payment): array
+    {
+        return [
+            'id' => $payment->id,
+            'payment_number' => $payment->payment_number,
+            'type' => $payment->type,
+            'gateway' => $payment->gateway,
+            'method' => $payment->method,
+            'src' => $payment->payment_gateway_src,
+            'status' => $payment->status,
+            'reference' => $payment->reference,
+            'track_id' => $payment->track_id,
+            'tran_id' => $payment->tran_id,
+            'payment_id' => $payment->payment_id,
+            'receipt_id' => $payment->receipt_id,
+            'amount' => (float) $payment->amount,
+            'total_amount' => (float) $payment->total_amount,
+            'paid_at' => $payment->paid_at?->format('Y-m-d H:i:s'),
         ];
     }
 }
