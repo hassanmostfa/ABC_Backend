@@ -398,14 +398,22 @@ class OrderController extends BaseApiController
 
     /**
      * Poll Ottu and apply payment when webhook cannot reach this server (e.g. local dev).
+     * Set require_gateway_status to false to record the payment even when Ottu reports cancelled or cannot be reached.
      */
     public function syncPayment(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
             'session_id' => 'nullable|string|max:128',
+            'require_gateway_status' => 'sometimes|boolean',
         ]);
 
-        $result = $this->orderService->syncOttuPaymentStatus($id, $validated['session_id'] ?? null);
+        $requireGatewayStatus = $request->boolean('require_gateway_status', true);
+
+        $result = $this->orderService->syncOttuPaymentStatus(
+            $id,
+            $validated['session_id'] ?? null,
+            $requireGatewayStatus
+        );
 
         if (!$result['success']) {
             $code = in_array($result['message'], ['Order not found.'], true) ? 404 : 400;
@@ -431,6 +439,9 @@ class OrderController extends BaseApiController
             'order' => $order ? new OrderResource($order) : null,
             'invoice_status' => $result['invoice_status'] ?? null,
             'payment_status' => $result['payment_status'] ?? null,
+            'gateway_status_required' => $result['gateway_status_required'] ?? $requireGatewayStatus,
+            'gateway_status_ignored' => $result['gateway_status_ignored'] ?? false,
+            'gateway_status_raw' => $result['gateway_status_raw'] ?? null,
         ], $result['message']);
     }
 

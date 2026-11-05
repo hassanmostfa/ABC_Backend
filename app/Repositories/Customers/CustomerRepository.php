@@ -53,6 +53,13 @@ class CustomerRepository implements CustomerRepositoryInterface
             $query->where('is_completed', (bool) $filters['is_completed']);
         }
 
+        // Customers with money in their wallet
+        if (!empty($filters['has_wallet_balance'])) {
+            $query->whereHas('wallet', function ($walletQuery) {
+                $walletQuery->where('balance', '>', 0);
+            });
+        }
+
         // Filter by points range
         if (isset($filters['min_points']) && is_numeric($filters['min_points'])) {
             $query->where('points', '>=', $filters['min_points']);

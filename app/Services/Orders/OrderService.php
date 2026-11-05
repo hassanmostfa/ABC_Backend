@@ -801,14 +801,15 @@ class OrderService
 
     /**
      * Poll Ottu and mark invoice paid when the gateway shows success (for when webhook cannot reach the server).
+     * When $requireGatewayStatus is false, a cancelled or unreachable gateway status still records the payment.
      *
-     * @return array{success: bool, message: string, invoice_status?: string, payment_status?: string, gateway_status_raw?: mixed}
+     * @return array{success: bool, message: string, invoice_status?: string, payment_status?: string, gateway_status_raw?: mixed, gateway_status_required?: bool, gateway_status_ignored?: bool}
      */
-    public function syncOttuPaymentStatus(int $orderId, ?string $sessionId = null): array
+    public function syncOttuPaymentStatus(int $orderId, ?string $sessionId = null, bool $requireGatewayStatus = true): array
     {
         $checkout = OrderCheckout::query()->find($orderId);
         if ($checkout) {
-            return app(OrderCheckoutService::class)->syncCheckoutPayment($checkout, $sessionId);
+            return app(OrderCheckoutService::class)->syncCheckoutPayment($checkout, $sessionId, $requireGatewayStatus);
         }
 
         $order = $this->orderRepository->findById($orderId);
@@ -816,7 +817,7 @@ class OrderService
             return ['success' => false, 'message' => 'Order not found.'];
         }
 
-        return $this->ottuPaymentProcessor->syncOrderPayment($order, $sessionId);
+        return $this->ottuPaymentProcessor->syncOrderPayment($order, $sessionId, $requireGatewayStatus);
     }
 
     /**

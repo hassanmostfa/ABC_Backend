@@ -55,7 +55,7 @@ class RefundRequestController extends BaseApiController
     }
 
     /**
-     * Approve refund request - add money to customer wallet
+     * Approve refund request. The amount is refunded manually and is not added to the customer wallet.
      */
     public function approve(Request $request, int $id): JsonResponse
     {

@@ -28,10 +28,11 @@ class OttuPaymentProcessor
 
     /**
      * Poll Ottu and apply payment + invoice updates for an order (use when webhook cannot reach the server).
+     * When $requireGatewayStatus is false, a cancelled or unreachable gateway status still records the payment.
      *
-     * @return array{success: bool, message: string, invoice_status?: string, payment_status?: string, gateway_status_raw?: mixed}
+     * @return array{success: bool, message: string, invoice_status?: string, payment_status?: string, gateway_status_raw?: mixed, gateway_status_required?: bool, gateway_status_ignored?: bool}
      */
-    public function syncOrderPayment(Order $order, ?string $sessionIdOverride = null): array
+    public function syncOrderPayment(Order $order, ?string $sessionIdOverride = null, bool $requireGatewayStatus = true): array
     {
         $order->load(['invoice.payments']);
 
@@ -50,36 +51,77 @@ class OttuPaymentProcessor
                 'message' => 'Invoice is already paid.',
                 'invoice_status' => 'paid',
                 'payment_status' => 'completed',
+                'gateway_status_required' => $requireGatewayStatus,
+                'gateway_status_ignored' => false,
             ];
         }
 
         $sessionId = $sessionIdOverride ?? $this->resolveSessionIdForOrder($order);
+        $gatewayStatusIgnored = false;
+
         if ($sessionId === null || $sessionId === '') {
-            return ['success' => false, 'message' => 'No Ottu session found for this order. Regenerate the payment link and try again.'];
+            if ($requireGatewayStatus) {
+                return ['success' => false, 'message' => 'No Ottu session found for this order. Regenerate the payment link and try again.'];
+            }
+
+            $sessionId = 'admin-sync-' . $order->id;
+            $statusResult = $this->forceGatewaySuccess([
+                'gateway_status_raw' => null,
+                'is_success' => false,
+                'is_failed' => false,
+                'amount' => (float) $invoice->amount_due,
+                'track_id' => $sessionId,
+                'requested_order_id' => $order->order_number,
+            ]);
+            $gatewayStatusIgnored = true;
+        } else {
+            try {
+                $statusResult = $this->ottuService->getPaymentStatusWithRetries($sessionId);
+            } catch (\Exception $e) {
+                Log::warning('Ottu syncOrderPayment: getPaymentStatus failed', [
+                    'order_id' => $order->id,
+                    'session_id' => $sessionId,
+                    'message' => $e->getMessage(),
+                ]);
+
+                if ($requireGatewayStatus) {
+                    return ['success' => false, 'message' => 'Could not verify payment with Ottu: ' . $e->getMessage()];
+                }
+
+                $statusResult = $this->forceGatewaySuccess([
+                    'gateway_status_raw' => $e->getMessage(),
+                    'is_success' => false,
+                    'is_failed' => true,
+                    'amount' => (float) $invoice->amount_due,
+                    'track_id' => $sessionId,
+                    'requested_order_id' => $order->order_number,
+                ]);
+                $gatewayStatusIgnored = true;
+            }
         }
 
-        try {
-            $statusResult = $this->ottuService->getPaymentStatusWithRetries($sessionId);
-        } catch (\Exception $e) {
-            Log::warning('Ottu syncOrderPayment: getPaymentStatus failed', [
+        if (!$gatewayStatusIgnored && !($statusResult['is_success'] ?? false)) {
+            if ($requireGatewayStatus) {
+                return [
+                    'success' => false,
+                    'message' => ($statusResult['is_failed'] ?? false)
+                        ? 'Payment was not completed. You can retry using the same payment link.'
+                        : 'Payment is not completed at Ottu yet.',
+                    'gateway_status_raw' => $statusResult['gateway_status_raw'] ?? null,
+                    'invoice_status' => $invoice->status,
+                    'payment_status' => $this->resolvePaymentStatus($statusResult),
+                    'gateway_status_required' => true,
+                    'gateway_status_ignored' => false,
+                ];
+            }
+
+            Log::warning('Syncing order payment despite unsuccessful Ottu status', [
                 'order_id' => $order->id,
                 'session_id' => $sessionId,
-                'message' => $e->getMessage(),
-            ]);
-
-            return ['success' => false, 'message' => 'Could not verify payment with Ottu: ' . $e->getMessage()];
-        }
-
-        if (!$statusResult['is_success']) {
-            return [
-                'success' => false,
-                'message' => ($statusResult['is_failed'] ?? false)
-                    ? 'Payment was not completed. You can retry using the same payment link.'
-                    : 'Payment is not completed at Ottu yet.',
                 'gateway_status_raw' => $statusResult['gateway_status_raw'] ?? null,
-                'invoice_status' => $invoice->status,
-                'payment_status' => $this->resolvePaymentStatus($statusResult),
-            ];
+            ]);
+            $statusResult = $this->forceGatewaySuccess($statusResult);
+            $gatewayStatusIgnored = true;
         }
 
         try {
@@ -105,11 +147,30 @@ class OttuPaymentProcessor
 
         return [
             'success' => true,
-            'message' => 'Payment synced successfully.',
+            'message' => $gatewayStatusIgnored
+                ? 'Payment synced successfully without a successful gateway status.'
+                : 'Payment synced successfully.',
             'invoice_status' => $order->invoice?->status ?? 'pending',
             'payment_status' => $processResult['payment_status'] ?? 'completed',
             'gateway_status_raw' => $statusResult['gateway_status_raw'] ?? null,
+            'gateway_status_required' => $requireGatewayStatus,
+            'gateway_status_ignored' => $gatewayStatusIgnored,
         ];
+    }
+
+    /**
+     * Treat a gateway result as paid so local payment recording can proceed.
+     *
+     * @param array<string, mixed> $statusResult
+     * @return array<string, mixed>
+     */
+    public function forceGatewaySuccess(array $statusResult): array
+    {
+        $statusResult['is_success'] = true;
+        $statusResult['is_failed'] = false;
+        $statusResult['forced_success'] = true;
+
+        return $statusResult;
     }
 
     public function resolveSessionIdForOrder(Order $order): ?string

@@ -64,6 +64,15 @@ class PaymentController extends BaseApiController
             'search' => 'nullable|string|max:1000',
             'status' => 'nullable|in:pending,completed,failed,refunded,cancelled',
             'method' => 'nullable|in:cash,card,online,bank_transfer,wallet',
+            'type' => ['nullable', 'string', 'max:100', function (string $attribute, mixed $value, \Closure $fail): void {
+                if (!is_string($value) || trim($value) === '') {
+                    return;
+                }
+
+                if ($this->resolvePaymentTypeFilter($value) === null) {
+                    $fail('The type must be wallet, subscription, or both separated by a comma.');
+                }
+            }],
             'source' => 'nullable|in:app,web,call_center,website,calls,cals',
             'invoice_id' => 'nullable|integer|exists:invoices,id',
             'date_from' => 'nullable|date',
@@ -76,6 +85,9 @@ class PaymentController extends BaseApiController
             'search' => $request->input('search'),
             'status' => $request->input('status'),
             'method' => $request->input('method'),
+            'type' => $request->filled('type')
+                ? $this->resolvePaymentTypeFilter((string) $request->input('type'))
+                : null,
             'source' => $request->input('source'),
             'invoice_id' => $request->input('invoice_id'),
             'date_from' => $request->input('date_from'),
@@ -113,6 +125,35 @@ class PaymentController extends BaseApiController
         }
 
         return response()->json($response);
+    }
+
+    /**
+     * @return list<string>|null Null when the filter contains an unknown type.
+     */
+    private function resolvePaymentTypeFilter(string $value): ?array
+    {
+        $aliases = [
+            'wallet' => Payment::TYPE_WALLET_CHARGE,
+            'wallet_charge' => Payment::TYPE_WALLET_CHARGE,
+            'subscription' => Payment::TYPE_SUBSCRIPTION,
+            'subscriptions' => Payment::TYPE_SUBSCRIPTION,
+        ];
+
+        $resolved = [];
+        foreach (explode(',', $value) as $part) {
+            $key = strtolower(trim($part));
+            if ($key === '') {
+                continue;
+            }
+
+            if (!isset($aliases[$key])) {
+                return null;
+            }
+
+            $resolved[] = $aliases[$key];
+        }
+
+        return array_values(array_unique($resolved));
     }
 
     /**

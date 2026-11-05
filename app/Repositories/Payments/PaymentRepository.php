@@ -70,6 +70,11 @@ class PaymentRepository implements PaymentRepositoryInterface
             $query->where('method', $filters['method']);
         }
 
+        // Filter by payment type (wallet top-up and/or subscription)
+        if (!empty($filters['type']) && is_array($filters['type'])) {
+            $query->whereIn('type', $filters['type']);
+        }
+
         // Filter by checkout source (app / web / call_center); omit to return all
         if (isset($filters['source']) && !empty(trim($filters['source']))) {
             $source = $this->normalizePaymentSource((string) $filters['source']);

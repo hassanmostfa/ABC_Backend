@@ -6,7 +6,6 @@ use App\Models\Order;
 use App\Models\RefundRequest;
 use App\Repositories\Invoices\InvoiceRepositoryInterface;
 use App\Repositories\Orders\OrderRepositoryInterface;
-use App\Services\Wallet\WalletService;
 use App\Services\Orders\OrderCancellationService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +14,6 @@ use Illuminate\Support\Facades\Log;
 class RefundRequestService
 {
     public function __construct(
-        protected WalletService $walletService,
         protected InvoiceService $invoiceService,
         protected OrderRepositoryInterface $orderRepository,
         protected InvoiceRepositoryInterface $invoiceRepository,
@@ -165,7 +163,7 @@ class RefundRequestService
 
             return [
                 'success' => true,
-                'message' => 'Subscription cancellation refund request created. Pending approval to credit wallet.',
+                'message' => 'Subscription cancellation refund request created. Pending approval.',
                 'customer_subscription' => $customerSubscription->fresh(['subscription.offer', 'orders']),
                 'refund_request' => $refundRequest,
             ];
@@ -176,8 +174,9 @@ class RefundRequestService
     }
 
     /**
-     * Approve refund request - credit wallet, mark invoice refunded, cancel order.
-     * For subscription refunds: credit wallet, cancel pending subscription orders, mark subscription cancelled.
+     * Approve refund request. The amount is refunded manually, so it is not added to the customer wallet.
+     * Order refunds: mark invoice refunded and cancel the order.
+     * Subscription refunds: cancel pending subscription orders and mark the subscription cancelled.
      */
     public function approve(int $refundRequestId, ?string $adminNotes = null): array
     {
@@ -192,8 +191,6 @@ class RefundRequestService
 
         try {
             DB::beginTransaction();
-
-            $this->walletService->addBalance($refundRequest->customer_id, (float) $refundRequest->amount);
 
             if ($refundRequest->isSubscriptionRefund()) {
                 $customerSubscription = $refundRequest->customerSubscription;
@@ -234,8 +231,8 @@ class RefundRequestService
             return [
                 'success' => true,
                 'message' => $refundRequest->isSubscriptionRefund()
-                    ? 'Subscription refund approved. Pending orders cancelled and amount added to customer wallet.'
-                    : 'Refund approved. Money has been added to customer wallet and order cancelled.',
+                    ? 'Subscription refund approved. Pending orders cancelled. Refund the amount manually.'
+                    : 'Refund approved and order cancelled. Refund the amount manually.',
                 'refund_request' => $refundRequest->fresh(['order', 'invoice', 'customer', 'customerSubscription']),
             ];
         } catch (\Exception $e) {
@@ -377,7 +374,7 @@ class RefundRequestService
                 $customerId,
                 $isApproved ? 'Refund Approved' : 'Refund Rejected',
                 $isApproved
-                    ? "Your refund request for {$reference} has been approved and added to your wallet."
+                    ? "Your refund request for {$reference} has been approved."
                     : "Your refund request for {$reference} has been rejected.",
                 'payment',
                 [
@@ -390,7 +387,7 @@ class RefundRequestService
                 ],
                 $isApproved ? 'تمت الموافقة على الاسترجاع' : 'تم رفض طلب الاسترجاع',
                 $isApproved
-                    ? "تمت الموافقة على طلب الاسترجاع وتم إضافة المبلغ إلى محفظتك."
+                    ? "تمت الموافقة على طلب الاسترجاع."
                     : "تم رفض طلب الاسترجاع."
             );
         } catch (\Exception $e) {

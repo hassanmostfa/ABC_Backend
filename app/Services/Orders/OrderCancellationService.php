@@ -75,8 +75,8 @@ class OrderCancellationService
             }
 
             if ($fromRefundApproval) {
-                // Money already credited and invoice marked refunded by RefundRequestService::approve.
-                // Only finalize order cancellation here.
+                // Invoice is marked refunded by RefundRequestService::approve.
+                // The refund is paid manually, so the customer wallet is left unchanged.
                 if ($invoice && !$invoiceAlreadyRefunded && $invoice->status !== 'cancelled') {
                     $this->invoiceService->markAsCancelled($invoice->id);
                 }
