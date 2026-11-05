@@ -120,7 +120,7 @@ class OttuPaymentProcessor
                 'session_id' => $sessionId,
                 'gateway_status_raw' => $statusResult['gateway_status_raw'] ?? null,
             ]);
-            $statusResult = $this->forceGatewaySuccess($statusResult);
+            $statusResult = $this->forceGatewaySuccess($statusResult, (float) $invoice->amount_due);
             $gatewayStatusIgnored = true;
         }
 
@@ -164,11 +164,16 @@ class OttuPaymentProcessor
      * @param array<string, mixed> $statusResult
      * @return array<string, mixed>
      */
-    public function forceGatewaySuccess(array $statusResult): array
+    public function forceGatewaySuccess(array $statusResult, ?float $fallbackAmount = null): array
     {
         $statusResult['is_success'] = true;
         $statusResult['is_failed'] = false;
         $statusResult['forced_success'] = true;
+
+        $amount = $statusResult['amount'] ?? null;
+        if (($amount === null || (float) $amount <= 0) && $fallbackAmount !== null && $fallbackAmount > 0) {
+            $statusResult['amount'] = $fallbackAmount;
+        }
 
         return $statusResult;
     }

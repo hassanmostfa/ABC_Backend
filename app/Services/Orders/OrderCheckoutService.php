@@ -198,9 +198,9 @@ class OrderCheckoutService
     }
 
     /**
-     * @return array{success: bool, message: string, invoice_status?: string, payment_status?: string, order?: Order, gateway_status_raw?: mixed}
+     * @return array{success: bool, message: string, invoice_status?: string, payment_status?: string, order?: Order, gateway_status_raw?: mixed, gateway_status_required?: bool, gateway_status_ignored?: bool}
      */
-    public function syncCheckoutPayment(OrderCheckout $checkout, ?string $sessionId = null): array
+    public function syncCheckoutPayment(OrderCheckout $checkout, ?string $sessionId = null, bool $requireGatewayStatus = true): array
     {
         if ($checkout->order_id) {
             $order = Order::query()->with(['invoice', 'items.product', 'items.variant', 'customer'])->find($checkout->order_id);
@@ -211,40 +211,92 @@ class OrderCheckoutService
                     'invoice_status' => $order->invoice?->status ?? 'paid',
                     'payment_status' => 'completed',
                     'order' => $order,
+                    'gateway_status_required' => $requireGatewayStatus,
+                    'gateway_status_ignored' => false,
                 ];
             }
         }
 
         if (!$checkout->isPending()) {
-            return ['success' => false, 'message' => 'Checkout is no longer pending.'];
+            $reopenable = in_array($checkout->status, [
+                OrderCheckout::STATUS_FAILED,
+                OrderCheckout::STATUS_EXPIRED,
+                OrderCheckout::STATUS_CANCELLED,
+            ], true);
+
+            if ($requireGatewayStatus || !$reopenable) {
+                return ['success' => false, 'message' => 'Checkout is no longer pending.'];
+            }
+
+            $checkout->update(['status' => OrderCheckout::STATUS_PENDING]);
+            $checkout->refresh();
         }
 
         $sessionId = $sessionId ?: $checkout->ottu_session_id;
+        $gatewayStatusIgnored = false;
+        $processor = app(OttuPaymentProcessor::class);
+        $fallbackAmount = (float) $checkout->amount_due;
+
         if (!$sessionId) {
-            return ['success' => false, 'message' => 'No Ottu session found for this checkout. Regenerate the payment link and try again.'];
+            if ($requireGatewayStatus) {
+                return ['success' => false, 'message' => 'No Ottu session found for this checkout. Regenerate the payment link and try again.'];
+            }
+
+            $sessionId = 'admin-sync-' . $checkout->id;
+            $statusResult = $processor->forceGatewaySuccess([
+                'gateway_status_raw' => null,
+                'is_success' => false,
+                'is_failed' => false,
+                'amount' => $fallbackAmount,
+                'track_id' => $sessionId,
+                'requested_order_id' => $checkout->order_number,
+            ], $fallbackAmount);
+            $gatewayStatusIgnored = true;
+        } else {
+            try {
+                $statusResult = $this->ottuService->getPaymentStatusWithRetries($sessionId);
+            } catch (\Exception $e) {
+                if ($requireGatewayStatus) {
+                    return ['success' => false, 'message' => 'Could not verify payment with Ottu: ' . $e->getMessage()];
+                }
+
+                $statusResult = $processor->forceGatewaySuccess([
+                    'gateway_status_raw' => $e->getMessage(),
+                    'is_success' => false,
+                    'is_failed' => true,
+                    'amount' => $fallbackAmount,
+                    'track_id' => $sessionId,
+                    'requested_order_id' => $checkout->order_number,
+                ], $fallbackAmount);
+                $gatewayStatusIgnored = true;
+            }
         }
 
-        try {
-            $statusResult = $this->ottuService->getPaymentStatusWithRetries($sessionId);
-        } catch (\Exception $e) {
-            return ['success' => false, 'message' => 'Could not verify payment with Ottu: ' . $e->getMessage()];
-        }
+        if (!$gatewayStatusIgnored && !($statusResult['is_success'] ?? false)) {
+            if ($requireGatewayStatus) {
+                return [
+                    'success' => false,
+                    'message' => ($statusResult['is_failed'] ?? false)
+                        ? 'Payment was not completed. You can try again using the same or a new payment link.'
+                        : 'Payment is not completed at Ottu yet.',
+                    'gateway_status_raw' => $statusResult['gateway_status_raw'] ?? null,
+                    'payment_status' => $processor->resolvePaymentStatus($statusResult),
+                    'gateway_status_required' => true,
+                    'gateway_status_ignored' => false,
+                ];
+            }
 
-        if (!$statusResult['is_success']) {
-            $paymentStatus = app(OttuPaymentProcessor::class)->resolvePaymentStatus($statusResult);
-
-            return [
-                'success' => false,
-                'message' => ($statusResult['is_failed'] ?? false)
-                    ? 'Payment was not completed. You can try again using the same or a new payment link.'
-                    : 'Payment is not completed at Ottu yet.',
+            Log::warning('Syncing checkout payment despite unsuccessful Ottu status', [
+                'checkout_id' => $checkout->id,
+                'session_id' => $sessionId,
                 'gateway_status_raw' => $statusResult['gateway_status_raw'] ?? null,
-                'payment_status' => $paymentStatus,
-            ];
+            ]);
+            $statusResult = $processor->forceGatewaySuccess($statusResult, $fallbackAmount);
+            $gatewayStatusIgnored = true;
         }
 
         try {
-            $processResult = app(OttuPaymentProcessor::class)->processVerifiedCheckoutPayment(
+            $processResult = $processor->processVerifiedCheckoutPayment(
                 $sessionId,
                 $statusResult
             );
@@ -263,11 +315,15 @@ class OrderCheckoutService
 
         return [
             'success' => true,
-            'message' => 'Payment synced successfully.',
+            'message' => $gatewayStatusIgnored
+                ? 'Payment synced successfully without a successful gateway status.'
+                : 'Payment synced successfully.',
             'invoice_status' => $order?->invoice?->status ?? 'paid',
             'payment_status' => $processResult['payment_status'] ?? 'completed',
             'order' => $order,
             'gateway_status_raw' => $statusResult['gateway_status_raw'] ?? null,
+            'gateway_status_required' => $requireGatewayStatus,
+            'gateway_status_ignored' => $gatewayStatusIgnored,
         ];
     }
 
