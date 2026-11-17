@@ -17,6 +17,7 @@ class Order extends Model
         'note',
         'order_number',
         'status',
+        'order_points_awarded_at',
         'cancellation_reason',
         'total_amount',
         'offer_snapshot',
@@ -39,6 +40,7 @@ class Order extends Model
         'delivery_date' => 'date',
         'is_sent_to_erp' => 'boolean',
         'erp_status_synced_at' => 'datetime',
+        'order_points_awarded_at' => 'datetime',
     ];
 
     /**

@@ -371,6 +371,7 @@ class CouponService
         $discountType = Setting::getValue('welcome_coupon_discount_type', 'percentage');
         $discountValue = (float) Setting::getValue('welcome_coupon_discount_value', '10');
         $minimumOrderAmount = (float) Setting::getValue('welcome_coupon_minimum_order_amount', '0');
+        $maximumDiscountAmount = $this->welcomeCouponMaximumDiscountAmount();
         if (! in_array($discountType, ['percentage', 'fixed'], true)) {
             $discountType = 'percentage';
         }
@@ -382,7 +383,7 @@ class CouponService
             'discount_type' => $discountType,
             'discount_value' => $discountValue,
             'minimum_order_amount' => $minimumOrderAmount,
-            'maximum_discount_amount' => null,
+            'maximum_discount_amount' => $maximumDiscountAmount,
             'usage_limit' => 1,
             'used_count' => 0,
             'starts_at' => now(),
@@ -394,6 +395,9 @@ class CouponService
         $discountText = $discountType === 'percentage'
             ? $discountValue . '%'
             : $discountValue . ' KWD';
+        if ($maximumDiscountAmount !== null) {
+            $discountText .= ' (max ' . $maximumDiscountAmount . ' KWD)';
+        }
         $expiresAt = $coupon->expires_at?->format('Y-m-d') ?? '';
 
         $messageEn = 'Your welcome coupon code: ' . $coupon->code . '. Discount: ' . $discountText . '. Valid for one month. Use it at checkout!';
@@ -410,6 +414,7 @@ class CouponService
                 'coupon_id' => (string) $coupon->id,
                 'discount_type' => $discountType,
                 'discount_value' => (string) $discountValue,
+                'maximum_discount_amount' => $maximumDiscountAmount !== null ? (string) $maximumDiscountAmount : '',
                 'expires_at' => $expiresAt,
             ],
             'كوبون الترحيب',
@@ -419,6 +424,19 @@ class CouponService
         );
 
         return $coupon;
+    }
+
+    /**
+     * Cap for a welcome coupon, from settings. Blank or zero means no cap.
+     */
+    private function welcomeCouponMaximumDiscountAmount(): ?float
+    {
+        $raw = Setting::getValue('welcome_coupon_maximum_discount_amount', '');
+        if (! is_numeric($raw) || (float) $raw <= 0) {
+            return null;
+        }
+
+        return round((float) $raw, 3);
     }
 
     public function calculateDiscount(Coupon $coupon, float $orderAmount): float

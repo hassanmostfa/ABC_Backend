@@ -120,7 +120,16 @@ class SettingSeeder extends Seeder
             // Referral Settings
             [
                 'key' => 'referral_points',
-                'value' => '10', // Points awarded to referrer when a new customer uses their referral code
+                'value' => '10', // Points awarded to the referrer after the new customer completes a paid order
+            ],
+            // Points earned from a completed paid order: 1 = on, 0 = off
+            [
+                'key' => 'order_points_enabled',
+                'value' => '1',
+            ],
+            [
+                'key' => 'order_points_per_kwd',
+                'value' => '10', // Points given for each 1 KWD of the paid invoice
             ],
             // App update dialogs (1 = yes, 0 = no)
             [

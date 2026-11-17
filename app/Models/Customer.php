@@ -30,6 +30,7 @@ class Customer extends Authenticatable
         'app_version',
         'referral_code',
         'referred_by',
+        'referral_rewarded_at',
     ];
 
     protected $hidden = [
@@ -43,6 +44,7 @@ class Customer extends Authenticatable
         'is_active' => 'boolean',
         'is_completed' => 'boolean',
         'points' => 'integer',
+        'referral_rewarded_at' => 'datetime',
     ];
 
     /**

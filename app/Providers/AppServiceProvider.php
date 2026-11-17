@@ -2,6 +2,10 @@
 
 namespace App\Providers;
 
+use App\Models\Invoice;
+use App\Models\Order;
+use App\Observers\InvoiceObserver;
+use App\Observers\OrderObserver;
 use App\Support\OctopusApiToken;
 use Illuminate\Support\ServiceProvider;
 use App\Repositories\Customers\CustomerRepositoryInterface;
@@ -112,5 +116,8 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         OctopusApiToken::assertSafeForBoot(config('services.octopus.access_token'));
+
+        Order::observe(OrderObserver::class);
+        Invoice::observe(InvoiceObserver::class);
     }
 }

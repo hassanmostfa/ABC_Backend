@@ -214,7 +214,7 @@ class OrderCheckoutService
                     'gateway_status_required' => $requireGatewayStatus,
                     'gateway_status_ignored' => false,
                 ];
-            }
+            }   
         }
 
         if (!$checkout->isPending()) {

@@ -11,7 +11,6 @@ use App\Http\Resources\Web\CustomerResource;
 use App\Jobs\DispatchErpCustomerJob;
 use App\Models\Customer;
 use App\Models\DeviceToken;
-use App\Models\Setting;
 use App\Services\ERP\ErpCustomerService;
 use App\Services\Auth\OtpService;
 use Illuminate\Http\JsonResponse;
@@ -158,25 +157,6 @@ class AuthController extends BaseApiController
 
                 if ($referrer) {
                     $updateData['referred_by'] = $referrer->id;
-
-                    // Award points to the referrer
-                    $referralPoints = (int) Setting::getValue('referral_points', 10);
-                    $referrer->increment('points', $referralPoints);
-
-                    // Send notification to the referrer
-                    $customerName = $request->input('name');
-                    sendNotification(
-                        customerId: $referrer->id,
-                        type: 'referral_reward',
-                        titleEn: 'Referral Reward',
-                        titleAr: 'مكافأة الإحالة',
-                        messageEn: "Congratulations! {$customerName} used your referral code. You earned {$referralPoints} points!",
-                        messageAr: "تهانينا! استخدم {$customerName} رمز الإحالة الخاص بك. لقد ربحت {$referralPoints} نقطة!",
-                        data: [
-                            'points_earned' => $referralPoints,
-                            'referred_customer_name' => $customerName,
-                        ]
-                    );
                 }
             }
 

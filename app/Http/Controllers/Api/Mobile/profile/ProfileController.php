@@ -214,15 +214,16 @@ class ProfileController extends BaseApiController
         // Ensure the customer has a referral code
         $referralCode = $customerModel->ensureReferralCode();
 
-        // Get referral stats
+        // Signups still count as referrals. Points are counted only after a paid completed order.
         $totalReferrals = $customerModel->referrals()->where('is_completed', true)->count();
+        $rewardedReferrals = $customerModel->referrals()->whereNotNull('referral_rewarded_at')->count();
         $referralPoints = (int) Setting::getValue('referral_points', 10);
 
         return $this->successResponse([
             'referral_code' => $referralCode,
             'total_referrals' => $totalReferrals,
             'points_per_referral' => $referralPoints,
-            'total_points_earned' => $totalReferrals * $referralPoints,
+            'total_points_earned' => $rewardedReferrals * $referralPoints,
         ], 'Referral info retrieved successfully');
     }
 

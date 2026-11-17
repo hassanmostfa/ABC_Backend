@@ -20,6 +20,8 @@ use App\Repositories\Orders\OrderRepositoryInterface;
 use App\Services\Orders\OrderCancellationService;
 use App\Services\Orders\OrderService;
 use App\Services\ERP\ErpOrderService;
+use App\Services\Points\OrderPointsService;
+use App\Services\Referral\ReferralRewardService;
 use App\Services\Payment\RefundRequestService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -714,6 +716,11 @@ class OrderController extends BaseApiController
                 ->whereIn('id', $updatableOrderIds)
                 ->update(['status' => $status]);
             $updatedOrderIds = $updatableOrderIds;
+
+            if ($status === 'completed' && $updatedCount > 0) {
+                $this->awardReferralPointsForOrders($updatedOrderIds);
+                $this->awardOrderPointsForOrders($updatedOrderIds);
+            }
         }
 
         logAdminActivity('bulk updated status', 'Order', null, [
@@ -742,6 +749,54 @@ class OrderController extends BaseApiController
             'refund_request_count' => count($refundRequestIds),
             'refund_request_ids' => $refundRequestIds,
         ], 'Orders status updated successfully');
+    }
+
+    /**
+     * Bulk status updates skip model events, so check referral rewards explicitly.
+     *
+     * @param  array<int, int>  $orderIds
+     */
+    private function awardReferralPointsForOrders(array $orderIds): void
+    {
+        $customerIds = Order::query()
+            ->whereIn('id', $orderIds)
+            ->whereNotNull('customer_id')
+            ->distinct()
+            ->pluck('customer_id');
+
+        $referralRewardService = app(ReferralRewardService::class);
+
+        foreach ($customerIds as $customerId) {
+            try {
+                $referralRewardService->awardIfQualified((int) $customerId);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to award referral points after bulk order completion', [
+                    'customer_id' => $customerId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Bulk status updates skip model events, so award spend points explicitly.
+     *
+     * @param  array<int, int>  $orderIds
+     */
+    private function awardOrderPointsForOrders(array $orderIds): void
+    {
+        $orderPointsService = app(OrderPointsService::class);
+
+        foreach ($orderIds as $orderId) {
+            try {
+                $orderPointsService->awardIfQualified((int) $orderId);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to award order points after bulk order completion', [
+                    'order_id' => $orderId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 
 }

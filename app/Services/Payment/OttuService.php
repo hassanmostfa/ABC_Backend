@@ -1008,7 +1008,22 @@ class OttuService
             }
 
             $message = $this->resolveOttuErrorMessage($response);
-            $alreadyCancelled = $this->isAlreadyCancelledOrExpiredError($message, is_array($body) ? $body : []);
+            $bodyArray = is_array($body) ? $body : [];
+            $alreadyCancelled = $this->isAlreadyCancelledOrExpiredError($message, $bodyArray);
+
+            if (!$alreadyCancelled && $this->isUncancellableSessionError($message, $bodyArray)) {
+                if ($this->gatewaySessionIsPaid($sessionId)) {
+                    return [
+                        'success' => false,
+                        'already_cancelled' => false,
+                        'status' => $status,
+                        'body' => $body,
+                        'error' => 'Payment is already paid on the gateway and cannot be cancelled.',
+                    ];
+                }
+
+                $alreadyCancelled = true;
+            }
 
             return [
                 'success' => $alreadyCancelled,
@@ -1060,6 +1075,33 @@ class OttuService
         }
 
         return false;
+    }
+
+    /**
+     * Ottu uses this when the session is already cancelled, expired, or gone.
+     *
+     * @param  array<string, mixed>  $body
+     */
+    protected function isUncancellableSessionError(string $message, array $body): bool
+    {
+        $haystack = strtolower($message . ' ' . json_encode($body));
+
+        return str_contains($haystack, 'invalid state for')
+            || str_contains($haystack, 'does not exist');
+    }
+
+    /**
+     * A paid gateway session must not be marked cancelled locally.
+     */
+    protected function gatewaySessionIsPaid(string $sessionId): bool
+    {
+        try {
+            $status = $this->getPaymentStatus($sessionId);
+        } catch (\Throwable $e) {
+            return false;
+        }
+
+        return (bool) ($status['is_success'] ?? false);
     }
 
     public function getPaymentStatus(string $sessionId): array
