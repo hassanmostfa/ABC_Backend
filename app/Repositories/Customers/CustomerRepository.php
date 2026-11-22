@@ -100,17 +100,32 @@ class CustomerRepository implements CustomerRepositoryInterface
             'addresses.governorate',
             'addresses.area',
             'payments' => function ($query) {
-                $query->where('status', Payment::STATUS_COMPLETED)
-                    ->where(function ($walletQuery) {
-                        $walletQuery->where('type', Payment::TYPE_WALLET_CHARGE)
-                            ->orWhere(function ($spendQuery) {
-                                $spendQuery->where('method', 'wallet')
-                                    ->where('type', '!=', Payment::TYPE_WALLET_CHARGE);
-                            });
-                    })
+                $query->where(function ($walletQuery) {
+                    $walletQuery
+                        ->where(function ($topUpQuery) {
+                            $topUpQuery->where('type', Payment::TYPE_WALLET_CHARGE)
+                                ->whereIn('status', [
+                                    Payment::STATUS_COMPLETED,
+                                    Payment::STATUS_REFUNDED,
+                                ]);
+                        })
+                        ->orWhere(function ($spendQuery) {
+                            $spendQuery->where('method', 'wallet')
+                                ->where('type', '!=', Payment::TYPE_WALLET_CHARGE)
+                                ->whereIn('status', [
+                                    Payment::STATUS_COMPLETED,
+                                    Payment::STATUS_REFUNDED,
+                                ]);
+                        });
+                })
                     ->orderByDesc('paid_at')
                     ->orderByDesc('created_at');
             },
+            'walletPaidOrders' => function ($query) {
+                $query->with(['invoice:id,order_id,amount_due,status,paid_at'])
+                    ->orderByDesc('created_at');
+            },
+            'pointsWalletConversions',
         ];
     }
 

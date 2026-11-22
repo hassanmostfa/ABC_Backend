@@ -111,4 +111,12 @@ class Order extends Model
     {
         return $this->morphTo('created_by');
     }
+
+    public function scopePaidViaWallet($query)
+    {
+        return $query->where('payment_method', 'wallet')
+            ->whereHas('invoice', function ($invoiceQuery) {
+                $invoiceQuery->where('status', 'paid');
+            });
+    }
 }

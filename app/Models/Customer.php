@@ -101,6 +101,24 @@ class Customer extends Authenticatable
     }
 
     /**
+     * Orders paid from the customer's wallet (invoice paid; no separate payment row).
+     */
+    public function walletPaidOrders()
+    {
+        return $this->hasMany(Order::class)->paidViaWallet();
+    }
+
+    /**
+     * Points converted to wallet balance (wallet credit).
+     */
+    public function pointsWalletConversions()
+    {
+        return $this->hasMany(PointsTransaction::class)
+            ->where('type', PointsTransaction::TYPE_POINTS_TO_WALLET)
+            ->orderByDesc('created_at');
+    }
+
+    /**
      * Get the addresses for the customer
      */
     public function addresses()
