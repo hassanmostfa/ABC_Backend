@@ -93,7 +93,7 @@ class OrderPointsService
 
     private function pointsPerKwd(): int
     {
-        $raw = Setting::getValue('order_points_per_kwd', '10');
+        $raw = Setting::getValue('order_points_per_kwd');
         if (!is_numeric($raw)) {
             return 0;
         }
