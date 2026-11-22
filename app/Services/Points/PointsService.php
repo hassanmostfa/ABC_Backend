@@ -32,8 +32,14 @@ class PointsService
         }
 
         // Get one point money value from settings (used for discount calculation)
-        $onePointDiscount = (float) Setting::getValue('one_point_money_value', Setting::getValue('one_point_dicount', 0.1));
-        
+        $onePointDiscount = (float) Setting::getValue('one_point_money_value', Setting::getValue('one_point_dicount'));
+        if ($onePointDiscount <= 0) {
+            return [
+                'usedPoints' => 0,
+                'pointsDiscount' => 0.00,
+            ];
+        }
+
         // Calculate discount: points * one_point_discount
         $requestedDiscount = $requestedPoints * $onePointDiscount;
         

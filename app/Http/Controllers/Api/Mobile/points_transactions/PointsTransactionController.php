@@ -26,7 +26,7 @@ class PointsTransactionController extends BaseApiController
      */
     public function convertSettings(): JsonResponse
     {
-        $onePointMoneyValue = (float) Setting::getValue('one_point_money_value', Setting::getValue('one_point_dicount', 0.1));
+        $onePointMoneyValue = (float) Setting::getValue('one_point_money_value', Setting::getValue('one_point_dicount'));
         $minPointsToConvert = (int) Setting::getValue('min_points_to_convert', 10);
 
         return $this->successResponse([

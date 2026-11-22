@@ -54,7 +54,7 @@ class PointsTransactionService
             ];
         }
 
-        $onePointValue = (float) Setting::getValue('one_point_money_value', Setting::getValue('one_point_dicount', 0.1)); // money per 1 point
+        $onePointValue = (float) Setting::getValue('one_point_money_value', Setting::getValue('one_point_dicount'));
         $amount = round($points * $onePointValue, 2);
 
         if ($amount <= 0) {
